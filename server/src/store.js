@@ -35,12 +35,13 @@ class TaskStore {
     writeFileSync(TASKS_FILE, JSON.stringify(this.tasks, null, 2));
   }
 
-  addTask({ title, priority = 'medium', description = '' }) {
+  addTask({ title, priority = 'medium', description = '', repoPath = '' }) {
     const task = {
       id: 'T-' + uuidv4().slice(0, 6).toUpperCase(),
       title,
       priority,
       description,
+      repoPath,
       status: 'backlog',
       branch: null,
       plan: null,

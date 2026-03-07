@@ -28,7 +28,7 @@ function get(key, fallback = '') {
 
 const config = {
   PORT: parseInt(get('PORT', '3001'), 10),
-  REPO_PATH: get('REPO_PATH'),
+  REPOS: get('REPOS').split(',').map(s => s.trim()).filter(Boolean),
   GITHUB_REPO: get('GITHUB_REPO'),
   GITHUB_TOKEN: get('GITHUB_TOKEN'),
   IMPLEMENTOR_1_CLI: get('IMPLEMENTOR_1_CLI', 'claude'),

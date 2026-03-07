@@ -9,6 +9,7 @@ export default function useFactory() {
   const [connected, setConnected] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [repos, setRepos] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const wsRef = useRef(null);
   const termSubsRef = useRef(new Map()); // agentId → callback
@@ -55,6 +56,7 @@ export default function useFactory() {
         case 'INIT':
           setTasks(msg.payload.tasks || []);
           setAgents(msg.payload.agents || []);
+          setRepos(msg.payload.repos || []);
           break;
         case 'TASKS_UPDATED':
           setTasks(msg.payload.tasks || []);
@@ -114,8 +116,8 @@ export default function useFactory() {
     };
   }, [connect]);
 
-  const addTask = useCallback((title, priority, description) => {
-    send('ADD_TASK', { title, priority, description });
+  const addTask = useCallback((title, priority, description, repoPath) => {
+    send('ADD_TASK', { title, priority, description, repoPath });
   }, [send]);
 
   const approvePlan = useCallback((taskId) => {
@@ -151,6 +153,7 @@ export default function useFactory() {
     connected,
     tasks,
     agents,
+    repos,
     notifications,
     addTask,
     approvePlan,

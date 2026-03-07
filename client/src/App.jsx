@@ -59,7 +59,7 @@ function Logo() {
 
 export default function App() {
   const {
-    connected, agents, tasks, notifications,
+    connected, agents, tasks, repos, notifications,
     addTask, approvePlan, rejectPlan,
     injectMessage, pauseAgent, resumeAgent,
     subscribeTerminal,
@@ -341,9 +341,10 @@ export default function App() {
       {/* ADD TASK MODAL */}
       {showAddModal && (
         <AddTaskModal
+          repos={repos}
           onClose={() => setShowAddModal(false)}
-          onSubmit={(title, priority, description) => {
-            addTask(title, priority, description);
+          onSubmit={(title, priority, description, repoPath) => {
+            addTask(title, priority, description, repoPath);
             setShowAddModal(false);
           }}
         />
@@ -635,14 +636,15 @@ function QueueView({ tasks, needAttention, rejectingTask, setRejectingTask, reje
 }
 
 // --- Add Task Modal ---
-function AddTaskModal({ onClose, onSubmit }) {
+function AddTaskModal({ repos, onClose, onSubmit }) {
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('medium');
   const [description, setDescription] = useState('');
+  const [repoPath, setRepoPath] = useState(repos[0] || '');
 
   const handleSubmit = () => {
     if (!title.trim()) return;
-    onSubmit(title.trim(), priority, description.trim());
+    onSubmit(title.trim(), priority, description.trim(), repoPath);
   };
 
   return (
@@ -668,6 +670,21 @@ function AddTaskModal({ onClose, onSubmit }) {
         <h2 style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: 18, marginBottom: 20 }}>
           Add Task
         </h2>
+
+        {repos.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 11, color: 'var(--text2)', display: 'block', marginBottom: 6 }}>Repository</label>
+            <select
+              value={repoPath}
+              onChange={e => setRepoPath(e.target.value)}
+              style={{ width: '100%', fontSize: 12, padding: '6px 8px' }}
+            >
+              {repos.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div style={{ marginBottom: 16 }}>
           <label style={{ fontSize: 11, color: 'var(--text2)', display: 'block', marginBottom: 6 }}>Title</label>

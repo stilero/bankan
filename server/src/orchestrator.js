@@ -20,7 +20,7 @@ function escapePrompt(text) {
 
 function buildPlannerPrompt(task) {
   let prompt = `You are a senior software architect. A task has been assigned to you.
-Repository: ${config.REPO_PATH}
+Repository: ${task.repoPath}
 
 TASK ID: ${task.id}
 TITLE: ${task.title}
@@ -59,7 +59,7 @@ function buildImplementorPrompt(task) {
 TASK: ${task.title}
 TASK ID: ${task.id}
 BRANCH: ${task.branch}
-REPO: ${config.REPO_PATH}`;
+REPO: ${task.repoPath}`;
 
   if (task.reviewFeedback) {
     prompt += `\n\nPREVIOUS REVIEW — ISSUES TO FIX:\n${task.reviewFeedback}\n`;
@@ -90,7 +90,7 @@ function buildReviewerPrompt(task) {
 
 TASK: ${task.title}
 BRANCH: ${task.branch}
-REPO: ${config.REPO_PATH}
+REPO: ${task.repoPath}
 
 ORIGINAL PLAN:
 ${task.plan}
@@ -126,7 +126,7 @@ function startPlanning(task) {
 
   const prompt = buildPlannerPrompt(task);
   const cmd = `claude --print '${escapePrompt(prompt)}'`;
-  planner.spawn(config.REPO_PATH, cmd);
+  planner.spawn(task.repoPath, cmd);
   bus.emit('agent:updated', planner.getStatus());
   return true;
 }
@@ -184,9 +184,9 @@ async function startImplementation(task) {
   }
 
   // Checkout branch
-  if (config.REPO_PATH) {
+  if (task.repoPath) {
     try {
-      const git = simpleGit(config.REPO_PATH);
+      const git = simpleGit(task.repoPath);
       const branches = await git.branchLocal();
       if (branches.all.includes(task.branch)) {
         await git.checkout(task.branch);
@@ -212,7 +212,7 @@ async function startImplementation(task) {
     cmd = `claude --dangerously-skip-permissions '${escapePrompt(prompt)}'`;
   }
 
-  agent.spawn(config.REPO_PATH, cmd);
+  agent.spawn(task.repoPath, cmd);
   bus.emit('agent:updated', agent.getStatus());
 }
 
@@ -222,10 +222,10 @@ async function onImplementationComplete(agentId) {
   if (!taskId) return;
 
   // Push branch
-  if (config.REPO_PATH) {
+  const task = store.getTask(taskId);
+  if (task?.repoPath) {
     try {
-      const task = store.getTask(taskId);
-      const git = simpleGit(config.REPO_PATH);
+      const git = simpleGit(task.repoPath);
       await git.push('origin', task.branch);
     } catch (err) {
       console.error(`Git push failed:`, err.message);
@@ -235,8 +235,8 @@ async function onImplementationComplete(agentId) {
   store.updateTask(taskId, { status: 'review', assignedTo: 'rev' });
   agent.kill();
 
-  const task = store.getTask(taskId);
-  startReview(task);
+  const taskForReview = store.getTask(taskId);
+  startReview(taskForReview);
 }
 
 function startReview(task) {
@@ -249,7 +249,7 @@ function startReview(task) {
 
   const prompt = buildReviewerPrompt(task);
   const cmd = `claude --print '${escapePrompt(prompt)}'`;
-  reviewer.spawn(config.REPO_PATH, cmd);
+  reviewer.spawn(task.repoPath, cmd);
   bus.emit('agent:updated', reviewer.getStatus());
 }
 

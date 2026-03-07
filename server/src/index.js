@@ -20,10 +20,14 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+app.get('/api/repos', (req, res) => {
+  res.json({ repos: config.REPOS });
+});
+
 app.post('/api/tasks', (req, res) => {
-  const { title, priority, description } = req.body;
+  const { title, priority, description, repoPath } = req.body;
   if (!title) return res.status(400).json({ error: 'Title is required' });
-  const task = store.addTask({ title, priority, description });
+  const task = store.addTask({ title, priority, description, repoPath });
   res.status(201).json(task);
 });
 
@@ -64,6 +68,7 @@ wss.on('connection', (ws) => {
     payload: {
       tasks: store.getAllTasks(),
       agents: agentManager.getAllStatus(),
+      repos: config.REPOS,
     },
     ts: Date.now(),
   }));
@@ -74,8 +79,8 @@ wss.on('connection', (ws) => {
 
     switch (msg.type) {
       case 'ADD_TASK': {
-        const { title, priority, description } = msg.payload || {};
-        if (title) store.addTask({ title, priority, description });
+        const { title, priority, description, repoPath } = msg.payload || {};
+        if (title) store.addTask({ title, priority, description, repoPath });
         break;
       }
       case 'APPROVE_PLAN': {

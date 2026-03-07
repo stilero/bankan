@@ -125,18 +125,21 @@ async function main() {
   // Step 3: Project Config
   console.log(bold('  Project Configuration\n'));
 
-  const repoHint = existing.REPO_PATH ? dim(` (${existing.REPO_PATH}), Enter to keep`) : '';
-  const repoAnswer = await ask(`  REPO_PATH (git repo for agents to work in)${repoHint}: `);
-  if (repoAnswer.trim()) {
-    config.REPO_PATH = repoAnswer.trim();
+  const reposHint = existing.REPOS ? dim(` (${existing.REPOS}), Enter to keep`) : '';
+  const reposAnswer = await ask(`  REPOS (comma-separated git repo paths)${reposHint}: `);
+  if (reposAnswer.trim()) {
+    config.REPOS = reposAnswer.trim();
   }
 
-  if (config.REPO_PATH) {
-    try {
-      execSync(`git -C "${config.REPO_PATH}" rev-parse HEAD`, { stdio: 'pipe' });
-      console.log(`  ${green('✓')} Valid git repo`);
-    } catch {
-      console.log(`  ${yellow('⚠')} Not a git repo or no commits yet`);
+  if (config.REPOS) {
+    const repoPaths = config.REPOS.split(',').map(s => s.trim()).filter(Boolean);
+    for (const repoPath of repoPaths) {
+      try {
+        execSync(`git -C "${repoPath}" rev-parse HEAD`, { stdio: 'pipe' });
+        console.log(`  ${green('✓')} ${repoPath} — valid git repo`);
+      } catch {
+        console.log(`  ${yellow('⚠')} ${repoPath} — not a git repo or no commits yet`);
+      }
     }
   }
 
@@ -167,7 +170,7 @@ async function main() {
 
   // Step 6: Write .env.local
   const envLines = [
-    `REPO_PATH=${config.REPO_PATH || ''}`,
+    `REPOS=${config.REPOS || ''}`,
     `GITHUB_REPO=${config.GITHUB_REPO || ''}`,
     `GITHUB_TOKEN=${config.GITHUB_TOKEN || ''}`,
     `IMPLEMENTOR_1_CLI=${config.IMPLEMENTOR_1_CLI || 'claude'}`,
