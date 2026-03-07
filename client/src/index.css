@@ -1,0 +1,109 @@
+:root {
+  --bg: #0C0C0E;
+  --bg1: #111114;
+  --bg2: #16161A;
+  --bg3: #1C1C22;
+  --border: #252530;
+  --border2: #2E2E3C;
+  --amber: #F5A623;
+  --steel2: #6AABDB;
+  --green: #3DDC84;
+  --red: #FF4D4D;
+  --yellow: #FFD166;
+  --purple: #A78BFA;
+  --blue: #60A5FA;
+  --text: #E8E8F0;
+  --text2: #9090A8;
+  --text3: #50505E;
+  --font-mono: 'DM Mono', monospace;
+  --font-head: 'Syne', sans-serif;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text3);
+}
+
+/* Keyframe animations */
+@keyframes conveyor-stripes {
+  0% { background-position: 0 0; }
+  100% { background-position: 40px 0; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(100px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Utility */
+button {
+  font-family: var(--font-mono);
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+}
+
+input, textarea {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  outline: none;
+}
+
+input:focus, textarea:focus {
+  border-color: var(--amber);
+}
