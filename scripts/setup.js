@@ -122,20 +122,7 @@ async function main() {
   const existing = loadExistingEnv();
   const config = { ...existing };
 
-  // Step 3: API Keys
-  console.log(bold('  API Keys\n'));
-
-  for (const key of ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']) {
-    const hint = existing[key] ? dim(' (already set, Enter to keep)') : '';
-    const answer = await ask(`  ${key}${hint}: `);
-    if (answer.trim()) {
-      config[key] = answer.trim();
-    }
-  }
-
-  console.log('');
-
-  // Step 4: Project Config
+  // Step 3: Project Config
   console.log(bold('  Project Configuration\n'));
 
   const repoHint = existing.REPO_PATH ? dim(` (${existing.REPO_PATH}), Enter to keep`) : '';
@@ -180,8 +167,6 @@ async function main() {
 
   // Step 6: Write .env.local
   const envLines = [
-    `ANTHROPIC_API_KEY=${config.ANTHROPIC_API_KEY || ''}`,
-    `OPENAI_API_KEY=${config.OPENAI_API_KEY || ''}`,
     `REPO_PATH=${config.REPO_PATH || ''}`,
     `GITHUB_REPO=${config.GITHUB_REPO || ''}`,
     `GITHUB_TOKEN=${config.GITHUB_TOKEN || ''}`,
