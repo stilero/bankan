@@ -88,7 +88,7 @@ button {
   font-size: 12px;
 }
 
-input, textarea {
+input, textarea, select {
   font-family: var(--font-mono);
   font-size: 13px;
   color: var(--text);
@@ -99,6 +99,11 @@ input, textarea {
   outline: none;
 }
 
-input:focus, textarea:focus {
+input:focus, textarea:focus, select:focus {
   border-color: var(--amber);
+}
+
+select option {
+  color: var(--text);
+  background: var(--bg1);
 }

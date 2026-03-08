@@ -1,4 +1,5 @@
 import pty from 'node-pty';
+import { existsSync, statSync } from 'node:fs';
 import bus from './events.js';
 import { loadSettings } from './config.js';
 
@@ -53,6 +54,22 @@ class Agent {
   spawn(cwd, command) {
     if (this.process) this.kill();
 
+    // Validate cwd is an existing directory
+    if (!cwd || !existsSync(cwd) || !statSync(cwd).isDirectory()) {
+      const errorMsg = `\r\n[ERROR] Invalid working directory: ${cwd}\r\n`;
+      this.terminalBuffer.push(errorMsg);
+      for (const ws of this.subscribers) {
+        try {
+          ws.send(JSON.stringify({
+            type: 'TERMINAL_DATA',
+            payload: { agentId: this.id, data: errorMsg },
+            ts: Date.now(),
+          }));
+        } catch { this.subscribers.delete(ws); }
+      }
+      return false;
+    }
+
     this.status = 'active';
     this.startedAt = Date.now();
     this.terminalBuffer = [];
@@ -92,10 +109,14 @@ class Agent {
       this.process = null;
       if (this.status === 'active') {
         this.status = 'idle';
+        if (this.currentTask) {
+          bus.emit('agent:unexpected-exit', { agentId: this.id, taskId: this.currentTask });
+        }
       }
     });
 
     bus.emit('agent:updated', this.getStatus());
+    return true;
   }
 
   _parseTokens(data) {

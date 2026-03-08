@@ -156,6 +156,18 @@ export default function useFactory() {
     send('RESUME_AGENT', { agentId });
   }, [send]);
 
+  const pauseTask = useCallback((taskId) => {
+    send('PAUSE_TASK', { taskId });
+  }, [send]);
+
+  const resumeTask = useCallback((taskId) => {
+    send('RESUME_TASK', { taskId });
+  }, [send]);
+
+  const editTask = useCallback((taskId, updates) => {
+    send('EDIT_TASK', { taskId, updates });
+  }, [send]);
+
   const updateSettings = useCallback((newSettings) => {
     send('UPDATE_SETTINGS', newSettings);
   }, [send]);
@@ -179,6 +191,9 @@ export default function useFactory() {
     addTask,
     approvePlan,
     rejectPlan,
+    pauseTask,
+    resumeTask,
+    editTask,
     injectMessage,
     pauseAgent,
     resumeAgent,

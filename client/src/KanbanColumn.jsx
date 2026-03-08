@@ -10,6 +10,7 @@ export default function KanbanColumn({
   onReject,
   onAgentClick,
   onAddTask,
+  onTaskClick,
 }) {
   // Get agents for this column's role
   const columnAgents = column.agentPrefix
@@ -145,6 +146,7 @@ export default function KanbanColumn({
             onApprove={onApprove}
             onReject={onReject}
             onAgentClick={onAgentClick}
+            onTaskClick={onTaskClick}
           />
         ))}
       </div>

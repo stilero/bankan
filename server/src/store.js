@@ -98,6 +98,15 @@ class TaskStore {
     };
     let changed = false;
     for (const task of this.tasks) {
+      // Leave paused tasks as paused but clear assignedTo
+      if (task.status === 'paused') {
+        if (task.assignedTo) {
+          task.assignedTo = null;
+          task.updatedAt = new Date().toISOString();
+          changed = true;
+        }
+        continue;
+      }
       const resetTo = recoveryMap[task.status];
       if (resetTo) {
         task.status = resetTo;

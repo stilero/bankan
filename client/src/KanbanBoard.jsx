@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect, useMemo } from 'react';
 import KanbanColumn from './KanbanColumn.jsx';
 
 const COLUMNS = [
-  { id: 'backlog',        title: 'Backlog',        icon: '\u25CB', statuses: ['backlog'],                       agentPrefix: null,   color: 'var(--text3)'  },
+  { id: 'backlog',        title: 'Backlog',        icon: '\u25CB', statuses: ['backlog', 'paused'],             agentPrefix: null,   color: 'var(--text3)'  },
   { id: 'planning',       title: 'Planning',       icon: '\u270E', statuses: ['planning', 'awaiting_approval'], agentPrefix: 'plan', color: 'var(--steel2)' },
   { id: 'implementation', title: 'Implementation', icon: '\u2692', statuses: ['queued', 'implementing'],        agentPrefix: 'imp',  color: 'var(--green)'  },
   { id: 'review',         title: 'Review',         icon: '\u2714', statuses: ['review'],                        agentPrefix: 'rev',  color: 'var(--yellow)' },
@@ -16,6 +16,7 @@ export default function KanbanBoard({
   onReject,
   onAgentClick,
   onAddTask,
+  onTaskClick,
 }) {
   const prevTaskStatusRef = useRef(new Map());
   const [animatingTasks, setAnimatingTasks] = useState(new Set());
@@ -102,6 +103,7 @@ export default function KanbanBoard({
           onReject={onReject}
           onAgentClick={onAgentClick}
           onAddTask={onAddTask}
+          onTaskClick={onTaskClick}
         />
       ))}
     </div>

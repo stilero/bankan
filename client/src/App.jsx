@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import useFactory from './useFactory.js';
 import KanbanBoard from './KanbanBoard.jsx';
 import TerminalDrawer from './TerminalDrawer.jsx';
+import DirectoryPicker from './DirectoryPicker.jsx';
+import TaskDetailModal from './TaskDetailModal.jsx';
 
 const PRIORITY_COLORS = {
   critical: 'var(--red)',
@@ -29,11 +31,13 @@ export default function App() {
   const {
     connected, agents, tasks, repos, settings, notifications,
     addTask, approvePlan, rejectPlan,
+    pauseTask, resumeTask, editTask,
     injectMessage, pauseAgent, resumeAgent,
     updateSettings, subscribeTerminal,
   } = useFactory();
 
   const [selectedAgent, setSelectedAgent] = useState(null);
+  const [selectedTask, setSelectedTask] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
@@ -159,6 +163,7 @@ export default function App() {
         onReject={rejectPlan}
         onAgentClick={handleAgentClick}
         onAddTask={() => setShowAddModal(true)}
+        onTaskClick={(task) => setSelectedTask(task)}
       />
 
       {/* TERMINAL DRAWER */}
@@ -168,6 +173,19 @@ export default function App() {
           subscribeTerminal={subscribeTerminal}
           injectMessage={injectMessage}
           onClose={() => setSelectedAgent(null)}
+        />
+      )}
+
+      {/* TASK DETAIL MODAL */}
+      {selectedTask && (
+        <TaskDetailModal
+          task={tasks.find(t => t.id === selectedTask.id) || selectedTask}
+          onClose={() => setSelectedTask(null)}
+          onApprove={(id) => { approvePlan(id); setSelectedTask(null); }}
+          onReject={(id, fb) => { rejectPlan(id, fb); setSelectedTask(null); }}
+          onPause={(id) => { pauseTask(id); setSelectedTask(null); }}
+          onResume={(id) => { resumeTask(id); }}
+          onEdit={(id, updates) => { editTask(id, updates); }}
         />
       )}
 
@@ -348,6 +366,7 @@ function AddTaskModal({ repos, onClose, onSubmit }) {
 // --- Settings Modal ---
 function SettingsModal({ settings, onClose, onApply }) {
   const [local, setLocal] = useState(() => JSON.parse(JSON.stringify(settings)));
+  const [showDirPicker, setShowDirPicker] = useState(false);
 
   const updateRole = (role, field, value) => {
     setLocal(prev => {
@@ -406,17 +425,33 @@ function SettingsModal({ settings, onClose, onApply }) {
           }}>
             REPOS DIRECTORY
           </div>
-          <input
-            type="text"
-            value={local.reposDir || ''}
-            onChange={e => updateReposDir(e.target.value)}
-            placeholder="/path/to/repos"
-            style={{
-              width: '100%', padding: '6px 8px', fontSize: 12,
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{
+              flex: 1, padding: '6px 8px', fontSize: 12,
               background: 'var(--bg)', border: '1px solid var(--border)',
-              borderRadius: 4,
-            }}
-          />
+              borderRadius: 4, color: local.reposDir ? 'var(--text)' : 'var(--text3)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {local.reposDir || '/path/to/repos'}
+            </div>
+            <button
+              onClick={() => setShowDirPicker(true)}
+              style={{
+                padding: '6px 12px', fontSize: 12,
+                background: 'var(--bg2)', border: '1px solid var(--border)',
+                borderRadius: 4, color: 'var(--text)', flexShrink: 0,
+              }}
+            >
+              Browse...
+            </button>
+          </div>
+          {showDirPicker && (
+            <DirectoryPicker
+              initialPath={local.reposDir || ''}
+              onSelect={(path) => { updateReposDir(path); setShowDirPicker(false); }}
+              onClose={() => setShowDirPicker(false)}
+            />
+          )}
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
             Directory containing git repositories. Subdirectories with .git folders will be discovered automatically.
           </div>

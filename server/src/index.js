@@ -2,6 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'node:http';
+import { readdirSync, statSync, existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { resolve, dirname as pathDirname } from 'node:path';
 import config, { loadSettings, saveSettings, validateSettings, getRepos, refreshRepos } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
@@ -22,6 +25,37 @@ app.get('/api/status', (req, res) => {
 
 app.get('/api/repos', (req, res) => {
   res.json({ repos: getRepos() });
+});
+
+app.get('/api/browse-dir', (req, res) => {
+  const requestedPath = req.query.path || homedir();
+  const absPath = resolve(requestedPath);
+
+  if (!existsSync(absPath)) {
+    return res.status(400).json({ error: 'Path does not exist' });
+  }
+
+  try {
+    const stat = statSync(absPath);
+    if (!stat.isDirectory()) {
+      return res.status(400).json({ error: 'Path is not a directory' });
+    }
+
+    const entries = readdirSync(absPath, { withFileTypes: true });
+    const dirs = entries
+      .filter(e => e.isDirectory() && !e.name.startsWith('.'))
+      .map(e => e.name)
+      .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+    const parent = pathDirname(absPath);
+    res.json({
+      current: absPath,
+      parent: parent !== absPath ? parent : null,
+      dirs,
+    });
+  } catch (err) {
+    res.status(403).json({ error: 'Permission denied' });
+  }
 });
 
 app.post('/api/tasks', (req, res) => {
@@ -126,6 +160,62 @@ wss.on('connection', (ws) => {
         saveSettings(settings);
         bus.emit('settings:changed', settings);
         broadcast('SETTINGS_UPDATED', settings);
+        break;
+      }
+      case 'PAUSE_TASK': {
+        const { taskId } = msg.payload || {};
+        const task = store.getTask(taskId);
+        if (task && !['done', 'paused'].includes(task.status)) {
+          const previousStatus = task.status;
+          // Kill assigned agent if any
+          if (task.assignedTo) {
+            const agent = agentManager.get(task.assignedTo);
+            if (agent) {
+              agent.kill();
+            }
+          }
+          store.updateTask(taskId, {
+            status: 'paused',
+            previousStatus,
+            assignedTo: null,
+          });
+        }
+        break;
+      }
+      case 'RESUME_TASK': {
+        const { taskId } = msg.payload || {};
+        const task = store.getTask(taskId);
+        if (task && task.status === 'paused') {
+          // Map previous status to a safe re-entry point
+          const safeStatus = {
+            planning: 'backlog',
+            implementing: 'queued',
+            review: 'queued',
+            queued: 'queued',
+            awaiting_approval: 'awaiting_approval',
+            awaiting_human_review: 'awaiting_human_review',
+          };
+          const resumeTo = safeStatus[task.previousStatus] || 'backlog';
+          store.updateTask(taskId, {
+            status: resumeTo,
+            previousStatus: null,
+          });
+        }
+        break;
+      }
+      case 'EDIT_TASK': {
+        const { taskId, updates } = msg.payload || {};
+        const task = store.getTask(taskId);
+        if (task && updates) {
+          const allowed = {};
+          if (updates.title !== undefined) allowed.title = updates.title;
+          if (updates.description !== undefined) allowed.description = updates.description;
+          if (updates.priority !== undefined) allowed.priority = updates.priority;
+          if (updates.repoPath !== undefined) allowed.repoPath = updates.repoPath;
+          if (Object.keys(allowed).length > 0) {
+            store.updateTask(taskId, allowed);
+          }
+        }
         break;
       }
       case 'INJECT_MESSAGE': {

@@ -126,7 +126,19 @@ function startPlanning(task) {
 
   const prompt = buildPlannerPrompt(task);
   const cmd = `claude --print '${escapePrompt(prompt)}'`;
-  planner.spawn(task.repoPath, cmd);
+  const ok = planner.spawn(task.repoPath, cmd);
+  if (!ok) {
+    store.updateTask(task.id, {
+      status: 'blocked',
+      blockedReason: `Invalid repository path: ${task.repoPath}`,
+      assignedTo: null,
+    });
+    planner.currentTask = null;
+    planner.taskLabel = '';
+    planner.status = 'idle';
+    bus.emit('agent:updated', planner.getStatus());
+    return false;
+  }
   bus.emit('agent:updated', planner.getStatus());
   return true;
 }
@@ -214,7 +226,19 @@ async function startImplementation(task) {
     cmd = `claude --dangerously-skip-permissions '${escapePrompt(prompt)}'`;
   }
 
-  agent.spawn(task.repoPath, cmd);
+  const ok = agent.spawn(task.repoPath, cmd);
+  if (!ok) {
+    store.updateTask(task.id, {
+      status: 'blocked',
+      blockedReason: `Invalid repository path: ${task.repoPath}`,
+      assignedTo: null,
+    });
+    agent.currentTask = null;
+    agent.taskLabel = '';
+    agent.status = 'idle';
+    bus.emit('agent:updated', agent.getStatus());
+    return;
+  }
   bus.emit('agent:updated', agent.getStatus());
 }
 
@@ -254,7 +278,19 @@ function startReview(task) {
 
   const prompt = buildReviewerPrompt(task);
   const cmd = `claude --print '${escapePrompt(prompt)}'`;
-  reviewer.spawn(task.repoPath, cmd);
+  const ok = reviewer.spawn(task.repoPath, cmd);
+  if (!ok) {
+    store.updateTask(task.id, {
+      status: 'blocked',
+      blockedReason: `Invalid repository path: ${task.repoPath}`,
+      assignedTo: null,
+    });
+    reviewer.currentTask = null;
+    reviewer.taskLabel = '';
+    reviewer.status = 'idle';
+    bus.emit('agent:updated', reviewer.getStatus());
+    return;
+  }
   bus.emit('agent:updated', reviewer.getStatus());
 }
 
@@ -459,6 +495,25 @@ function pollLoop() {
     startReview(task);
   }
 
+  // Detect orphaned tasks: agents that are idle with no process but still have currentTask
+  for (const [, agent] of agentManager.agents) {
+    if (agent.id === 'orch') continue;
+    if (agent.status === 'idle' && !agent.process && agent.currentTask) {
+      const taskId = agent.currentTask;
+      agent.currentTask = null;
+      agent.taskLabel = '';
+      bus.emit('agent:updated', agent.getStatus());
+      const task = store.getTask(taskId);
+      if (task && !['blocked', 'done', 'backlog', 'paused'].includes(task.status)) {
+        store.updateTask(taskId, {
+          status: 'blocked',
+          blockedReason: 'Agent process exited unexpectedly',
+          assignedTo: null,
+        });
+      }
+    }
+  }
+
   // Check stuck agents
   for (const [, agent] of agentManager.agents) {
     if (agent.id === 'orch') continue;
@@ -477,6 +532,24 @@ function pollLoop() {
 
 bus.on('plan:approved', (taskId) => approvePlan(taskId));
 bus.on('plan:rejected', ({ taskId, feedback }) => rejectPlan(taskId, feedback));
+
+bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
+  const agent = agentManager.get(agentId);
+  if (agent) {
+    agent.currentTask = null;
+    agent.taskLabel = '';
+    agent.status = 'idle';
+    bus.emit('agent:updated', agent.getStatus());
+  }
+  const task = store.getTask(taskId);
+  if (task && !['blocked', 'done', 'backlog', 'paused'].includes(task.status)) {
+    store.updateTask(taskId, {
+      status: 'blocked',
+      blockedReason: 'Agent process exited unexpectedly',
+      assignedTo: null,
+    });
+  }
+});
 
 bus.on('settings:changed', (settings) => {
   agentManager.reconfigure(settings);

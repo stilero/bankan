@@ -15,6 +15,7 @@ const STAGE_COLORS = {
   review: '#A78BFA',
   awaiting_human_review: '#60A5FA',
   blocked: 'var(--red)',
+  paused: 'var(--amber)',
   backlog: 'var(--text3)',
   done: 'var(--green)',
 };
@@ -37,6 +38,7 @@ export default function KanbanCard({
   onApprove,
   onReject,
   onAgentClick,
+  onTaskClick,
 }) {
   const [rejecting, setRejecting] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -50,9 +52,11 @@ export default function KanbanCard({
 
   return (
     <div
+      onClick={() => onTaskClick && onTaskClick(task)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
+        cursor: 'pointer',
         background: hovered ? 'var(--bg2)' : `linear-gradient(${bgTint}, ${bgTint}), var(--bg1)`,
         borderRadius: 6,
         borderLeft: `3px solid ${borderColor}`,
@@ -149,7 +153,7 @@ export default function KanbanCard({
       {task.status === 'awaiting_approval' && (
         <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
           <button
-            onClick={() => onApprove(task.id)}
+            onClick={(e) => { e.stopPropagation(); onApprove(task.id); }}
             style={{
               padding: '3px 8px', borderRadius: 3,
               background: 'rgba(61, 220, 132, 0.15)',
@@ -159,7 +163,7 @@ export default function KanbanCard({
             Approve
           </button>
           <button
-            onClick={() => { setRejecting(true); setFeedback(''); }}
+            onClick={(e) => { e.stopPropagation(); setRejecting(true); setFeedback(''); }}
             style={{
               padding: '3px 8px', borderRadius: 3,
               background: 'rgba(255, 77, 77, 0.1)',
