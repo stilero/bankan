@@ -116,6 +116,9 @@ export default function useFactory() {
         case 'TASK_ABORTED':
           addNotification(`Task ${msg.payload.taskId} aborted`, 'info');
           break;
+        case 'TASK_RETRIED':
+          addNotification(`Task ${msg.payload.taskId} retrying from ${msg.payload.retryStatus}`, 'info');
+          break;
       }
     };
 
@@ -180,6 +183,10 @@ export default function useFactory() {
     send('ABORT_TASK', { taskId });
   }, [send]);
 
+  const retryTask = useCallback((taskId) => {
+    send('RETRY_TASK', { taskId });
+  }, [send]);
+
   const updateSettings = useCallback((newSettings) => {
     send('UPDATE_SETTINGS', newSettings);
   }, [send]);
@@ -207,6 +214,7 @@ export default function useFactory() {
     resumeTask,
     editTask,
     abortTask,
+    retryTask,
     injectMessage,
     pauseAgent,
     resumeAgent,

@@ -30,6 +30,7 @@ export default function TaskDetailModal({
   onResume,
   onEdit,
   onAbort,
+  onRetry,
 }) {
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
@@ -44,6 +45,7 @@ export default function TaskDetailModal({
   const canPause = ['backlog', 'planning', 'queued', 'implementing', 'review', 'awaiting_approval', 'workspace_setup'].includes(task.status);
   const canResume = task.status === 'paused';
   const canAbort = !['done', 'backlog', 'awaiting_human_review'].includes(task.status);
+  const canRetry = task.status === 'blocked';
 
   const handleSave = () => {
     onEdit(task.id, {
@@ -395,6 +397,20 @@ export default function TaskDetailModal({
                     Revise
                   </button>
                 </>
+              )}
+
+              {canRetry && onRetry && (
+                <button
+                  onClick={() => onRetry(task.id)}
+                  style={{
+                    padding: '6px 14px', fontSize: 12,
+                    background: 'rgba(100, 160, 255, 0.15)',
+                    border: '1px solid rgba(100, 160, 255, 0.3)',
+                    borderRadius: 4, color: 'var(--steel2)',
+                  }}
+                >
+                  Retry
+                </button>
               )}
 
               {canAbort && onAbort && (

@@ -209,6 +209,21 @@ wss.on('connection', (ws) => {
         if (taskId) orchestrator.abortTask(taskId);
         break;
       }
+      case 'RETRY_TASK': {
+        const { taskId } = msg.payload || {};
+        const task = store.getTask(taskId);
+        if (task && task.status === 'blocked') {
+          const retryStatus = task.plan ? 'awaiting_approval' : 'backlog';
+          store.updateTask(taskId, {
+            status: retryStatus,
+            blockedReason: null,
+            assignedTo: null,
+            workspacePath: null,
+          });
+          broadcast('TASK_RETRIED', { taskId, retryStatus });
+        }
+        break;
+      }
       case 'EDIT_TASK': {
         const { taskId, updates } = msg.payload || {};
         const task = store.getTask(taskId);
