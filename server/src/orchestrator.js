@@ -167,11 +167,13 @@ function startPlanning(task) {
 
   const prompt = buildPlannerPrompt(task);
   const cmd = `claude --print '${escapePrompt(prompt)}'`;
-  const ok = planner.spawn(task.repoPath, cmd);
+  const settings = loadSettings();
+  const plannerCwd = settings.reposDir;
+  const ok = planner.spawn(plannerCwd, cmd);
   if (!ok) {
     store.updateTask(task.id, {
       status: 'blocked',
-      blockedReason: `Invalid repository path: ${task.repoPath}`,
+      blockedReason: `Invalid planner working directory: ${plannerCwd}`,
       assignedTo: null,
     });
     planner.currentTask = null;
@@ -334,11 +336,11 @@ function startReview(task) {
 
   const prompt = buildReviewerPrompt(task);
   const cmd = `claude --print '${escapePrompt(prompt)}'`;
-  const ok = reviewer.spawn(task.repoPath, cmd);
+  const ok = reviewer.spawn(task.workspacePath, cmd);
   if (!ok) {
     store.updateTask(task.id, {
       status: 'blocked',
-      blockedReason: `Invalid repository path: ${task.repoPath}`,
+      blockedReason: `Invalid workspace path for review: ${task.workspacePath}`,
       assignedTo: null,
     });
     reviewer.currentTask = null;
