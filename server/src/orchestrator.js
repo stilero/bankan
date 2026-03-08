@@ -1,5 +1,8 @@
+import { existsSync, mkdirSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { join } from 'node:path';
 import { simpleGit } from 'simple-git';
-import config, { refreshRepos, getRepos } from './config.js';
+import config, { refreshRepos, getRepos, loadSettings } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
@@ -53,13 +56,14 @@ RISKS:
   return prompt;
 }
 
-function buildImplementorPrompt(task) {
+function buildImplementorPrompt(task, workspacePath) {
+  const repoDir = workspacePath || task.repoPath;
   let prompt = `You are an expert software engineer implementing a feature on a real codebase.
 
 TASK: ${task.title}
 TASK ID: ${task.id}
 BRANCH: ${task.branch}
-REPO: ${task.repoPath}`;
+REPO: ${repoDir}`;
 
   if (task.reviewFeedback) {
     prompt += `\n\nPREVIOUS REVIEW — ISSUES TO FIX:\n${task.reviewFeedback}\n`;
@@ -71,7 +75,7 @@ IMPLEMENTATION PLAN:
 ${task.plan}
 
 Instructions:
-- You are already on branch ${task.branch}
+- You are already on branch ${task.branch} in ${repoDir}
 - Follow the plan step by step
 - Commit after each logical unit of work with descriptive commit messages
 - Run existing tests after implementation to verify nothing broke
@@ -111,6 +115,43 @@ MINOR_ISSUES:
 - (issue description, or 'none')
 SUMMARY: (2-3 sentences summarising the review)
 === REVIEW END ===`;
+}
+
+// --- Workspace Helpers ---
+
+async function setupWorkspace(task) {
+  const settings = loadSettings();
+  const reposDir = settings.reposDir;
+  const workspaceRoot = join(reposDir, 'workspaces', task.id);
+
+  // Crash recovery: remove partial clone if exists
+  if (existsSync(workspaceRoot)) {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+
+  mkdirSync(workspaceRoot, { recursive: true });
+
+  // Clone from the original repo (local clone, no SSH needed)
+  await simpleGit().clone(task.repoPath, workspaceRoot);
+
+  const wsGit = simpleGit(workspaceRoot);
+  await wsGit.addConfig('user.email', 'ai-factory@local');
+  await wsGit.addConfig('user.name', 'AI Factory');
+  await wsGit.pull('origin', 'main');
+
+  // Delete remote branch if it already exists (handles re-runs after abort)
+  try { await wsGit.push('origin', `:${task.branch}`); } catch { /* ignore */ }
+
+  await wsGit.checkoutLocalBranch(task.branch);
+
+  return workspaceRoot;
+}
+
+async function cleanupWorkspace(task) {
+  if (task.workspacePath && existsSync(task.workspacePath)) {
+    await rm(task.workspacePath, { recursive: true, force: true });
+    store.updateTask(task.id, { workspacePath: null });
+  }
 }
 
 // --- Stage Transitions ---
@@ -197,27 +238,33 @@ async function startImplementation(task) {
     return;
   }
 
-  // Checkout branch
-  if (task.repoPath) {
-    try {
-      const git = simpleGit(task.repoPath);
-      const branches = await git.branchLocal();
-      if (branches.all.includes(task.branch)) {
-        await git.checkout(task.branch);
-      } else {
-        await git.checkoutLocalBranch(task.branch);
-      }
-    } catch (err) {
-      console.error(`Git checkout failed for ${task.branch}:`, err.message);
-    }
+  store.updateTask(task.id, { status: 'workspace_setup', assignedTo: agent.id });
+  agent.currentTask = task.id;
+  agent.taskLabel = `Setting up: ${task.title}`;
+  agent.status = 'active';
+  bus.emit('agent:updated', agent.getStatus());
+
+  let workspacePath;
+  try {
+    workspacePath = await setupWorkspace(task);
+  } catch (err) {
+    console.error(`Workspace setup failed for ${task.id}:`, err.message);
+    store.updateTask(task.id, {
+      status: 'blocked',
+      blockedReason: `Workspace setup failed: ${err.message}`,
+      assignedTo: null,
+    });
+    agent.currentTask = null;
+    agent.taskLabel = '';
+    agent.status = 'idle';
+    bus.emit('agent:updated', agent.getStatus());
+    return;
   }
 
-  store.updateTask(task.id, { status: 'implementing', assignedTo: agent.id });
-  agent.currentTask = task.id;
-  agent.taskLabel = `Implementing: ${task.title}`;
+  store.updateTask(task.id, { status: 'implementing', workspacePath });
 
   const cliTool = agent.cli;
-  const prompt = buildImplementorPrompt(task);
+  const prompt = buildImplementorPrompt(task, workspacePath);
 
   let cmd;
   if (cliTool === 'codex') {
@@ -226,11 +273,11 @@ async function startImplementation(task) {
     cmd = `claude --dangerously-skip-permissions '${escapePrompt(prompt)}'`;
   }
 
-  const ok = agent.spawn(task.repoPath, cmd);
+  const ok = agent.spawn(workspacePath, cmd);
   if (!ok) {
     store.updateTask(task.id, {
       status: 'blocked',
-      blockedReason: `Invalid repository path: ${task.repoPath}`,
+      blockedReason: `Invalid workspace path: ${workspacePath}`,
       assignedTo: null,
     });
     agent.currentTask = null;
@@ -248,14 +295,23 @@ async function onImplementationComplete(agentId) {
   const taskId = agent.currentTask;
   if (!taskId) return;
 
-  // Push branch
   const task = store.getTask(taskId);
-  if (task?.repoPath) {
+
+  // Push branch from workspace
+  if (task?.workspacePath) {
     try {
-      const git = simpleGit(task.repoPath);
+      const git = simpleGit(task.workspacePath);
       await git.push('origin', task.branch);
     } catch (err) {
       console.error(`Git push failed:`, err.message);
+      store.updateTask(taskId, {
+        status: 'blocked',
+        blockedReason: `Branch push failed: ${err.message}`,
+        assignedTo: null,
+      });
+      agent.kill();
+      if (agent.draining) agentManager.removeAgent(agentId);
+      return;
     }
   }
 
@@ -337,6 +393,9 @@ async function createPR(taskId) {
   if (!config.GITHUB_TOKEN || !config.GITHUB_REPO) {
     store.updateTask(taskId, { status: 'awaiting_human_review' });
     console.log(`GitHub not configured — skipping PR creation for ${taskId}`);
+    // Cleanup workspace since task is terminal
+    const updatedTask = store.getTask(taskId);
+    cleanupWorkspace(updatedTask).catch(err => console.error(`Workspace cleanup error:`, err.message));
     return;
   }
 
@@ -373,6 +432,31 @@ async function createPR(taskId) {
     console.error(`PR creation error:`, err.message);
     store.updateTask(taskId, { status: 'awaiting_human_review' });
   }
+
+  // Cleanup workspace since task is now terminal
+  const finalTask = store.getTask(taskId);
+  cleanupWorkspace(finalTask).catch(err => console.error(`Workspace cleanup error:`, err.message));
+}
+
+async function abortTask(taskId) {
+  const task = store.getTask(taskId);
+  if (!task || task.status === 'done') return;
+
+  if (task.assignedTo) {
+    const agent = agentManager.get(task.assignedTo);
+    if (agent) agent.kill();
+  }
+
+  await cleanupWorkspace(task);
+
+  store.updateTask(taskId, {
+    status: 'backlog',
+    assignedTo: null,
+    workspacePath: null,
+    reviewFeedback: null,
+  });
+
+  bus.emit('task:aborted', { taskId });
 }
 
 // --- Signal Detection ---
@@ -384,8 +468,15 @@ function checkSignals() {
       const buf = agent.getBufferString(50);
       if (buf.includes('=== PLAN END ===')) {
         onPlanComplete(agent.id, agent.currentTask);
-      } else if (agent.startedAt && Date.now() - agent.startedAt > PLANNER_TIMEOUT) {
-        markBlocked(agent, 'Planner timed out');
+      } else {
+        // Live plan streaming
+        if (!buf.includes('=== PLAN END ===') && buf.includes('=== PLAN START ===')) {
+          const partial = buf.slice(buf.indexOf('=== PLAN START ==='));
+          bus.emit('plan:partial', { taskId: agent.currentTask, plan: partial });
+        }
+        if (agent.startedAt && Date.now() - agent.startedAt > PLANNER_TIMEOUT) {
+          markBlocked(agent, 'Planner timed out');
+        }
       }
     }
   }
@@ -504,7 +595,7 @@ function pollLoop() {
       agent.taskLabel = '';
       bus.emit('agent:updated', agent.getStatus());
       const task = store.getTask(taskId);
-      if (task && !['blocked', 'done', 'backlog', 'paused'].includes(task.status)) {
+      if (task && !['blocked', 'done', 'backlog', 'paused', 'workspace_setup'].includes(task.status)) {
         store.updateTask(taskId, {
           status: 'blocked',
           blockedReason: 'Agent process exited unexpectedly',
@@ -576,6 +667,7 @@ const orchestrator = {
     if (pollTimer) clearInterval(pollTimer);
     if (signalTimer) clearInterval(signalTimer);
   },
+  abortTask,
 };
 
 export default orchestrator;

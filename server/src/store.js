@@ -52,6 +52,7 @@ class TaskStore {
       reviewFeedback: null,
       planFeedback: null,
       blockedReason: null,
+      workspacePath: null,
       progress: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -95,6 +96,7 @@ class TaskStore {
       implementing: 'awaiting_approval',
       review: 'awaiting_approval',
       queued: 'awaiting_approval',
+      workspace_setup: 'awaiting_approval',
     };
     let changed = false;
     for (const task of this.tasks) {

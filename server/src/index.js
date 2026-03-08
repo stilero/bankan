@@ -2,9 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'node:http';
-import { readdirSync, statSync, existsSync } from 'node:fs';
+import { readdirSync, statSync, existsSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { resolve, dirname as pathDirname } from 'node:path';
+import { resolve, dirname as pathDirname, join } from 'node:path';
 import config, { loadSettings, saveSettings, validateSettings, getRepos, refreshRepos } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
@@ -194,6 +194,7 @@ wss.on('connection', (ws) => {
             queued: 'queued',
             awaiting_approval: 'awaiting_approval',
             awaiting_human_review: 'awaiting_human_review',
+            workspace_setup: 'awaiting_approval',
           };
           const resumeTo = safeStatus[task.previousStatus] || 'backlog';
           store.updateTask(taskId, {
@@ -201,6 +202,11 @@ wss.on('connection', (ws) => {
             previousStatus: null,
           });
         }
+        break;
+      }
+      case 'ABORT_TASK': {
+        const { taskId } = msg.payload || {};
+        if (taskId) orchestrator.abortTask(taskId);
         break;
       }
       case 'EDIT_TASK': {
@@ -280,9 +286,33 @@ bus.on('review:failed', (data) => broadcast('REVIEW_FAILED', data));
 bus.on('pr:created', (data) => broadcast('PR_CREATED', data));
 bus.on('task:blocked', (data) => broadcast('TASK_BLOCKED', data));
 bus.on('repos:updated', (repos) => broadcast('REPOS_UPDATED', { repos }));
+bus.on('plan:partial', (data) => broadcast('PLAN_PARTIAL', data));
+bus.on('task:aborted', (data) => broadcast('TASK_ABORTED', data));
 
 // Startup
 store.restartRecovery();
+
+// Startup orphan workspace cleanup
+{
+  const settings = loadSettings();
+  const workspacesDir = join(settings.reposDir, 'workspaces');
+  if (existsSync(workspacesDir)) {
+    const terminalStatuses = ['done', 'backlog', 'awaiting_human_review'];
+    let entries;
+    try { entries = readdirSync(workspacesDir); } catch { entries = []; }
+    for (const entry of entries) {
+      const task = store.getTask(entry);
+      if (!task || terminalStatuses.includes(task.status)) {
+        try {
+          rmSync(join(workspacesDir, entry), { recursive: true, force: true });
+          console.log(`Cleaned up orphan workspace: ${entry}`);
+        } catch (err) {
+          console.error(`Failed to cleanup workspace ${entry}:`, err.message);
+        }
+      }
+    }
+  }
+}
 
 // Import orchestrator after everything is set up
 const { default: orchestrator } = await import('./orchestrator.js');

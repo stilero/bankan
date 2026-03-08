@@ -11,6 +11,7 @@ const STAGE_COLORS = {
   planning: 'var(--steel2)',
   awaiting_approval: 'var(--amber)',
   queued: 'var(--text3)',
+  workspace_setup: 'var(--steel2)',
   implementing: 'var(--green)',
   review: '#A78BFA',
   awaiting_human_review: '#60A5FA',
@@ -28,6 +29,7 @@ export default function TaskDetailModal({
   onPause,
   onResume,
   onEdit,
+  onAbort,
 }) {
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
@@ -39,8 +41,9 @@ export default function TaskDetailModal({
   const [rejecting, setRejecting] = useState(false);
   const [feedback, setFeedback] = useState('');
 
-  const canPause = ['backlog', 'planning', 'queued', 'implementing', 'review', 'awaiting_approval'].includes(task.status);
+  const canPause = ['backlog', 'planning', 'queued', 'implementing', 'review', 'awaiting_approval', 'workspace_setup'].includes(task.status);
   const canResume = task.status === 'paused';
+  const canAbort = !['done', 'backlog', 'awaiting_human_review'].includes(task.status);
 
   const handleSave = () => {
     onEdit(task.id, {
@@ -392,6 +395,20 @@ export default function TaskDetailModal({
                     Revise
                   </button>
                 </>
+              )}
+
+              {canAbort && onAbort && (
+                <button
+                  onClick={() => onAbort(task.id)}
+                  style={{
+                    padding: '6px 14px', fontSize: 12,
+                    background: 'rgba(255, 77, 77, 0.15)',
+                    border: '1px solid rgba(255, 77, 77, 0.3)',
+                    borderRadius: 4, color: 'var(--red)',
+                  }}
+                >
+                  Abort
+                </button>
               )}
             </div>
 

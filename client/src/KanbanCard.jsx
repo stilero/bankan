@@ -11,6 +11,7 @@ const STAGE_COLORS = {
   planning: 'var(--steel2)',
   awaiting_approval: 'var(--amber)',
   queued: 'var(--text3)',
+  workspace_setup: 'var(--steel2)',
   implementing: 'var(--green)',
   review: '#A78BFA',
   awaiting_human_review: '#60A5FA',

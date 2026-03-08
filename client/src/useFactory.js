@@ -96,6 +96,11 @@ export default function useFactory() {
         case 'PLAN_READY':
           addNotification(`Plan ready for ${msg.payload.taskId} — approval needed`, 'warning');
           break;
+        case 'PLAN_PARTIAL':
+          setTasks(prev => prev.map(t =>
+            t.id === msg.payload.taskId ? { ...t, plan: msg.payload.plan } : t
+          ));
+          break;
         case 'PR_CREATED':
           addNotification(`PR created for ${msg.payload.taskId}`, 'success');
           break;
@@ -107,6 +112,9 @@ export default function useFactory() {
           break;
         case 'REVIEW_PASSED':
           addNotification(`Review passed for ${msg.payload.taskId}`, 'success');
+          break;
+        case 'TASK_ABORTED':
+          addNotification(`Task ${msg.payload.taskId} aborted`, 'info');
           break;
       }
     };
@@ -168,6 +176,10 @@ export default function useFactory() {
     send('EDIT_TASK', { taskId, updates });
   }, [send]);
 
+  const abortTask = useCallback((taskId) => {
+    send('ABORT_TASK', { taskId });
+  }, [send]);
+
   const updateSettings = useCallback((newSettings) => {
     send('UPDATE_SETTINGS', newSettings);
   }, [send]);
@@ -194,6 +206,7 @@ export default function useFactory() {
     pauseTask,
     resumeTask,
     editTask,
+    abortTask,
     injectMessage,
     pauseAgent,
     resumeAgent,
