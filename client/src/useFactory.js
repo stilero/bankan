@@ -85,6 +85,9 @@ export default function useFactory() {
         case 'SETTINGS_UPDATED':
           setSettings(msg.payload);
           break;
+        case 'REPOS_UPDATED':
+          setRepos(msg.payload.repos || []);
+          break;
         case 'TERMINAL_DATA': {
           const cb = termSubsRef.current.get(msg.payload.agentId);
           if (cb) cb(msg.payload.data);

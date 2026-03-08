@@ -146,9 +146,17 @@ class Agent {
   }
 }
 
+const ROLE_MAP = {
+  planners:     { meta: ROLE_META.planner,     prefix: 'plan' },
+  implementors: { meta: ROLE_META.implementor,  prefix: 'imp' },
+  reviewers:    { meta: ROLE_META.reviewer,      prefix: 'rev' },
+};
+
 class AgentManager {
   constructor() {
     this.agents = new Map();
+    this._maxSettings = {};  // { planners: 4, implementors: 8, reviewers: 4 }
+    this._cliSettings = {};  // { planners: 'claude', implementors: 'claude', reviewers: 'claude' }
 
     // Orchestrator is always present
     const orch = new Agent({
@@ -163,44 +171,36 @@ class AgentManager {
     orch.taskLabel = 'Pipeline Control';
     this.agents.set('orch', orch);
 
-    // Create agents from settings
+    // Create initial agents from settings (1 per role)
     this.reconfigure(loadSettings());
   }
 
   reconfigure(settings) {
-    const roleMap = {
-      planners:     { meta: ROLE_META.planner,     settingsKey: 'planners' },
-      implementors: { meta: ROLE_META.implementor,  settingsKey: 'implementors' },
-      reviewers:    { meta: ROLE_META.reviewer,      settingsKey: 'reviewers' },
-    };
-
-    for (const [settingsKey, { meta }] of Object.entries(roleMap)) {
+    for (const [settingsKey, { meta, prefix }] of Object.entries(ROLE_MAP)) {
       const cfg = settings.agents[settingsKey];
-      const desired = cfg.count;
-      const prefix = meta.prefix;
+      this._maxSettings[settingsKey] = cfg.max;
+      this._cliSettings[settingsKey] = cfg.cli;
 
-      // Get current agents for this role
+      // Ensure at least 1 agent per role exists
       const current = this.getAgentsByRole(prefix);
-      const currentCount = current.length;
+      if (current.length === 0) {
+        const color = meta.colors ? meta.colors[0] : meta.color;
+        const agent = new Agent({
+          id: `${prefix}-1`,
+          name: `${meta.namePrefix} 1`,
+          role: meta.role,
+          icon: meta.icon,
+          color,
+          cli: cfg.cli,
+        });
+        this.agents.set(agent.id, agent);
+        bus.emit('agent:updated', agent.getStatus());
+      }
 
-      if (desired > currentCount) {
-        // Scale up: create new agents
-        for (let i = currentCount + 1; i <= desired; i++) {
-          const color = meta.colors ? meta.colors[(i - 1) % meta.colors.length] : meta.color;
-          const agent = new Agent({
-            id: `${prefix}-${i}`,
-            name: `${meta.namePrefix} ${i}`,
-            role: meta.role,
-            icon: meta.icon,
-            color,
-            cli: cfg.cli,
-          });
-          this.agents.set(agent.id, agent);
-          bus.emit('agent:updated', agent.getStatus());
-        }
-      } else if (desired < currentCount) {
-        // Scale down: remove highest-numbered agents first
-        const toRemove = current.slice(desired);
+      // Scale down if current count exceeds new max
+      const currentAgents = this.getAgentsByRole(prefix);
+      if (currentAgents.length > cfg.max) {
+        const toRemove = currentAgents.slice(cfg.max);
         for (const agent of toRemove) {
           if (agent.status === 'idle') {
             this.removeAgent(agent.id);
@@ -218,6 +218,37 @@ class AgentManager {
         }
       }
     }
+  }
+
+  // Scale up a role by one agent, returns the new agent or null if at max
+  scaleUp(settingsKey) {
+    const { meta, prefix } = ROLE_MAP[settingsKey];
+    const max = this._maxSettings[settingsKey] || 1;
+    const cli = this._cliSettings[settingsKey] || 'claude';
+    const current = this.getAgentsByRole(prefix);
+
+    if (current.length >= max) return null;
+
+    const nextNum = current.length > 0
+      ? parseInt(current[current.length - 1].id.split('-')[1], 10) + 1
+      : 1;
+
+    const color = meta.colors ? meta.colors[(nextNum - 1) % meta.colors.length] : meta.color;
+    const agent = new Agent({
+      id: `${prefix}-${nextNum}`,
+      name: `${meta.namePrefix} ${nextNum}`,
+      role: meta.role,
+      icon: meta.icon,
+      color,
+      cli,
+    });
+    this.agents.set(agent.id, agent);
+    bus.emit('agent:updated', agent.getStatus());
+    return agent;
+  }
+
+  getMaxForRole(settingsKey) {
+    return this._maxSettings[settingsKey] || 1;
   }
 
   get(id) {

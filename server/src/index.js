@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'node:http';
-import config, { loadSettings, saveSettings, validateSettings } from './config.js';
+import config, { loadSettings, saveSettings, validateSettings, getRepos, refreshRepos } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
@@ -21,7 +21,7 @@ app.get('/api/status', (req, res) => {
 });
 
 app.get('/api/repos', (req, res) => {
-  res.json({ repos: config.REPOS });
+  res.json({ repos: getRepos() });
 });
 
 app.post('/api/tasks', (req, res) => {
@@ -84,7 +84,7 @@ wss.on('connection', (ws) => {
     payload: {
       tasks: store.getAllTasks(),
       agents: agentManager.getAllStatus(),
-      repos: config.REPOS,
+      repos: getRepos(),
       settings: loadSettings(),
     },
     ts: Date.now(),
@@ -189,6 +189,7 @@ bus.on('review:passed', (data) => broadcast('REVIEW_PASSED', data));
 bus.on('review:failed', (data) => broadcast('REVIEW_FAILED', data));
 bus.on('pr:created', (data) => broadcast('PR_CREATED', data));
 bus.on('task:blocked', (data) => broadcast('TASK_BLOCKED', data));
+bus.on('repos:updated', (repos) => broadcast('REPOS_UPDATED', { repos }));
 
 // Startup
 store.restartRecovery();

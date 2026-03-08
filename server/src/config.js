@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,12 +38,21 @@ const config = {
   ROOT_DIR: rootDir,
 };
 
+// Derive default reposDir from the first REPOS entry's parent, or project root
+function defaultReposDir() {
+  if (config.REPOS.length > 0) {
+    return dirname(config.REPOS[0]);
+  }
+  return rootDir;
+}
+
 export function getDefaults() {
   return {
+    reposDir: defaultReposDir(),
     agents: {
-      planners:     { count: 1, max: 4, cli: 'claude' },
-      implementors: { count: 2, max: 8, cli: config.IMPLEMENTOR_1_CLI },
-      reviewers:    { count: 1, max: 4, cli: 'claude' },
+      planners:     { max: 4, cli: 'claude' },
+      implementors: { max: 8, cli: config.IMPLEMENTOR_1_CLI },
+      reviewers:    { max: 4, cli: 'claude' },
     },
   };
 }
@@ -52,12 +61,19 @@ export function loadSettings() {
   try {
     if (existsSync(SETTINGS_FILE)) {
       const data = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'));
-      // Merge with defaults to ensure all keys exist
       const defaults = getDefaults();
+      // Ensure reposDir exists
+      if (!data.reposDir) {
+        data.reposDir = defaults.reposDir;
+      }
+      // Merge agent defaults
       for (const role of Object.keys(defaults.agents)) {
         if (!data.agents?.[role]) {
           data.agents = data.agents || {};
           data.agents[role] = defaults.agents[role];
+        } else {
+          // Remove legacy 'count' field if present
+          delete data.agents[role].count;
         }
       }
       return data;
@@ -79,33 +95,68 @@ export function validateSettings(settings) {
     return ['Missing agents configuration'];
   }
 
+  if (typeof settings.reposDir !== 'string' || !settings.reposDir.trim()) {
+    errors.push('Repos directory must be a non-empty string');
+  }
+
   const validClis = ['claude', 'codex'];
-  let totalCount = 0;
 
   for (const role of ['planners', 'implementors', 'reviewers']) {
     const cfg = settings.agents[role];
     if (!cfg) { errors.push(`Missing ${role} configuration`); continue; }
 
-    if (typeof cfg.count !== 'number' || cfg.count < 1) {
-      errors.push(`${role}.count must be >= 1`);
-    }
     if (typeof cfg.max !== 'number' || cfg.max < 1 || cfg.max > 10) {
       errors.push(`${role}.max must be between 1 and 10`);
-    }
-    if (cfg.count > cfg.max) {
-      errors.push(`${role}.count cannot exceed max`);
     }
     if (!validClis.includes(cfg.cli)) {
       errors.push(`${role}.cli must be one of: ${validClis.join(', ')}`);
     }
-    totalCount += cfg.count || 0;
-  }
-
-  if (totalCount > 10) {
-    errors.push('Total agent count cannot exceed 10');
   }
 
   return errors;
+}
+
+// Discover git repos in a directory
+export function discoverRepos(dir) {
+  if (!dir || !existsSync(dir)) return [];
+  try {
+    const entries = readdirSync(dir);
+    const repos = [];
+    for (const entry of entries) {
+      if (entry.startsWith('.')) continue;
+      const fullPath = join(dir, entry);
+      try {
+        if (!statSync(fullPath).isDirectory()) continue;
+        const gitDir = join(fullPath, '.git');
+        if (existsSync(gitDir)) {
+          repos.push(fullPath);
+        }
+      } catch {
+        // Skip entries we can't stat
+      }
+    }
+    return repos.sort();
+  } catch {
+    return [];
+  }
+}
+
+// Current repos list — discovered from reposDir setting, falling back to env REPOS
+let currentRepos = config.REPOS.length > 0 ? [...config.REPOS] : [];
+
+export function refreshRepos(reposDir) {
+  const discovered = discoverRepos(reposDir);
+  currentRepos = discovered.length > 0 ? discovered : config.REPOS;
+}
+
+export function getRepos() {
+  return currentRepos;
+}
+
+// Initialize repos from saved settings
+const initialSettings = loadSettings();
+if (initialSettings.reposDir) {
+  refreshRepos(initialSettings.reposDir);
 }
 
 export default config;

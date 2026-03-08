@@ -357,11 +357,12 @@ function SettingsModal({ settings, onClose, onApply }) {
     });
   };
 
-  const totalCount = (local.agents.planners?.count || 0) +
-    (local.agents.implementors?.count || 0) +
-    (local.agents.reviewers?.count || 0);
+  const updateReposDir = (value) => {
+    setLocal(prev => ({ ...prev, reposDir: value }));
+  };
 
-  const isValid = totalCount <= 10 && totalCount >= 3;
+  const isValid = (local.reposDir || '').trim().length > 0 &&
+    Object.values(local.agents).every(cfg => cfg.max >= 1 && cfg.max <= 10);
 
   const roles = [
     { key: 'planners', label: 'PLANNERS' },
@@ -398,6 +399,29 @@ function SettingsModal({ settings, onClose, onApply }) {
           </button>
         </div>
 
+        <div style={{ marginBottom: 20 }}>
+          <div style={{
+            fontSize: 11, fontWeight: 600, color: 'var(--text2)',
+            letterSpacing: 1, marginBottom: 8,
+          }}>
+            REPOS DIRECTORY
+          </div>
+          <input
+            type="text"
+            value={local.reposDir || ''}
+            onChange={e => updateReposDir(e.target.value)}
+            placeholder="/path/to/repos"
+            style={{
+              width: '100%', padding: '6px 8px', fontSize: 12,
+              background: 'var(--bg)', border: '1px solid var(--border)',
+              borderRadius: 4,
+            }}
+          />
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
+            Directory containing git repositories. Subdirectories with .git folders will be discovered automatically.
+          </div>
+        </div>
+
         {roles.map(({ key, label }) => {
           const cfg = local.agents[key];
           if (!cfg) return null;
@@ -411,31 +435,7 @@ function SettingsModal({ settings, onClose, onApply }) {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                <span style={{ fontSize: 12, color: 'var(--text2)', width: 45 }}>Count:</span>
-                <button
-                  onClick={() => updateRole(key, 'count', Math.max(1, cfg.count - 1))}
-                  style={{
-                    width: 28, height: 28, borderRadius: 4,
-                    background: 'var(--bg2)', border: '1px solid var(--border)',
-                    color: 'var(--text)', fontSize: 14, cursor: 'pointer',
-                  }}
-                >
-                  -
-                </button>
-                <span style={{ fontSize: 14, fontWeight: 600, width: 20, textAlign: 'center' }}>
-                  {cfg.count}
-                </span>
-                <button
-                  onClick={() => updateRole(key, 'count', Math.min(cfg.max, cfg.count + 1))}
-                  style={{
-                    width: 28, height: 28, borderRadius: 4,
-                    background: 'var(--bg2)', border: '1px solid var(--border)',
-                    color: 'var(--text)', fontSize: 14, cursor: 'pointer',
-                  }}
-                >
-                  +
-                </button>
-                <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 8 }}>Max:</span>
+                <span style={{ fontSize: 12, color: 'var(--text2)', width: 45 }}>Max:</span>
                 <input
                   type="number"
                   min={1}
@@ -444,7 +444,6 @@ function SettingsModal({ settings, onClose, onApply }) {
                   onChange={e => {
                     const newMax = Math.max(1, Math.min(10, parseInt(e.target.value, 10) || 1));
                     updateRole(key, 'max', newMax);
-                    if (cfg.count > newMax) updateRole(key, 'count', newMax);
                   }}
                   style={{
                     width: 50, padding: '4px 6px', fontSize: 12,
@@ -473,14 +472,8 @@ function SettingsModal({ settings, onClose, onApply }) {
           );
         })}
 
-        {totalCount > 10 && (
-          <div style={{ fontSize: 11, color: 'var(--red)', marginBottom: 12 }}>
-            Total agent count ({totalCount}) exceeds maximum of 10.
-          </div>
-        )}
-
         <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 16, fontStyle: 'italic' }}>
-          Active agents finish current tasks before being removed.
+          Orchestrator scales agents up on demand, up to the max per role.
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

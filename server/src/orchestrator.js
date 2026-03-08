@@ -1,5 +1,5 @@
 import { simpleGit } from 'simple-git';
-import config from './config.js';
+import config, { refreshRepos, getRepos } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
@@ -427,13 +427,20 @@ function pollLoop() {
       return (prio[a.priority] ?? 2) - (prio[b.priority] ?? 2);
     });
   for (const backlogTask of backlogTasks) {
-    if (!agentManager.getAvailablePlanner()) break;
+    if (!agentManager.getAvailablePlanner()) {
+      // Try to scale up if there's demand
+      agentManager.scaleUp('planners');
+      if (!agentManager.getAvailablePlanner()) break;
+    }
     startPlanning(backlogTask);
   }
 
   // Assign queued → implementor
   const queuedTasks = tasks.filter(t => t.status === 'queued');
   for (const task of queuedTasks) {
+    if (!agentManager.getAvailableImplementor()) {
+      agentManager.scaleUp('implementors');
+    }
     const imp = agentManager.getAvailableImplementor();
     if (imp) {
       startImplementation(task);
@@ -445,7 +452,10 @@ function pollLoop() {
   // Assign review tasks with no assignee → available reviewers
   const reviewTasks = tasks.filter(t => t.status === 'review' && !t.assignedTo);
   for (const task of reviewTasks) {
-    if (!agentManager.getAvailableReviewer()) break;
+    if (!agentManager.getAvailableReviewer()) {
+      agentManager.scaleUp('reviewers');
+      if (!agentManager.getAvailableReviewer()) break;
+    }
     startReview(task);
   }
 
@@ -471,6 +481,12 @@ bus.on('plan:rejected', ({ taskId, feedback }) => rejectPlan(taskId, feedback));
 bus.on('settings:changed', (settings) => {
   agentManager.reconfigure(settings);
   bus.emit('agents:updated', agentManager.getAllStatus());
+
+  // Re-discover repos if reposDir changed
+  if (settings.reposDir) {
+    refreshRepos(settings.reposDir);
+    bus.emit('repos:updated', getRepos());
+  }
 });
 
 // --- Public API ---
