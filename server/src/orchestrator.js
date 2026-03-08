@@ -598,11 +598,20 @@ function pollLoop() {
       bus.emit('agent:updated', agent.getStatus());
       const task = store.getTask(taskId);
       if (task && !['blocked', 'done', 'backlog', 'paused', 'workspace_setup'].includes(task.status)) {
-        store.updateTask(taskId, {
-          status: 'blocked',
-          blockedReason: 'Agent process exited unexpectedly',
-          assignedTo: null,
-        });
+        const buf = agent.getBufferString(100);
+        if (buf.includes('=== PLAN END ===')) {
+          onPlanComplete(agent.id, taskId);
+        } else if (buf.includes('=== IMPLEMENTATION COMPLETE ===')) {
+          onImplementationComplete(agent.id);
+        } else if (buf.includes('=== REVIEW END ===')) {
+          onReviewComplete(agent.id, taskId);
+        } else {
+          store.updateTask(taskId, {
+            status: 'blocked',
+            blockedReason: 'Agent process exited unexpectedly',
+            assignedTo: null,
+          });
+        }
       }
     }
   }
@@ -629,6 +638,21 @@ bus.on('plan:rejected', ({ taskId, feedback }) => rejectPlan(taskId, feedback));
 bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
   const agent = agentManager.get(agentId);
   if (agent) {
+    const buf = agent.getBufferString(100);
+    // Check if agent actually completed — process may have exited before checkSignals ran
+    if (buf.includes('=== PLAN END ===')) {
+      onPlanComplete(agentId, taskId);
+      return;
+    }
+    if (buf.includes('=== IMPLEMENTATION COMPLETE ===')) {
+      onImplementationComplete(agentId);
+      return;
+    }
+    if (buf.includes('=== REVIEW END ===')) {
+      onReviewComplete(agentId, taskId);
+      return;
+    }
+    console.error(`[unexpected-exit] agent=${agentId} task=${taskId} last output:\n${buf.slice(-500)}`);
     agent.currentTask = null;
     agent.taskLabel = '';
     agent.status = 'idle';

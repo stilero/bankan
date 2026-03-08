@@ -76,12 +76,14 @@ class Agent {
     this.tokens = 0;
     this.lastOutputAt = Date.now();
 
+    const env = { ...process.env, TERM: 'xterm-256color' };
+    delete env.CLAUDECODE;
     this.process = pty.spawn('bash', ['-l', '-c', command], {
       name: 'xterm-256color',
       cols: 220,
       rows: 50,
       cwd,
-      env: { ...process.env, TERM: 'xterm-256color' },
+      env,
     });
 
     this.process.onData((data) => {
