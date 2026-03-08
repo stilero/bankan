@@ -4,7 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 
-export default function TerminalPane({ agent, subscribeTerminal, injectMessage, onClose }) {
+export default function TerminalPane({ agent, subscribeTerminal, injectMessage, sendRaw, onClose }) {
   const termRef = useRef(null);
   const containerRef = useRef(null);
   const inputRef = useRef(null);
@@ -41,6 +41,10 @@ export default function TerminalPane({ agent, subscribeTerminal, injectMessage, 
     });
 
     termRef.current = term;
+
+    term.onKey(({ key }) => {
+      sendRaw(agent.id, key);
+    });
 
     // Subscribe to terminal data
     const unsub = subscribeTerminal(agent.id, (data) => {

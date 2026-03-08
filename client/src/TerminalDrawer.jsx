@@ -18,7 +18,7 @@ function formatUptime(seconds) {
   return `${h}h ${m}m`;
 }
 
-export default function TerminalDrawer({ agent, subscribeTerminal, injectMessage, onClose }) {
+export default function TerminalDrawer({ agent, subscribeTerminal, injectMessage, sendRaw, onClose }) {
   const containerRef = useRef(null);
   const termRef = useRef(null);
 
@@ -53,6 +53,10 @@ export default function TerminalDrawer({ agent, subscribeTerminal, injectMessage
     });
 
     termRef.current = term;
+
+    term.onKey(({ key }) => {
+      sendRaw(agent.id, key);
+    });
 
     const unsub = subscribeTerminal(agent.id, (data) => {
       term.write(data);

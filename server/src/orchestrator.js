@@ -490,23 +490,35 @@ function checkSignals() {
       if (buf.includes('=== IMPLEMENTATION COMPLETE ===')) {
         onImplementationComplete(agent.id);
       } else {
-        const blockedMatch = buf.match(/=== BLOCKED: (.+?) ===/);
-        if (blockedMatch) {
-          const reason = blockedMatch[1];
+        const trustMatch = buf.match(/trust the files|Do you trust|allow.*to run in this/i);
+        if (trustMatch && !buf.includes('=== IMPLEMENTATION COMPLETE ===')) {
           store.updateTask(agent.currentTask, {
             status: 'blocked',
-            blockedReason: reason,
-            assignedTo: null,
+            blockedReason: 'Agent is awaiting user input — open the terminal and respond to the prompt',
+            assignedTo: agent.id,
           });
-          agent.kill();
-          if (agent.draining) agentManager.removeAgent(agent.id);
-          else {
-            agent.status = 'blocked';
-            bus.emit('task:blocked', { taskId: agent.currentTask, reason });
-            bus.emit('agent:updated', agent.getStatus());
+          agent.status = 'blocked';
+          bus.emit('task:blocked', { taskId: agent.currentTask, reason: 'Awaiting user input' });
+          bus.emit('agent:updated', agent.getStatus());
+        } else {
+          const blockedMatch = buf.match(/=== BLOCKED: (.+?) ===/);
+          if (blockedMatch) {
+            const reason = blockedMatch[1];
+            store.updateTask(agent.currentTask, {
+              status: 'blocked',
+              blockedReason: reason,
+              assignedTo: null,
+            });
+            agent.kill();
+            if (agent.draining) agentManager.removeAgent(agent.id);
+            else {
+              agent.status = 'blocked';
+              bus.emit('task:blocked', { taskId: agent.currentTask, reason });
+              bus.emit('agent:updated', agent.getStatus());
+            }
+          } else if (agent.startedAt && Date.now() - agent.startedAt > IMPLEMENTOR_TIMEOUT) {
+            markBlocked(agent, 'Implementor timed out');
           }
-        } else if (agent.startedAt && Date.now() - agent.startedAt > IMPLEMENTOR_TIMEOUT) {
-          markBlocked(agent, 'Implementor timed out');
         }
       }
     }

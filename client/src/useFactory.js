@@ -159,6 +159,10 @@ export default function useFactory() {
     send('INJECT_MESSAGE', { agentId, message });
   }, [send]);
 
+  const sendRaw = useCallback((agentId, data) => {
+    send('INJECT_RAW', { agentId, data });
+  }, [send]);
+
   const pauseAgent = useCallback((agentId) => {
     send('PAUSE_AGENT', { agentId });
   }, [send]);
@@ -216,6 +220,7 @@ export default function useFactory() {
     abortTask,
     retryTask,
     injectMessage,
+    sendRaw,
     pauseAgent,
     resumeAgent,
     updateSettings,

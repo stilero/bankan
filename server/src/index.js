@@ -245,6 +245,12 @@ wss.on('connection', (ws) => {
         if (agent) agent.write(message + '\n');
         break;
       }
+      case 'INJECT_RAW': {
+        const { agentId, data } = msg.payload || {};
+        const agent = agentManager.get(agentId);
+        if (agent) agent.write(data);
+        break;
+      }
       case 'PAUSE_AGENT': {
         const agent = agentManager.get(msg.payload?.agentId);
         if (agent) { agent.status = 'paused'; bus.emit('agent:updated', agent.getStatus()); }
