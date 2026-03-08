@@ -107,16 +107,23 @@ export default function KanbanCard({
         {assignedAgent && (
           <span
             onClick={(e) => { e.stopPropagation(); onAgentClick(assignedAgent.id); }}
-            title={assignedAgent.name}
+            title={`Open ${assignedAgent.name} terminal`}
             style={{
-              width: 20, height: 20, borderRadius: '50%',
-              background: assignedAgent.color || 'var(--text3)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+              padding: '2px 6px',
+              borderRadius: 9,
+              background: (assignedAgent.color || 'var(--text3)') + '26',
+              color: assignedAgent.color || 'var(--text3)',
               fontSize: 10, cursor: 'pointer',
-              opacity: 0.9,
+              transition: 'background 0.15s',
             }}
+            onMouseEnter={(e) => e.currentTarget.style.background = (assignedAgent.color || 'var(--text3)') + '40'}
+            onMouseLeave={(e) => e.currentTarget.style.background = (assignedAgent.color || 'var(--text3)') + '26'}
           >
-            {assignedAgent.icon || assignedAgent.id.charAt(0).toUpperCase()}
+            <span style={{ fontSize: 10, lineHeight: 1 }}>
+              {assignedAgent.icon || assignedAgent.id.charAt(0).toUpperCase()}
+            </span>
+            {assignedAgent.name}
           </span>
         )}
       </div>
