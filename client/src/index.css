@@ -58,9 +58,9 @@ body {
 }
 
 /* Keyframe animations */
-@keyframes conveyor-stripes {
-  0% { background-position: 0 0; }
-  100% { background-position: 40px 0; }
+@keyframes card-enter {
+  from { opacity: 0; transform: translateX(-12px) scale(0.97); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
 }
 
 @keyframes pulse {
@@ -71,11 +71,6 @@ body {
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes slide-in-right {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
 }
 
 @keyframes toast-in {
