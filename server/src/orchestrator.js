@@ -116,10 +116,10 @@ SUMMARY: (2-3 sentences summarising the review)
 // --- Stage Transitions ---
 
 function startPlanning(task) {
-  const planner = agentManager.get('plan');
-  if (planner.status !== 'idle') return false;
+  const planner = agentManager.getAvailablePlanner();
+  if (!planner) return false;
 
-  store.updateTask(task.id, { status: 'planning', assignedTo: 'plan' });
+  store.updateTask(task.id, { status: 'planning', assignedTo: planner.id });
   planner.currentTask = task.id;
   planner.taskLabel = `Planning: ${task.title}`;
   planner.status = 'active';
@@ -131,8 +131,9 @@ function startPlanning(task) {
   return true;
 }
 
-function onPlanComplete(taskId) {
-  const planner = agentManager.get('plan');
+function onPlanComplete(agentId, taskId) {
+  const planner = agentManager.get(agentId);
+  if (!planner) return;
   const bufStr = planner.getBufferString(100);
 
   // Extract plan text
@@ -156,6 +157,7 @@ function onPlanComplete(taskId) {
   });
 
   planner.kill();
+  if (planner.draining) agentManager.removeAgent(agentId);
   bus.emit('plan:ready', { taskId, plan: planText });
 }
 
@@ -202,7 +204,7 @@ async function startImplementation(task) {
   agent.currentTask = task.id;
   agent.taskLabel = `Implementing: ${task.title}`;
 
-  const cliTool = agent.id === 'imp1' ? config.IMPLEMENTOR_1_CLI : config.IMPLEMENTOR_2_CLI;
+  const cliTool = agent.cli;
   const prompt = buildImplementorPrompt(task);
 
   let cmd;
@@ -218,6 +220,7 @@ async function startImplementation(task) {
 
 async function onImplementationComplete(agentId) {
   const agent = agentManager.get(agentId);
+  if (!agent) return;
   const taskId = agent.currentTask;
   if (!taskId) return;
 
@@ -232,17 +235,19 @@ async function onImplementationComplete(agentId) {
     }
   }
 
-  store.updateTask(taskId, { status: 'review', assignedTo: 'rev' });
+  store.updateTask(taskId, { status: 'review', assignedTo: null });
   agent.kill();
+  if (agent.draining) agentManager.removeAgent(agentId);
 
   const taskForReview = store.getTask(taskId);
   startReview(taskForReview);
 }
 
 function startReview(task) {
-  const reviewer = agentManager.get('rev');
-  if (reviewer.status !== 'idle') return;
+  const reviewer = agentManager.getAvailableReviewer();
+  if (!reviewer) return;
 
+  store.updateTask(task.id, { assignedTo: reviewer.id });
   reviewer.currentTask = task.id;
   reviewer.taskLabel = `Reviewing: ${task.title}`;
   reviewer.status = 'active';
@@ -253,8 +258,9 @@ function startReview(task) {
   bus.emit('agent:updated', reviewer.getStatus());
 }
 
-async function onReviewComplete(taskId) {
-  const reviewer = agentManager.get('rev');
+async function onReviewComplete(agentId, taskId) {
+  const reviewer = agentManager.get(agentId);
+  if (!reviewer) return;
   const bufStr = reviewer.getBufferString(100);
 
   const startIdx = bufStr.indexOf('=== REVIEW START ===');
@@ -267,6 +273,7 @@ async function onReviewComplete(taskId) {
 
   store.updateTask(taskId, { review: reviewText });
   reviewer.kill();
+  if (reviewer.draining) agentManager.removeAgent(agentId);
 
   if (verdict === 'PASS') {
     bus.emit('review:passed', { taskId });
@@ -335,24 +342,24 @@ async function createPR(taskId) {
 // --- Signal Detection ---
 
 function checkSignals() {
-  // Check planner
-  const planner = agentManager.get('plan');
-  if (planner.status === 'active' && planner.currentTask) {
-    const buf = planner.getBufferString(50);
-    if (buf.includes('=== PLAN END ===')) {
-      onPlanComplete(planner.currentTask);
-    } else if (planner.startedAt && Date.now() - planner.startedAt > PLANNER_TIMEOUT) {
-      markBlocked(planner, 'Planner timed out');
+  // Check planners
+  for (const agent of agentManager.getAgentsByRole('plan')) {
+    if (agent.status === 'active' && agent.currentTask) {
+      const buf = agent.getBufferString(50);
+      if (buf.includes('=== PLAN END ===')) {
+        onPlanComplete(agent.id, agent.currentTask);
+      } else if (agent.startedAt && Date.now() - agent.startedAt > PLANNER_TIMEOUT) {
+        markBlocked(agent, 'Planner timed out');
+      }
     }
   }
 
   // Check implementors
-  for (const id of ['imp1', 'imp2']) {
-    const agent = agentManager.get(id);
+  for (const agent of agentManager.getAgentsByRole('imp')) {
     if (agent.status === 'active' && agent.currentTask) {
       const buf = agent.getBufferString(50);
       if (buf.includes('=== IMPLEMENTATION COMPLETE ===')) {
-        onImplementationComplete(id);
+        onImplementationComplete(agent.id);
       } else {
         const blockedMatch = buf.match(/=== BLOCKED: (.+?) ===/);
         if (blockedMatch) {
@@ -363,9 +370,12 @@ function checkSignals() {
             assignedTo: null,
           });
           agent.kill();
-          agent.status = 'blocked';
-          bus.emit('task:blocked', { taskId: agent.currentTask, reason });
-          bus.emit('agent:updated', agent.getStatus());
+          if (agent.draining) agentManager.removeAgent(agent.id);
+          else {
+            agent.status = 'blocked';
+            bus.emit('task:blocked', { taskId: agent.currentTask, reason });
+            bus.emit('agent:updated', agent.getStatus());
+          }
         } else if (agent.startedAt && Date.now() - agent.startedAt > IMPLEMENTOR_TIMEOUT) {
           markBlocked(agent, 'Implementor timed out');
         }
@@ -373,14 +383,15 @@ function checkSignals() {
     }
   }
 
-  // Check reviewer
-  const reviewer = agentManager.get('rev');
-  if (reviewer.status === 'active' && reviewer.currentTask) {
-    const buf = reviewer.getBufferString(50);
-    if (buf.includes('=== REVIEW END ===')) {
-      onReviewComplete(reviewer.currentTask);
-    } else if (reviewer.startedAt && Date.now() - reviewer.startedAt > REVIEWER_TIMEOUT) {
-      markBlocked(reviewer, 'Reviewer timed out');
+  // Check reviewers
+  for (const agent of agentManager.getAgentsByRole('rev')) {
+    if (agent.status === 'active' && agent.currentTask) {
+      const buf = agent.getBufferString(50);
+      if (buf.includes('=== REVIEW END ===')) {
+        onReviewComplete(agent.id, agent.currentTask);
+      } else if (agent.startedAt && Date.now() - agent.startedAt > REVIEWER_TIMEOUT) {
+        markBlocked(agent, 'Reviewer timed out');
+      }
     }
   }
 }
@@ -395,8 +406,12 @@ function markBlocked(agent, reason) {
     bus.emit('task:blocked', { taskId: agent.currentTask, reason });
   }
   agent.kill();
-  agent.status = 'blocked';
-  bus.emit('agent:updated', agent.getStatus());
+  if (agent.draining) {
+    agentManager.removeAgent(agent.id);
+  } else {
+    agent.status = 'blocked';
+    bus.emit('agent:updated', agent.getStatus());
+  }
 }
 
 // --- Poll Loop ---
@@ -404,18 +419,16 @@ function markBlocked(agent, reason) {
 function pollLoop() {
   const tasks = store.getAllTasks();
 
-  // Assign backlog → planner
-  const planner = agentManager.get('plan');
-  if (planner.status === 'idle') {
-    const backlogTask = tasks
-      .filter(t => t.status === 'backlog')
-      .sort((a, b) => {
-        const prio = { critical: 0, high: 1, medium: 2, low: 3 };
-        return (prio[a.priority] ?? 2) - (prio[b.priority] ?? 2);
-      })[0];
-    if (backlogTask) {
-      startPlanning(backlogTask);
-    }
+  // Assign backlog → available planners (loop to fill multiple planners)
+  const backlogTasks = tasks
+    .filter(t => t.status === 'backlog')
+    .sort((a, b) => {
+      const prio = { critical: 0, high: 1, medium: 2, low: 3 };
+      return (prio[a.priority] ?? 2) - (prio[b.priority] ?? 2);
+    });
+  for (const backlogTask of backlogTasks) {
+    if (!agentManager.getAvailablePlanner()) break;
+    startPlanning(backlogTask);
   }
 
   // Assign queued → implementor
@@ -427,6 +440,13 @@ function pollLoop() {
     } else {
       break;
     }
+  }
+
+  // Assign review tasks with no assignee → available reviewers
+  const reviewTasks = tasks.filter(t => t.status === 'review' && !t.assignedTo);
+  for (const task of reviewTasks) {
+    if (!agentManager.getAvailableReviewer()) break;
+    startReview(task);
   }
 
   // Check stuck agents
@@ -447,6 +467,11 @@ function pollLoop() {
 
 bus.on('plan:approved', (taskId) => approvePlan(taskId));
 bus.on('plan:rejected', ({ taskId, feedback }) => rejectPlan(taskId, feedback));
+
+bus.on('settings:changed', (settings) => {
+  agentManager.reconfigure(settings);
+  bus.emit('agents:updated', agentManager.getAllStatus());
+});
 
 // --- Public API ---
 

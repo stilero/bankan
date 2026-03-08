@@ -59,15 +59,16 @@ function Logo() {
 
 export default function App() {
   const {
-    connected, agents, tasks, repos, notifications,
+    connected, agents, tasks, repos, settings, notifications,
     addTask, approvePlan, rejectPlan,
     injectMessage, pauseAgent, resumeAgent,
-    subscribeTerminal,
+    updateSettings, subscribeTerminal,
   } = useFactory();
 
   const [view, setView] = useState('floor'); // 'floor' | 'queue'
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [rejectingTask, setRejectingTask] = useState(null);
   const [rejectFeedback, setRejectFeedback] = useState('');
 
@@ -171,6 +172,23 @@ export default function App() {
           width: 6, height: 6, borderRadius: '50%',
           background: connected ? 'var(--green)' : 'var(--red)',
         }} />
+
+        {/* Settings */}
+        <button
+          onClick={() => setShowSettingsModal(true)}
+          style={{
+            padding: '6px 10px',
+            background: 'var(--bg2)',
+            border: '1px solid var(--border)',
+            borderRadius: 4,
+            fontSize: 14,
+            color: 'var(--text2)',
+            cursor: 'pointer',
+          }}
+          title="Settings"
+        >
+          {'\u2699'}
+        </button>
 
         {/* Add Task */}
         <button
@@ -346,6 +364,18 @@ export default function App() {
           onSubmit={(title, priority, description, repoPath) => {
             addTask(title, priority, description, repoPath);
             setShowAddModal(false);
+          }}
+        />
+      )}
+
+      {/* SETTINGS MODAL */}
+      {showSettingsModal && settings && (
+        <SettingsModal
+          settings={settings}
+          onClose={() => setShowSettingsModal(false)}
+          onApply={(newSettings) => {
+            updateSettings(newSettings);
+            setShowSettingsModal(false);
           }}
         />
       )}
@@ -753,6 +783,171 @@ function AddTaskModal({ repos, onClose, onSubmit }) {
             }}
           >
             Add Task
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Settings Modal ---
+function SettingsModal({ settings, onClose, onApply }) {
+  const [local, setLocal] = useState(() => JSON.parse(JSON.stringify(settings)));
+
+  const updateRole = (role, field, value) => {
+    setLocal(prev => {
+      const next = JSON.parse(JSON.stringify(prev));
+      next.agents[role][field] = value;
+      return next;
+    });
+  };
+
+  const totalCount = (local.agents.planners?.count || 0) +
+    (local.agents.implementors?.count || 0) +
+    (local.agents.reviewers?.count || 0);
+
+  const isValid = totalCount <= 10 && totalCount >= 3;
+
+  const roles = [
+    { key: 'planners', label: 'PLANNERS' },
+    { key: 'implementors', label: 'IMPLEMENTORS' },
+    { key: 'reviewers', label: 'REVIEWERS' },
+  ];
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0,
+        background: 'rgba(0,0,0,0.7)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 100,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: 440, padding: 24,
+          background: 'var(--bg1)',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          animation: 'fade-in 0.2s ease-out',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <h2 style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: 18 }}>
+            Settings
+          </h2>
+          <button onClick={onClose} style={{ color: 'var(--text3)', fontSize: 16 }}>
+            {'\u2715'}
+          </button>
+        </div>
+
+        {roles.map(({ key, label }) => {
+          const cfg = local.agents[key];
+          if (!cfg) return null;
+          return (
+            <div key={key} style={{ marginBottom: 20 }}>
+              <div style={{
+                fontSize: 11, fontWeight: 600, color: 'var(--text2)',
+                letterSpacing: 1, marginBottom: 10,
+              }}>
+                {label}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--text2)', width: 45 }}>Count:</span>
+                <button
+                  onClick={() => updateRole(key, 'count', Math.max(1, cfg.count - 1))}
+                  style={{
+                    width: 28, height: 28, borderRadius: 4,
+                    background: 'var(--bg2)', border: '1px solid var(--border)',
+                    color: 'var(--text)', fontSize: 14, cursor: 'pointer',
+                  }}
+                >
+                  -
+                </button>
+                <span style={{ fontSize: 14, fontWeight: 600, width: 20, textAlign: 'center' }}>
+                  {cfg.count}
+                </span>
+                <button
+                  onClick={() => updateRole(key, 'count', Math.min(cfg.max, cfg.count + 1))}
+                  style={{
+                    width: 28, height: 28, borderRadius: 4,
+                    background: 'var(--bg2)', border: '1px solid var(--border)',
+                    color: 'var(--text)', fontSize: 14, cursor: 'pointer',
+                  }}
+                >
+                  +
+                </button>
+                <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 8 }}>Max:</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={cfg.max}
+                  onChange={e => {
+                    const newMax = Math.max(1, Math.min(10, parseInt(e.target.value, 10) || 1));
+                    updateRole(key, 'max', newMax);
+                    if (cfg.count > newMax) updateRole(key, 'count', newMax);
+                  }}
+                  style={{
+                    width: 50, padding: '4px 6px', fontSize: 12,
+                    background: 'var(--bg)', border: '1px solid var(--border)',
+                    borderRadius: 4, textAlign: 'center',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 12, color: 'var(--text2)', width: 45 }}>CLI:</span>
+                <select
+                  value={cfg.cli}
+                  onChange={e => updateRole(key, 'cli', e.target.value)}
+                  style={{
+                    padding: '4px 8px', fontSize: 12,
+                    background: 'var(--bg)', border: '1px solid var(--border)',
+                    borderRadius: 4,
+                  }}
+                >
+                  <option value="claude">claude</option>
+                  <option value="codex">codex</option>
+                </select>
+              </div>
+            </div>
+          );
+        })}
+
+        {totalCount > 10 && (
+          <div style={{ fontSize: 11, color: 'var(--red)', marginBottom: 12 }}>
+            Total agent count ({totalCount}) exceeds maximum of 10.
+          </div>
+        )}
+
+        <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 16, fontStyle: 'italic' }}>
+          Active agents finish current tasks before being removed.
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onClose}
+            style={{ padding: '8px 16px', color: 'var(--text2)', fontSize: 12 }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onApply(local)}
+            disabled={!isValid}
+            style={{
+              padding: '8px 20px',
+              background: isValid ? 'var(--amber)' : 'var(--border)',
+              color: isValid ? '#000' : 'var(--text3)',
+              borderRadius: 4,
+              fontWeight: 500,
+              fontSize: 12,
+            }}
+          >
+            Apply
           </button>
         </div>
       </div>

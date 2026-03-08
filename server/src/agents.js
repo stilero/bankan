@@ -1,13 +1,30 @@
 import pty from 'node-pty';
 import bus from './events.js';
+import { loadSettings } from './config.js';
 
-const AGENT_DEFS = [
-  { id: 'orch', name: 'Orchestrator', role: 'Pipeline Control', icon: '\u2699', color: '#F5A623' },
-  { id: 'plan', name: 'Planner', role: 'Plan Generation', icon: '\u270E', color: '#6AABDB' },
-  { id: 'imp1', name: 'Implementor 1', role: 'Code Generation', icon: '\u2692', color: '#A78BFA' },
-  { id: 'imp2', name: 'Implementor 2', role: 'Code Generation', icon: '\u2692', color: '#34D399' },
-  { id: 'rev', name: 'Reviewer', role: 'Code Review', icon: '\u2714', color: '#FFD166' },
-];
+const ROLE_META = {
+  planner: {
+    prefix: 'plan',
+    namePrefix: 'Planner',
+    role: 'Plan Generation',
+    icon: '\u270E',
+    color: '#6AABDB',
+  },
+  implementor: {
+    prefix: 'imp',
+    namePrefix: 'Implementor',
+    role: 'Code Generation',
+    icon: '\u2692',
+    colors: ['#A78BFA', '#34D399', '#60A5FA', '#F472B6', '#FB923C', '#A3E635', '#22D3EE', '#E879F9'],
+  },
+  reviewer: {
+    prefix: 'rev',
+    namePrefix: 'Reviewer',
+    role: 'Code Review',
+    icon: '\u2714',
+    color: '#FFD166',
+  },
+};
 
 const CLAUDE_TOKEN_RE = /(\d[\d,]+)\s+(?:input\s+)?tokens/i;
 const CODEX_TOKEN_RE = /context:\s*(\d[\d,]+)/i;
@@ -19,6 +36,8 @@ class Agent {
     this.role = def.role;
     this.icon = def.icon;
     this.color = def.color;
+    this.cli = def.cli || 'claude';
+    this.draining = false;
     this.status = 'idle';
     this.currentTask = null;
     this.taskLabel = '';
@@ -117,7 +136,7 @@ class Agent {
       role: this.role,
       icon: this.icon,
       color: this.color,
-      status: this.status,
+      status: this.draining ? 'draining' : this.status,
       task: this.taskLabel,
       currentTask: this.currentTask,
       tokens: this.tokens,
@@ -130,14 +149,75 @@ class Agent {
 class AgentManager {
   constructor() {
     this.agents = new Map();
-    for (const def of AGENT_DEFS) {
-      this.agents.set(def.id, new Agent(def));
-    }
-    // Orchestrator is virtual — always active
-    const orch = this.agents.get('orch');
+
+    // Orchestrator is always present
+    const orch = new Agent({
+      id: 'orch',
+      name: 'Orchestrator',
+      role: 'Pipeline Control',
+      icon: '\u2699',
+      color: '#F5A623',
+    });
     orch.status = 'active';
     orch.startedAt = Date.now();
     orch.taskLabel = 'Pipeline Control';
+    this.agents.set('orch', orch);
+
+    // Create agents from settings
+    this.reconfigure(loadSettings());
+  }
+
+  reconfigure(settings) {
+    const roleMap = {
+      planners:     { meta: ROLE_META.planner,     settingsKey: 'planners' },
+      implementors: { meta: ROLE_META.implementor,  settingsKey: 'implementors' },
+      reviewers:    { meta: ROLE_META.reviewer,      settingsKey: 'reviewers' },
+    };
+
+    for (const [settingsKey, { meta }] of Object.entries(roleMap)) {
+      const cfg = settings.agents[settingsKey];
+      const desired = cfg.count;
+      const prefix = meta.prefix;
+
+      // Get current agents for this role
+      const current = this.getAgentsByRole(prefix);
+      const currentCount = current.length;
+
+      if (desired > currentCount) {
+        // Scale up: create new agents
+        for (let i = currentCount + 1; i <= desired; i++) {
+          const color = meta.colors ? meta.colors[(i - 1) % meta.colors.length] : meta.color;
+          const agent = new Agent({
+            id: `${prefix}-${i}`,
+            name: `${meta.namePrefix} ${i}`,
+            role: meta.role,
+            icon: meta.icon,
+            color,
+            cli: cfg.cli,
+          });
+          this.agents.set(agent.id, agent);
+          bus.emit('agent:updated', agent.getStatus());
+        }
+      } else if (desired < currentCount) {
+        // Scale down: remove highest-numbered agents first
+        const toRemove = current.slice(desired);
+        for (const agent of toRemove) {
+          if (agent.status === 'idle') {
+            this.removeAgent(agent.id);
+          } else {
+            agent.draining = true;
+            bus.emit('agent:updated', agent.getStatus());
+          }
+        }
+      }
+
+      // Update CLI on all existing non-draining agents for this role
+      for (const agent of this.getAgentsByRole(prefix)) {
+        if (!agent.draining) {
+          agent.cli = cfg.cli;
+        }
+      }
+    }
   }
 
   get(id) {
@@ -148,12 +228,48 @@ class AgentManager {
     return Array.from(this.agents.values()).map(a => a.getStatus());
   }
 
+  getAgentsByRole(prefix) {
+    return Array.from(this.agents.values())
+      .filter(a => a.id.startsWith(prefix + '-'))
+      .sort((a, b) => {
+        const numA = parseInt(a.id.split('-')[1], 10);
+        const numB = parseInt(b.id.split('-')[1], 10);
+        return numA - numB;
+      });
+  }
+
+  getAvailableByRole(prefix) {
+    return this.getAgentsByRole(prefix).find(a => a.status === 'idle' && !a.draining) || null;
+  }
+
+  getAvailablePlanner() {
+    return this.getAvailableByRole('plan');
+  }
+
   getAvailableImplementor() {
-    const imp1 = this.agents.get('imp1');
-    const imp2 = this.agents.get('imp2');
-    if (imp1.status === 'idle') return imp1;
-    if (imp2.status === 'idle') return imp2;
-    return null;
+    return this.getAvailableByRole('imp');
+  }
+
+  getAvailableReviewer() {
+    return this.getAvailableByRole('rev');
+  }
+
+  removeAgent(id) {
+    const agent = this.agents.get(id);
+    if (!agent) return;
+    // Clean up subscribers
+    for (const ws of agent.subscribers) {
+      try {
+        ws.send(JSON.stringify({
+          type: 'TERMINAL_DATA',
+          payload: { agentId: id, data: '\r\n[Agent removed]\r\n' },
+          ts: Date.now(),
+        }));
+      } catch { /* ignore */ }
+    }
+    agent.subscribers.clear();
+    this.agents.delete(id);
+    bus.emit('agent:removed', { agentId: id });
   }
 }
 

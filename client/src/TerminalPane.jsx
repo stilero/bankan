@@ -4,14 +4,6 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 
-const AGENT_COLORS = {
-  plan: '#6AABDB',
-  imp1: '#A78BFA',
-  imp2: '#34D399',
-  rev: '#FFD166',
-  orch: '#F5A623',
-};
-
 export default function TerminalPane({ agent, subscribeTerminal, injectMessage, onClose }) {
   const termRef = useRef(null);
   const containerRef = useRef(null);
@@ -20,7 +12,7 @@ export default function TerminalPane({ agent, subscribeTerminal, injectMessage, 
   useEffect(() => {
     if (!containerRef.current || !agent) return;
 
-    const agentColor = AGENT_COLORS[agent.id] || '#F5A623';
+    const agentColor = agent.color || '#F5A623';
 
     const term = new Terminal({
       theme: {
@@ -98,7 +90,7 @@ export default function TerminalPane({ agent, subscribeTerminal, injectMessage, 
 
   if (!agent) return null;
 
-  const agentColor = AGENT_COLORS[agent.id] || '#F5A623';
+  const agentColor = agent.color || '#F5A623';
 
   return (
     <div style={{

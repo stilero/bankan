@@ -10,6 +10,7 @@ export default function useFactory() {
   const [tasks, setTasks] = useState([]);
   const [agents, setAgents] = useState([]);
   const [repos, setRepos] = useState([]);
+  const [settings, setSettings] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const wsRef = useRef(null);
   const termSubsRef = useRef(new Map()); // agentId → callback
@@ -57,6 +58,7 @@ export default function useFactory() {
           setTasks(msg.payload.tasks || []);
           setAgents(msg.payload.agents || []);
           setRepos(msg.payload.repos || []);
+          if (msg.payload.settings) setSettings(msg.payload.settings);
           break;
         case 'TASKS_UPDATED':
           setTasks(msg.payload.tasks || []);
@@ -68,9 +70,20 @@ export default function useFactory() {
           setAgents(msg.payload.agents || []);
           break;
         case 'AGENT_UPDATED':
-          setAgents(prev => prev.map(a =>
-            a.id === msg.payload.agent.id ? msg.payload.agent : a
-          ));
+          setAgents(prev => {
+            const exists = prev.some(a => a.id === msg.payload.agent.id);
+            if (exists) {
+              return prev.map(a => a.id === msg.payload.agent.id ? msg.payload.agent : a);
+            }
+            // New agent (from scale-up) — append it
+            return [...prev, msg.payload.agent];
+          });
+          break;
+        case 'AGENT_REMOVED':
+          setAgents(prev => prev.filter(a => a.id !== msg.payload.agentId));
+          break;
+        case 'SETTINGS_UPDATED':
+          setSettings(msg.payload);
           break;
         case 'TERMINAL_DATA': {
           const cb = termSubsRef.current.get(msg.payload.agentId);
@@ -140,6 +153,10 @@ export default function useFactory() {
     send('RESUME_AGENT', { agentId });
   }, [send]);
 
+  const updateSettings = useCallback((newSettings) => {
+    send('UPDATE_SETTINGS', newSettings);
+  }, [send]);
+
   const subscribeTerminal = useCallback((agentId, callback) => {
     termSubsRef.current.set(agentId, callback);
     send('SUBSCRIBE_TERMINAL', { agentId });
@@ -154,6 +171,7 @@ export default function useFactory() {
     tasks,
     agents,
     repos,
+    settings,
     notifications,
     addTask,
     approvePlan,
@@ -161,6 +179,7 @@ export default function useFactory() {
     injectMessage,
     pauseAgent,
     resumeAgent,
+    updateSettings,
     subscribeTerminal,
   };
 }

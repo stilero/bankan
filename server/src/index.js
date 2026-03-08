@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'node:http';
-import config from './config.js';
+import config, { loadSettings, saveSettings, validateSettings } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
@@ -46,6 +46,22 @@ app.patch('/api/tasks/:id/reject', (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/api/settings', (req, res) => {
+  res.json(loadSettings());
+});
+
+app.put('/api/settings', (req, res) => {
+  const settings = req.body;
+  const errors = validateSettings(settings);
+  if (errors.length > 0) {
+    return res.status(400).json({ errors });
+  }
+  saveSettings(settings);
+  bus.emit('settings:changed', settings);
+  broadcast('SETTINGS_UPDATED', settings);
+  res.json(settings);
+});
+
 // HTTP + WebSocket server
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
@@ -69,6 +85,7 @@ wss.on('connection', (ws) => {
       tasks: store.getAllTasks(),
       agents: agentManager.getAllStatus(),
       repos: config.REPOS,
+      settings: loadSettings(),
     },
     ts: Date.now(),
   }));
@@ -91,6 +108,24 @@ wss.on('connection', (ws) => {
       case 'REJECT_PLAN': {
         const { taskId, feedback } = msg.payload || {};
         if (taskId) bus.emit('plan:rejected', { taskId, feedback: feedback || '' });
+        break;
+      }
+      case 'UPDATE_SETTINGS': {
+        const settings = msg.payload;
+        const errors = validateSettings(settings);
+        if (errors.length > 0) {
+          try {
+            ws.send(JSON.stringify({
+              type: 'SETTINGS_ERROR',
+              payload: { errors },
+              ts: Date.now(),
+            }));
+          } catch { /* ignore */ }
+          break;
+        }
+        saveSettings(settings);
+        bus.emit('settings:changed', settings);
+        broadcast('SETTINGS_UPDATED', settings);
         break;
       }
       case 'INJECT_MESSAGE': {
@@ -148,6 +183,7 @@ bus.on('tasks:changed', (tasks) => broadcast('TASKS_UPDATED', { tasks }));
 bus.on('task:added', (task) => broadcast('TASK_ADDED', { task }));
 bus.on('agent:updated', (agent) => broadcast('AGENT_UPDATED', { agent }));
 bus.on('agents:updated', (agents) => broadcast('AGENTS_UPDATED', { agents }));
+bus.on('agent:removed', (data) => broadcast('AGENT_REMOVED', data));
 bus.on('plan:ready', (data) => broadcast('PLAN_READY', data));
 bus.on('review:passed', (data) => broadcast('REVIEW_PASSED', data));
 bus.on('review:failed', (data) => broadcast('REVIEW_FAILED', data));
