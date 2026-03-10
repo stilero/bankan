@@ -14,10 +14,10 @@ const STAGE_COLORS = {
   workspace_setup: 'var(--steel2)',
   implementing: 'var(--green)',
   review: '#A78BFA',
-  awaiting_human_review: '#60A5FA',
   blocked: 'var(--red)',
   paused: 'var(--amber)',
   backlog: 'var(--text3)',
+  aborted: 'var(--text3)',
   done: 'var(--green)',
 };
 
@@ -42,9 +42,9 @@ export default function TaskDetailModal({
   const [rejecting, setRejecting] = useState(false);
   const [feedback, setFeedback] = useState('');
 
-  const canPause = ['backlog', 'planning', 'queued', 'implementing', 'review', 'awaiting_approval', 'workspace_setup'].includes(task.status);
+  const canPause = !['done', 'paused', 'aborted'].includes(task.status);
   const canResume = task.status === 'paused';
-  const canAbort = !['done', 'backlog', 'awaiting_human_review'].includes(task.status);
+  const canAbort = !['done', 'aborted'].includes(task.status);
   const canRetry = task.status === 'blocked';
 
   const handleSave = () => {
@@ -224,6 +224,13 @@ export default function TaskDetailModal({
                 <div style={{ fontSize: 12, color: 'var(--steel2)' }}>{task.branch}</div>
               </div>
             )}
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={labelStyle}>Review Cycles</div>
+              <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+                {task.reviewCycleCount || 0} / 3
+              </div>
+            </div>
 
             {task.prUrl && (
               <div style={{ marginBottom: 14 }}>

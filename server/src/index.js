@@ -14,6 +14,47 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+function stageToResumeStatus(task) {
+  if (task.previousStatus === 'blocked') {
+    return 'blocked';
+  }
+  if (['awaiting_approval'].includes(task.previousStatus)) {
+    return 'awaiting_approval';
+  }
+  if (task.lastActiveStage === 'review') {
+    return 'review';
+  }
+  if (task.lastActiveStage === 'implementation') {
+    return 'queued';
+  }
+  if (task.lastActiveStage === 'planning') {
+    return task.plan ? 'awaiting_approval' : 'backlog';
+  }
+  return 'backlog';
+}
+
+function stageToRetryStatus(task) {
+  if (task.assignedTo) {
+    if (task.assignedTo.startsWith('plan-')) return 'planning';
+    if (task.assignedTo.startsWith('imp-')) return 'implementing';
+    if (task.assignedTo.startsWith('rev-')) return 'review';
+  }
+
+  if ((task.blockedReason || '').includes('maximum review cycles')) {
+    return 'queued';
+  }
+  if (task.lastActiveStage === 'review') {
+    return 'review';
+  }
+  if (task.lastActiveStage === 'implementation') {
+    return 'queued';
+  }
+  if (task.lastActiveStage === 'planning') {
+    return task.plan ? 'awaiting_approval' : 'backlog';
+  }
+  return 'backlog';
+}
+
 // REST API
 app.get('/api/status', (req, res) => {
   res.json({
@@ -165,7 +206,7 @@ wss.on('connection', (ws) => {
       case 'PAUSE_TASK': {
         const { taskId } = msg.payload || {};
         const task = store.getTask(taskId);
-        if (task && !['done', 'paused'].includes(task.status)) {
+        if (task && !['done', 'paused', 'aborted'].includes(task.status)) {
           const previousStatus = task.status;
           // Kill assigned agent if any
           if (task.assignedTo) {
@@ -186,17 +227,7 @@ wss.on('connection', (ws) => {
         const { taskId } = msg.payload || {};
         const task = store.getTask(taskId);
         if (task && task.status === 'paused') {
-          // Map previous status to a safe re-entry point
-          const safeStatus = {
-            planning: 'backlog',
-            implementing: 'queued',
-            review: 'queued',
-            queued: 'queued',
-            awaiting_approval: 'awaiting_approval',
-            awaiting_human_review: 'awaiting_human_review',
-            workspace_setup: 'awaiting_approval',
-          };
-          const resumeTo = safeStatus[task.previousStatus] || 'backlog';
+          const resumeTo = stageToResumeStatus(task);
           store.updateTask(taskId, {
             status: resumeTo,
             previousStatus: null,
@@ -213,12 +244,18 @@ wss.on('connection', (ws) => {
         const { taskId } = msg.payload || {};
         const task = store.getTask(taskId);
         if (task && task.status === 'blocked') {
-          const retryStatus = task.plan ? 'awaiting_approval' : 'backlog';
+          const retryStatus = stageToRetryStatus(task);
+          const agent = task.assignedTo ? agentManager.get(task.assignedTo) : null;
+
+          if (agent && agent.process) {
+            agent.status = 'active';
+            bus.emit('agent:updated', agent.getStatus());
+          }
+
           store.updateTask(taskId, {
             status: retryStatus,
             blockedReason: null,
-            assignedTo: null,
-            workspacePath: null,
+            assignedTo: agent?.process ? task.assignedTo : null,
           });
           broadcast('TASK_RETRIED', { taskId, retryStatus });
         }
@@ -317,7 +354,7 @@ store.restartRecovery();
 {
   const workspacesDir = getWorkspacesDir();
   if (existsSync(workspacesDir)) {
-    const terminalStatuses = ['done', 'backlog', 'awaiting_human_review'];
+    const terminalStatuses = ['done', 'backlog', 'aborted', 'awaiting_human_review'];
     let entries;
     try { entries = readdirSync(workspacesDir); } catch { entries = []; }
     for (const entry of entries) {

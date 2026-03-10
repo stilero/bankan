@@ -9,6 +9,15 @@ const DATA_DIR = join(__dirname, '..', '..', '.data');
 const TASKS_FILE = join(DATA_DIR, 'tasks.json');
 const PLANS_DIR = join(DATA_DIR, 'plans');
 
+function statusToStage(status) {
+  if (['workspace_setup', 'planning', 'awaiting_approval'].includes(status)) return 'planning';
+  if (['queued', 'implementing'].includes(status)) return 'implementation';
+  if (status === 'review') return 'review';
+  if (status === 'done') return 'done';
+  if (['backlog', 'aborted'].includes(status)) return 'backlog';
+  return null;
+}
+
 class TaskStore {
   constructor() {
     this.tasks = [];
@@ -25,6 +34,33 @@ class TaskStore {
     try {
       if (existsSync(TASKS_FILE)) {
         this.tasks = JSON.parse(readFileSync(TASKS_FILE, 'utf-8'));
+        this.tasks = this.tasks.map(task => {
+          const normalized = {
+            reviewCycleCount: 0,
+            lastActiveStage: statusToStage(task.status) || 'backlog',
+            previousStatus: null,
+            ...task,
+          };
+
+          if (normalized.status === 'awaiting_human_review') {
+            normalized.status = 'done';
+          }
+          if (normalized.status === 'done') {
+            normalized.assignedTo = null;
+            normalized.workspacePath = null;
+          }
+          if (typeof normalized.reviewCycleCount !== 'number' || normalized.reviewCycleCount < 0) {
+            normalized.reviewCycleCount = 0;
+          }
+          if (!normalized.lastActiveStage) {
+            normalized.lastActiveStage = statusToStage(normalized.status) || 'backlog';
+          }
+          if (normalized.previousStatus === undefined) {
+            normalized.previousStatus = null;
+          }
+
+          return normalized;
+        });
       }
     } catch {
       this.tasks = [];
@@ -53,6 +89,9 @@ class TaskStore {
       planFeedback: null,
       blockedReason: null,
       workspacePath: null,
+      reviewCycleCount: 0,
+      lastActiveStage: 'backlog',
+      previousStatus: null,
       progress: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -76,8 +115,15 @@ class TaskStore {
   updateTask(id, updates) {
     const task = this.getTask(id);
     if (!task) return null;
+    const nextStatus = updates.status;
+    if (nextStatus) {
+      const nextStage = statusToStage(nextStatus);
+      if (nextStage) {
+        updates.lastActiveStage = nextStage;
+      }
+    }
     Object.assign(task, updates, { updatedAt: new Date().toISOString() });
-    if (updates.status) {
+    if (nextStatus) {
       task.log.push({ ts: new Date().toISOString(), message: `Status changed to ${updates.status}` });
     }
     this._save();
@@ -93,13 +139,31 @@ class TaskStore {
   restartRecovery() {
     const recoveryMap = {
       planning: 'backlog',
-      implementing: 'awaiting_approval',
-      review: 'awaiting_approval',
-      queued: 'awaiting_approval',
-      workspace_setup: 'awaiting_approval',
+      workspace_setup: 'backlog',
+      queued: 'queued',
+      implementing: 'queued',
+      review: 'review',
     };
     let changed = false;
     for (const task of this.tasks) {
+      if (!task.lastActiveStage) {
+        task.lastActiveStage = statusToStage(task.status) || 'backlog';
+        changed = true;
+      }
+      if (typeof task.reviewCycleCount !== 'number' || task.reviewCycleCount < 0) {
+        task.reviewCycleCount = 0;
+        changed = true;
+      }
+      if (task.status === 'awaiting_human_review') {
+        task.status = 'done';
+        task.assignedTo = null;
+        task.workspacePath = null;
+        task.lastActiveStage = 'done';
+        task.updatedAt = new Date().toISOString();
+        task.log.push({ ts: new Date().toISOString(), message: 'Restart recovery: normalized awaiting_human_review to done' });
+        changed = true;
+        continue;
+      }
       // Leave paused tasks as paused but clear assignedTo
       if (task.status === 'paused') {
         if (task.assignedTo) {
@@ -113,6 +177,7 @@ class TaskStore {
       if (resetTo) {
         task.status = resetTo;
         task.assignedTo = null;
+        task.lastActiveStage = statusToStage(resetTo) || task.lastActiveStage;
         task.updatedAt = new Date().toISOString();
         task.log.push({ ts: new Date().toISOString(), message: `Restart recovery: reset to ${resetTo}` });
         changed = true;

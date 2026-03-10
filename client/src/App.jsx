@@ -43,7 +43,7 @@ export default function App() {
 
   // Derived values
   const needAttention = useMemo(() =>
-    tasks.filter(t => t.status === 'awaiting_approval' || t.status === 'awaiting_human_review'),
+    tasks.filter(t => t.status === 'awaiting_approval' || t.status === 'blocked'),
     [tasks]
   );
   const totalTokens = useMemo(() =>
@@ -53,7 +53,7 @@ export default function App() {
   const activeCount = useMemo(() => agents.filter(a => a.status === 'active').length, [agents]);
   const blockedCount = useMemo(() => agents.filter(a => a.status === 'blocked').length, [agents]);
   const inFlight = useMemo(() =>
-    tasks.filter(t => !['backlog', 'done'].includes(t.status)),
+    tasks.filter(t => !['backlog', 'done', 'aborted'].includes(t.status)),
     [tasks]
   );
 

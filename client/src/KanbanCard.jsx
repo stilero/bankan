@@ -14,10 +14,10 @@ const STAGE_COLORS = {
   workspace_setup: 'var(--steel2)',
   implementing: 'var(--green)',
   review: '#A78BFA',
-  awaiting_human_review: '#60A5FA',
   blocked: 'var(--red)',
   paused: 'var(--amber)',
   backlog: 'var(--text3)',
+  aborted: 'var(--text3)',
   done: 'var(--green)',
 };
 
@@ -176,7 +176,7 @@ export default function KanbanCard({
         </div>
       )}
 
-      {task.status === 'awaiting_human_review' && task.prUrl && (
+      {task.status === 'done' && task.prUrl && (
         <div style={{ marginTop: 4 }}>
           <a
             href={task.prUrl}
@@ -197,7 +197,7 @@ export default function KanbanCard({
 
       {isBlocked && task.blockedReason && (
         <div style={{ marginTop: 4 }}>
-          <span style={{ fontSize: 10, color: 'var(--red)', fontWeight: 600 }}>BLOCKED</span>
+          <span style={{ fontSize: 10, color: 'var(--red)', fontWeight: 600 }}>AWAITING HUMAN INPUT</span>
           <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 6 }}>{task.blockedReason}</span>
         </div>
       )}
