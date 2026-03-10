@@ -31,6 +31,13 @@ function formatAge(isoDate) {
   return `${Math.floor(hours / 24)}d`;
 }
 
+function truncateText(text, maxLength = 72) {
+  if (typeof text !== 'string') return '';
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+  return normalized.slice(0, maxLength - 1).trimEnd() + '…';
+}
+
 export default function KanbanCard({
   task,
   columnColor,
@@ -198,7 +205,12 @@ export default function KanbanCard({
       {isBlocked && task.blockedReason && (
         <div style={{ marginTop: 4 }}>
           <span style={{ fontSize: 10, color: 'var(--red)', fontWeight: 600 }}>AWAITING HUMAN INPUT</span>
-          <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 6 }}>{task.blockedReason}</span>
+          <span
+            title={task.blockedReason}
+            style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 6 }}
+          >
+            {truncateText(task.blockedReason)}
+          </span>
         </div>
       )}
 

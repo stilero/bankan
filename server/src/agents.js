@@ -134,7 +134,26 @@ class Agent {
   write(data) {
     if (this.process) {
       this.process.write(data);
+      return true;
     }
+
+    const errorMsg = '\r\n[ERROR] Agent is not running. Resolve the blocker and retry the task before sending input.\r\n';
+    this.terminalBuffer.push(errorMsg);
+    if (this.terminalBuffer.length > 500) {
+      this.terminalBuffer.shift();
+    }
+    for (const ws of this.subscribers) {
+      try {
+        ws.send(JSON.stringify({
+          type: 'TERMINAL_DATA',
+          payload: { agentId: this.id, data: errorMsg },
+          ts: Date.now(),
+        }));
+      } catch {
+        this.subscribers.delete(ws);
+      }
+    }
+    return false;
   }
 
   kill() {

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -21,6 +21,211 @@ let signalTimer = null;
 
 function escapePrompt(text) {
   return text.replace(/'/g, "'\\''");
+}
+
+function buildCodexExecCommand(prompt, { captureLastMessage = false, sandbox = 'read-only' } = {}) {
+  const escapedPrompt = escapePrompt(prompt);
+  if (!captureLastMessage) {
+    return `codex exec --sandbox ${sandbox} '${escapedPrompt}'`;
+  }
+
+  return `tmpfile=$(mktemp); codex exec --sandbox ${sandbox} -o "$tmpfile" '${escapedPrompt}'; status=$?; printf '\\n=== CODEX_LAST_MESSAGE_FILE:%s ===\\n' "$tmpfile"; exit $status`;
+}
+
+function buildAgentCommand(cliTool, prompt, mode = 'interactive') {
+  if (cliTool === 'codex') {
+    if (mode === 'plan' || mode === 'review') {
+      return buildCodexExecCommand(prompt, { captureLastMessage: true, sandbox: 'read-only' });
+    }
+    if (mode === 'interactive') {
+      return buildCodexExecCommand(prompt, { captureLastMessage: true, sandbox: 'danger-full-access' });
+    }
+    return buildCodexExecCommand(prompt, { captureLastMessage: false, sandbox: 'read-only' });
+  }
+
+  if (mode === 'print') {
+    return `claude --print '${escapePrompt(prompt)}'`;
+  }
+
+  return `claude --dangerously-skip-permissions '${escapePrompt(prompt)}'`;
+}
+
+function getLastStructuredBlock(text, startMarker, endMarker) {
+  if (typeof text !== 'string' || !text) return null;
+  const endIdx = text.lastIndexOf(endMarker);
+  if (endIdx === -1) return null;
+  const startIdx = text.lastIndexOf(startMarker, endIdx);
+  if (startIdx === -1) return null;
+  return text.slice(startIdx, endIdx + endMarker.length);
+}
+
+function getCodexLastMessagePath(buffer) {
+  if (typeof buffer !== 'string' || !buffer) return null;
+  const matches = [...buffer.matchAll(/=== CODEX_LAST_MESSAGE_FILE:(.+?) ===/g)];
+  if (matches.length === 0) return null;
+  return matches[matches.length - 1][1].trim();
+}
+
+function readCapturedCodexMessage(buffer, { remove = true } = {}) {
+  const outputPath = getCodexLastMessagePath(buffer);
+  if (!outputPath || !existsSync(outputPath)) return null;
+
+  try {
+    return readFileSync(outputPath, 'utf-8');
+  } catch {
+    return null;
+  } finally {
+    if (remove) {
+      try { unlinkSync(outputPath); } catch { /* ignore */ }
+    }
+  }
+}
+
+function hasCodexStructuredOutput(buffer, endMarker) {
+  const captured = readCapturedCodexMessage(buffer, { remove: false });
+  return Boolean(captured && captured.includes(endMarker));
+}
+
+function getImplementationCompletionState(agent, taskId) {
+  const completionMarker = `=== IMPLEMENTATION COMPLETE ${taskId} ===`;
+  const buf = agent.getBufferString(100);
+
+  if (agent.cli === 'codex') {
+    const captured = readCapturedCodexMessage(buf, { remove: false });
+    if (captured) {
+      if (captured.includes(completionMarker)) {
+        return { complete: true, blockedReason: null };
+      }
+      const blockedMatch = captured.match(/=== BLOCKED: (.+?) ===/);
+      return { complete: false, blockedReason: blockedMatch ? blockedMatch[1] : null };
+    }
+
+    return { complete: false, blockedReason: null };
+  }
+
+  if (buf.includes(completionMarker)) {
+    return { complete: true, blockedReason: null };
+  }
+
+  const blockedMatch = buf.match(/=== BLOCKED: (.+?) ===/);
+  return { complete: false, blockedReason: blockedMatch ? blockedMatch[1] : null };
+}
+
+function summarizeProcessError(prefix, err) {
+  const raw = typeof err?.message === 'string' ? err.message : String(err || '');
+  const normalized = raw.replace(/\s+/g, ' ').trim();
+
+  const graphqlMatch = normalized.match(/GraphQL:\s*([^]+?)(?:\(createPullRequest\)|$)/i);
+  if (graphqlMatch) {
+    return `${prefix}: ${graphqlMatch[1].trim()}`;
+  }
+
+  const failedMatch = normalized.match(/failed:\s*(.+)$/i);
+  if (failedMatch) {
+    return `${prefix}: ${failedMatch[1].trim()}`;
+  }
+
+  const compact = normalized.slice(0, 240);
+  return `${prefix}: ${compact}`;
+}
+
+function extractSection(text, label, nextLabels = []) {
+  if (typeof text !== 'string' || !text) return '';
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const nextPattern = nextLabels.length > 0
+    ? `(?=${nextLabels.map(item => item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`
+    : '$';
+  const regex = new RegExp(`${escapedLabel}\\s*([\\s\\S]*?)${nextPattern}`, 'i');
+  const match = text.match(regex);
+  return match ? match[1].trim() : '';
+}
+
+function parseBulletList(sectionText) {
+  return (sectionText || '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.startsWith('- '))
+    .map(line => line.slice(2).trim())
+    .filter(Boolean);
+}
+
+function extractSingleLine(text, label) {
+  if (typeof text !== 'string' || !text) return '';
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = text.match(new RegExp(`${escapedLabel}\\s*(.+)`, 'i'));
+  return match ? match[1].trim() : '';
+}
+
+function buildPullRequestBody(task) {
+  const planSummary = extractSingleLine(task.plan, 'SUMMARY:');
+  const filesToModify = parseBulletList(
+    extractSection(task.plan, 'FILES_TO_MODIFY:', ['STEPS:', 'TESTS_NEEDED:', 'RISKS:'])
+  );
+  const testsNeeded = parseBulletList(
+    extractSection(task.plan, 'TESTS_NEEDED:', ['RISKS:', '=== PLAN END ==='])
+  );
+  const risks = parseBulletList(
+    extractSection(task.plan, 'RISKS:', ['=== PLAN END ==='])
+  );
+
+  const reviewVerdict = extractSingleLine(task.review, 'VERDICT:') || 'N/A';
+  const reviewSummary = extractSingleLine(task.review, 'SUMMARY:');
+  const criticalIssues = parseBulletList(
+    extractSection(task.review, 'CRITICAL_ISSUES:', ['MINOR_ISSUES:', 'SUMMARY:', '=== REVIEW END ==='])
+  ).filter(item => item.toLowerCase() !== 'none');
+  const minorIssues = parseBulletList(
+    extractSection(task.review, 'MINOR_ISSUES:', ['SUMMARY:', '=== REVIEW END ==='])
+  ).filter(item => item.toLowerCase() !== 'none');
+
+  const sections = [
+    `## Summary\n\n${planSummary || task.title}`,
+  ];
+
+  if (filesToModify.length > 0) {
+    sections.push(`## Key Changes\n\n${filesToModify.slice(0, 6).map(item => `- ${item}`).join('\n')}`);
+  }
+
+  if (testsNeeded.length > 0) {
+    sections.push(`## Validation\n\n${testsNeeded.map(item => `- ${item}`).join('\n')}`);
+  }
+
+  const reviewLines = [
+    `- Verdict: ${reviewVerdict}`,
+  ];
+  if (reviewSummary) reviewLines.push(`- Summary: ${reviewSummary}`);
+  if (criticalIssues.length > 0) reviewLines.push(`- Critical issues: ${criticalIssues.join('; ')}`);
+  if (minorIssues.length > 0) reviewLines.push(`- Minor issues: ${minorIssues.join('; ')}`);
+  sections.push(`## Review\n\n${reviewLines.join('\n')}`);
+
+  if (risks.length > 0) {
+    sections.push(`## Risks\n\n${risks.map(item => `- ${item}`).join('\n')}`);
+  }
+
+  return sections.join('\n\n');
+}
+
+function getAuthBlockedReason(buffer, cli = '') {
+  const text = typeof buffer === 'string' ? buffer : '';
+  if (!text) return null;
+
+  const authPatterns = [
+    /not logged in[^\n\r]*/i,
+    /please run\s+\/login[^\n\r]*/i,
+    /run\s+\/login[^\n\r]*/i,
+    /authentication required[^\n\r]*/i,
+    /login required[^\n\r]*/i,
+  ];
+
+  for (const pattern of authPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const detail = match[0].replace(/\s+/g, ' ').trim();
+      const cliLabel = cli || 'agent CLI';
+      return `${cliLabel} authentication required: ${detail}`;
+    }
+  }
+
+  return null;
 }
 
 function buildPlannerPrompt(task) {
@@ -80,6 +285,7 @@ ${task.plan}
 Instructions:
 - You are already on branch ${task.branch} in ${repoDir}
 - Follow the plan step by step
+- If required tools or dependencies are missing in the workspace, install them before continuing
 - Commit after each logical unit of work with descriptive commit messages
 - Run existing tests after implementation to verify nothing broke
 - When fully complete, output this exact string on its own line:
@@ -129,6 +335,38 @@ async function setupWorkspace(task) {
 
   if (existingWorkspace && existsSync(existingWorkspace)) {
     return existingWorkspace;
+  }
+
+  if (existsSync(workspaceRoot)) {
+    try {
+      const entries = readdirSync(workspaceRoot);
+      if (entries.length === 0) {
+        await rm(workspaceRoot, { recursive: true, force: true });
+      } else if (existsSync(join(workspaceRoot, '.git'))) {
+        try {
+          const wsGit = simpleGit(workspaceRoot);
+          const remotes = await wsGit.getRemotes(true);
+          const origin = remotes.find(remote => remote.name === 'origin');
+          const fetchUrl = origin?.refs?.fetch || '';
+          const pushUrl = origin?.refs?.push || '';
+
+          if ([fetchUrl, pushUrl].includes(task.repoPath)) {
+            await wsGit.addConfig('user.email', 'ai-factory@local');
+            await wsGit.addConfig('user.name', 'AI Factory');
+            try { await wsGit.fetch('origin'); } catch { /* ignore */ }
+            return workspaceRoot;
+          }
+        } catch {
+          // Fall through to remove and recreate the workspace.
+        }
+
+        await rm(workspaceRoot, { recursive: true, force: true });
+      } else {
+        await rm(workspaceRoot, { recursive: true, force: true });
+      }
+    } catch {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
   }
 
   mkdirSync(workspaceRoot, { recursive: true });
@@ -209,7 +447,7 @@ async function startPlanning(task) {
   planner.taskLabel = `Planning: ${task.title}`;
 
   const prompt = buildPlannerPrompt({ ...task, workspacePath });
-  const cmd = `claude --print '${escapePrompt(prompt)}'`;
+  const cmd = buildAgentCommand(planner.cli, prompt, 'plan');
   const plannerCwd = workspacePath;
   const ok = planner.spawn(plannerCwd, cmd);
   if (!ok) {
@@ -232,13 +470,12 @@ function onPlanComplete(agentId, taskId) {
   const planner = agentManager.get(agentId);
   if (!planner) return;
   const bufStr = planner.getBufferString(100);
+  const captured = planner.cli === 'codex' ? readCapturedCodexMessage(bufStr) : null;
+  const sourceText = captured || bufStr;
 
   // Extract plan text
-  const startIdx = bufStr.indexOf('=== PLAN START ===');
-  const endIdx = bufStr.indexOf('=== PLAN END ===');
-  if (startIdx === -1 || endIdx === -1) return;
-
-  const planText = bufStr.slice(startIdx, endIdx + '=== PLAN END ==='.length);
+  const planText = getLastStructuredBlock(sourceText, '=== PLAN START ===', '=== PLAN END ===');
+  if (!planText) return;
 
   // Parse branch name
   const branchMatch = planText.match(/BRANCH:\s*(.+)/);
@@ -314,13 +551,7 @@ async function startImplementation(task) {
 
   const cliTool = agent.cli;
   const prompt = buildImplementorPrompt(task, workspacePath);
-
-  let cmd;
-  if (cliTool === 'codex') {
-    cmd = `codex --quiet '${escapePrompt(prompt)}'`;
-  } else {
-    cmd = `claude --dangerously-skip-permissions '${escapePrompt(prompt)}'`;
-  }
+  const cmd = buildAgentCommand(cliTool, prompt, 'interactive');
 
   const ok = agent.spawn(workspacePath, cmd);
   if (!ok) {
@@ -382,7 +613,7 @@ function startReview(task) {
   reviewer.status = 'active';
 
   const prompt = buildReviewerPrompt(task);
-  const cmd = `claude --print '${escapePrompt(prompt)}'`;
+  const cmd = buildAgentCommand(reviewer.cli, prompt, 'review');
   const ok = reviewer.spawn(task.workspacePath, cmd);
   if (!ok) {
     store.updateTask(task.id, {
@@ -404,11 +635,10 @@ async function onReviewComplete(agentId, taskId) {
   if (!reviewer) return;
   const bufStr = reviewer.getBufferString(100);
 
-  const startIdx = bufStr.indexOf('=== REVIEW START ===');
-  const endIdx = bufStr.indexOf('=== REVIEW END ===');
-  if (startIdx === -1 || endIdx === -1) return;
-
-  const reviewText = bufStr.slice(startIdx, endIdx + '=== REVIEW END ==='.length);
+  const captured = reviewer.cli === 'codex' ? readCapturedCodexMessage(bufStr) : null;
+  const sourceText = captured || bufStr;
+  const reviewText = getLastStructuredBlock(sourceText, '=== REVIEW START ===', '=== REVIEW END ===');
+  if (!reviewText) return;
   const verdictMatch = reviewText.match(/VERDICT:\s*(PASS|FAIL)/i);
   const verdict = verdictMatch ? verdictMatch[1].toUpperCase() : 'FAIL';
 
@@ -458,10 +688,11 @@ async function createPR(taskId) {
     }
 
     await simpleGit(task.workspacePath).push('origin', task.branch);
+    const prBody = buildPullRequestBody(task);
     const prUrl = execFileSync('gh', [
       'pr', 'create',
       '--title', `[${task.id}] ${task.title}`,
-      '--body', `## Plan\n\n${task.plan}\n\n## Review\n\n${task.review || 'N/A'}`,
+      '--body', prBody,
       '--head', task.branch,
       '--base', 'main',
     ], { cwd: task.workspacePath, encoding: 'utf-8' }).trim();
@@ -474,7 +705,7 @@ async function createPR(taskId) {
     console.error(`PR creation error:`, err.message);
     store.updateTask(taskId, {
       status: 'blocked',
-      blockedReason: `PR finalization failed: ${err.message}`,
+      blockedReason: summarizeProcessError('PR finalization failed', err),
       assignedTo: null,
     });
     bus.emit('task:blocked', { taskId, reason: 'PR finalization failed' });
@@ -512,7 +743,10 @@ function checkSignals() {
   for (const agent of agentManager.getAgentsByRole('plan')) {
     if (agent.status === 'active' && agent.currentTask) {
       const buf = agent.getBufferString(50);
-      if (buf.includes('=== PLAN END ===')) {
+      const planReady = agent.cli === 'codex'
+        ? hasCodexStructuredOutput(buf, '=== PLAN END ===')
+        : buf.includes('=== PLAN END ===');
+      if (planReady) {
         onPlanComplete(agent.id, agent.currentTask);
       } else {
         // Live plan streaming
@@ -531,11 +765,12 @@ function checkSignals() {
   for (const agent of agentManager.getAgentsByRole('imp')) {
     if (agent.status === 'active' && agent.currentTask) {
       const buf = agent.getBufferString(50);
-      if (buf.includes(`=== IMPLEMENTATION COMPLETE ${agent.currentTask} ===`)) {
+      const implementationState = getImplementationCompletionState(agent, agent.currentTask);
+      if (implementationState.complete) {
         onImplementationComplete(agent.id);
       } else {
         const trustMatch = buf.match(/trust the files|Do you trust|allow.*to run in this/i);
-        if (trustMatch && !buf.includes(`=== IMPLEMENTATION COMPLETE ${agent.currentTask} ===`)) {
+        if (trustMatch && !implementationState.complete) {
           store.updateTask(agent.currentTask, {
             status: 'blocked',
             blockedReason: 'Agent is awaiting user input — open the terminal and respond to the prompt',
@@ -545,9 +780,8 @@ function checkSignals() {
           bus.emit('task:blocked', { taskId: agent.currentTask, reason: 'Awaiting user input' });
           bus.emit('agent:updated', agent.getStatus());
         } else {
-          const blockedMatch = buf.match(/=== BLOCKED: (.+?) ===/);
-          if (blockedMatch) {
-            const reason = blockedMatch[1];
+          if (implementationState.blockedReason) {
+            const reason = implementationState.blockedReason;
             store.updateTask(agent.currentTask, {
               status: 'blocked',
               blockedReason: reason,
@@ -572,7 +806,10 @@ function checkSignals() {
   for (const agent of agentManager.getAgentsByRole('rev')) {
     if (agent.status === 'active' && agent.currentTask) {
       const buf = agent.getBufferString(50);
-      if (buf.includes('=== REVIEW END ===')) {
+      const reviewReady = agent.cli === 'codex'
+        ? hasCodexStructuredOutput(buf, '=== REVIEW END ===')
+        : buf.includes('=== REVIEW END ===');
+      if (reviewReady) {
         onReviewComplete(agent.id, agent.currentTask);
       } else if (agent.startedAt && Date.now() - agent.startedAt > REVIEWER_TIMEOUT) {
         markBlocked(agent, 'Reviewer timed out');
@@ -653,20 +890,57 @@ function pollLoop() {
       agent.taskLabel = '';
       bus.emit('agent:updated', agent.getStatus());
       const task = store.getTask(taskId);
-    if (task && !['blocked', 'done', 'aborted', 'backlog', 'paused', 'workspace_setup'].includes(task.status)) {
+      if (task && !['blocked', 'done', 'aborted', 'backlog', 'paused', 'workspace_setup'].includes(task.status)) {
         const buf = agent.getBufferString(100);
-        if (buf.includes('=== PLAN END ===')) {
-          onPlanComplete(agent.id, taskId);
-        } else if (buf.includes(`=== IMPLEMENTATION COMPLETE ${taskId} ===`)) {
-          onImplementationComplete(agent.id);
-        } else if (buf.includes('=== REVIEW END ===')) {
-          onReviewComplete(agent.id, taskId);
+        const isPlanner = agent.id.startsWith('plan-');
+        const isImplementor = agent.id.startsWith('imp-');
+        const isReviewer = agent.id.startsWith('rev-');
+
+        if (isPlanner) {
+          const planReady = agent.cli === 'codex'
+            ? hasCodexStructuredOutput(buf, '=== PLAN END ===')
+            : buf.includes('=== PLAN END ===');
+          if (planReady) {
+            onPlanComplete(agent.id, taskId);
+          } else {
+            store.updateTask(taskId, {
+              status: 'blocked',
+              blockedReason: 'Agent process exited unexpectedly',
+              assignedTo: null,
+            });
+          }
+        } else if (isImplementor) {
+          const implementationState = getImplementationCompletionState(agent, taskId);
+          if (implementationState.complete) {
+            onImplementationComplete(agent.id);
+          } else if (implementationState.blockedReason) {
+            store.updateTask(taskId, {
+              status: 'blocked',
+              blockedReason: implementationState.blockedReason,
+              assignedTo: null,
+            });
+          } else {
+            store.updateTask(taskId, {
+              status: 'blocked',
+              blockedReason: 'Agent process exited unexpectedly',
+              assignedTo: null,
+            });
+          }
+        } else if (isReviewer) {
+          const reviewReady = agent.cli === 'codex'
+            ? hasCodexStructuredOutput(buf, '=== REVIEW END ===')
+            : buf.includes('=== REVIEW END ===');
+          if (reviewReady) {
+            onReviewComplete(agent.id, taskId);
+          } else {
+            store.updateTask(taskId, {
+              status: 'blocked',
+              blockedReason: 'Agent process exited unexpectedly',
+              assignedTo: null,
+            });
+          }
         } else {
-          store.updateTask(taskId, {
-            status: 'blocked',
-            blockedReason: 'Agent process exited unexpectedly',
-            assignedTo: null,
-          });
+          onPlanComplete(agent.id, taskId);
         }
       }
     }
@@ -693,20 +967,39 @@ bus.on('plan:rejected', ({ taskId, feedback }) => rejectPlan(taskId, feedback));
 
 bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
   const agent = agentManager.get(agentId);
+  let authBlockedReason = null;
   if (agent) {
     const buf = agent.getBufferString(100);
-    // Check if agent actually completed — process may have exited before checkSignals ran
-    if (buf.includes('=== PLAN END ===')) {
-      onPlanComplete(agentId, taskId);
-      return;
-    }
-    if (buf.includes(`=== IMPLEMENTATION COMPLETE ${taskId} ===`)) {
-      onImplementationComplete(agentId);
-      return;
-    }
-    if (buf.includes('=== REVIEW END ===')) {
-      onReviewComplete(agentId, taskId);
-      return;
+    authBlockedReason = getAuthBlockedReason(buf, agent.cli);
+    const isPlanner = agentId.startsWith('plan-');
+    const isImplementor = agentId.startsWith('imp-');
+    const isReviewer = agentId.startsWith('rev-');
+
+    if (isPlanner) {
+      const planReady = agent.cli === 'codex'
+        ? hasCodexStructuredOutput(buf, '=== PLAN END ===')
+        : buf.includes('=== PLAN END ===');
+      if (planReady) {
+        onPlanComplete(agentId, taskId);
+        return;
+      }
+    } else if (isImplementor) {
+      const implementationState = getImplementationCompletionState(agent, taskId);
+      if (implementationState.complete) {
+        onImplementationComplete(agentId);
+        return;
+      }
+      if (implementationState.blockedReason) {
+        authBlockedReason = implementationState.blockedReason;
+      }
+    } else if (isReviewer) {
+      const reviewReady = agent.cli === 'codex'
+        ? hasCodexStructuredOutput(buf, '=== REVIEW END ===')
+        : buf.includes('=== REVIEW END ===');
+      if (reviewReady) {
+        onReviewComplete(agentId, taskId);
+        return;
+      }
     }
     console.error(`[unexpected-exit] agent=${agentId} task=${taskId} last output:\n${buf.slice(-500)}`);
     agent.currentTask = null;
@@ -718,7 +1011,7 @@ bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
   if (task && !['blocked', 'done', 'aborted', 'backlog', 'paused'].includes(task.status)) {
     store.updateTask(taskId, {
       status: 'blocked',
-      blockedReason: 'Agent process exited unexpectedly',
+      blockedReason: authBlockedReason || 'Agent process exited unexpectedly',
       assignedTo: null,
     });
   }

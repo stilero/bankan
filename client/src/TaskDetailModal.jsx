@@ -21,6 +21,13 @@ const STAGE_COLORS = {
   done: 'var(--green)',
 };
 
+function truncateText(text, maxLength = 120) {
+  if (typeof text !== 'string') return '';
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+  return normalized.slice(0, maxLength - 1).trimEnd() + '…';
+}
+
 export default function TaskDetailModal({
   task,
   onClose,
@@ -249,7 +256,12 @@ export default function TaskDetailModal({
             {task.blockedReason && (
               <div style={{ marginBottom: 14 }}>
                 <div style={labelStyle}>Blocked Reason</div>
-                <div style={{ fontSize: 12, color: 'var(--red)' }}>{task.blockedReason}</div>
+                <div
+                  title={task.blockedReason}
+                  style={{ fontSize: 12, color: 'var(--red)', lineHeight: 1.5 }}
+                >
+                  {truncateText(task.blockedReason)}
+                </div>
               </div>
             )}
 

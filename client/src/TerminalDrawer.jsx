@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -21,6 +21,25 @@ function formatUptime(seconds) {
 export default function TerminalDrawer({ agent, subscribeTerminal, injectMessage, sendRaw, onClose }) {
   const containerRef = useRef(null);
   const termRef = useRef(null);
+  const [height, setHeight] = useState(420);
+  const [inputValue, setInputValue] = useState('');
+  const isDragging = useRef(false);
+
+  const onDragStart = (e) => {
+    const startY = e.clientY;
+    const startH = height;
+    isDragging.current = true;
+    const onMove = (mv) => {
+      setHeight(Math.max(180, Math.min(window.innerHeight * 0.8, startH - (mv.clientY - startY))));
+    };
+    const onUp = () => {
+      isDragging.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
 
   useEffect(() => {
     if (!containerRef.current || !agent) return;
@@ -82,9 +101,9 @@ export default function TerminalDrawer({ agent, subscribeTerminal, injectMessage
   }, [agent?.id]);
 
   const handleInject = (e) => {
-    if (e.key === 'Enter' && e.target.value.trim()) {
-      injectMessage(agent.id, e.target.value.trim());
-      e.target.value = '';
+    if (e.key === 'Enter' && inputValue.trim()) {
+      injectMessage(agent.id, inputValue.trim());
+      setInputValue('');
     }
   };
 
@@ -94,13 +113,17 @@ export default function TerminalDrawer({ agent, subscribeTerminal, injectMessage
 
   return (
     <div style={{
-      height: 280,
+      height,
       display: 'flex',
       flexDirection: 'column',
       background: 'var(--bg1)',
       borderTop: '1px solid var(--border)',
-      transition: 'height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
     }}>
+      {/* Drag handle */}
+      <div
+        onMouseDown={onDragStart}
+        style={{ height: 6, cursor: 'ns-resize', background: 'transparent', borderTop: '2px solid var(--border)', flexShrink: 0 }}
+      />
       {/* Header bar */}
       <div style={{
         height: 36, minHeight: 36,
@@ -154,7 +177,10 @@ export default function TerminalDrawer({ agent, subscribeTerminal, injectMessage
       <div style={{ padding: '6px 12px', borderTop: '1px solid var(--border)' }}>
         <input
           type="text"
+          value={inputValue}
           placeholder="Send message to agent..."
+          disabled={agent.status !== 'active'}
+          onChange={e => setInputValue(e.target.value)}
           onKeyDown={handleInject}
           style={{
             width: '100%',
@@ -164,8 +190,14 @@ export default function TerminalDrawer({ agent, subscribeTerminal, injectMessage
             padding: '5px 10px',
             fontSize: 12,
             caretColor: agentColor,
+            opacity: agent.status === 'active' ? 1 : 0.55,
           }}
         />
+        {agent.status !== 'active' && (
+          <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text3)' }}>
+            Agent input is unavailable because the session is not running. Resolve the blocker, then retry the task.
+          </div>
+        )}
       </div>
     </div>
   );

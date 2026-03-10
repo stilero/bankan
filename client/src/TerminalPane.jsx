@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -8,6 +8,7 @@ export default function TerminalPane({ agent, subscribeTerminal, injectMessage, 
   const termRef = useRef(null);
   const containerRef = useRef(null);
   const inputRef = useRef(null);
+  const [inputValue, setInputValue] = useState('');
 
   useEffect(() => {
     if (!containerRef.current || !agent) return;
@@ -73,9 +74,9 @@ export default function TerminalPane({ agent, subscribeTerminal, injectMessage, 
   }, [agent?.id]);
 
   const handleInject = (e) => {
-    if (e.key === 'Enter' && e.target.value.trim()) {
-      injectMessage(agent.id, e.target.value.trim());
-      e.target.value = '';
+    if (e.key === 'Enter' && inputValue.trim()) {
+      injectMessage(agent.id, inputValue.trim());
+      setInputValue('');
     }
   };
 
@@ -159,7 +160,10 @@ export default function TerminalPane({ agent, subscribeTerminal, injectMessage, 
         <input
           ref={inputRef}
           type="text"
+          value={inputValue}
           placeholder="Send message to agent..."
+          disabled={agent.status !== 'active'}
+          onChange={e => setInputValue(e.target.value)}
           onKeyDown={handleInject}
           style={{
             width: '100%',
@@ -169,8 +173,14 @@ export default function TerminalPane({ agent, subscribeTerminal, injectMessage, 
             padding: '6px 10px',
             fontSize: 12,
             caretColor: agentColor,
+            opacity: agent.status === 'active' ? 1 : 0.55,
           }}
         />
+        {agent.status !== 'active' && (
+          <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text3)' }}>
+            Agent input is unavailable because the session is not running. Resolve the blocker, then retry the task.
+          </div>
+        )}
       </div>
     </div>
   );

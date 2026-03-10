@@ -18,6 +18,30 @@ function statusToStage(status) {
   return null;
 }
 
+function isLikelyRemoteRepoRef(value) {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  return /^https?:\/\//i.test(trimmed) || /^git@[^:]+:.+/i.test(trimmed) || /^ssh:\/\//i.test(trimmed);
+}
+
+function isLegacyPlannerPathBlocker(task) {
+  if (task.status !== 'blocked' || task.workspacePath) return false;
+  if (typeof task.blockedReason !== 'string' || !task.blockedReason.trim()) return false;
+
+  const reason = task.blockedReason.trim();
+
+  if (reason.startsWith('Invalid repository path:')) {
+    return isLikelyRemoteRepoRef(task.repoPath);
+  }
+
+  if (reason.startsWith('Invalid planner working directory:')) {
+    const blockedPath = reason.slice('Invalid planner working directory:'.length).trim();
+    return blockedPath === task.repoPath && isLikelyRemoteRepoRef(task.repoPath);
+  }
+
+  return false;
+}
+
 class TaskStore {
   constructor() {
     this.tasks = [];
@@ -180,6 +204,20 @@ class TaskStore {
         task.lastActiveStage = statusToStage(resetTo) || task.lastActiveStage;
         task.updatedAt = new Date().toISOString();
         task.log.push({ ts: new Date().toISOString(), message: `Restart recovery: reset to ${resetTo}` });
+        changed = true;
+      }
+
+      if (isLegacyPlannerPathBlocker(task)) {
+        task.status = 'backlog';
+        task.assignedTo = null;
+        task.blockedReason = null;
+        task.lastActiveStage = 'backlog';
+        task.previousStatus = null;
+        task.updatedAt = new Date().toISOString();
+        task.log.push({
+          ts: new Date().toISOString(),
+          message: 'Restart recovery: reset legacy planner path blocker to backlog',
+        });
         changed = true;
       }
     }

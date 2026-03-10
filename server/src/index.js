@@ -15,11 +15,17 @@ app.use(cors());
 app.use(express.json());
 
 function stageToResumeStatus(task) {
-  if (task.previousStatus === 'blocked') {
-    return 'blocked';
-  }
-  if (['awaiting_approval'].includes(task.previousStatus)) {
-    return 'awaiting_approval';
+  const previousStatus = task.previousStatus;
+  if (previousStatus) {
+    if (previousStatus === 'blocked') {
+      return 'blocked';
+    }
+    if (previousStatus === 'awaiting_approval') {
+      return 'awaiting_approval';
+    }
+    if (['workspace_setup', 'planning', 'backlog', 'queued', 'implementing', 'review'].includes(previousStatus)) {
+      return previousStatus;
+    }
   }
   if (task.lastActiveStage === 'review') {
     return 'review';
