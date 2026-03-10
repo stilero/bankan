@@ -369,7 +369,8 @@ function AddTaskModal({ repos, onClose, onSubmit }) {
 // --- Settings Modal ---
 function SettingsModal({ settings, onClose, onApply }) {
   const [local, setLocal] = useState(() => JSON.parse(JSON.stringify(settings)));
-  const [showDirPicker, setShowDirPicker] = useState(false);
+  const [newRepoPath, setNewRepoPath] = useState('');
+  const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
 
   const updateRole = (role, field, value) => {
     setLocal(prev => {
@@ -379,11 +380,21 @@ function SettingsModal({ settings, onClose, onApply }) {
     });
   };
 
-  const updateReposDir = (value) => {
-    setLocal(prev => ({ ...prev, reposDir: value }));
+  const addRepo = () => {
+    const path = newRepoPath.trim();
+    if (!path) return;
+    setLocal(prev => {
+      if ((prev.repos || []).includes(path)) return prev;
+      return { ...prev, repos: [...(prev.repos || []), path] };
+    });
+    setNewRepoPath('');
   };
 
-  const isValid = (local.reposDir || '').trim().length > 0 &&
+  const removeRepo = (path) => {
+    setLocal(prev => ({ ...prev, repos: (prev.repos || []).filter(r => r !== path) }));
+  };
+
+  const isValid = Boolean(local.workspaceRoot?.trim()) &&
     Object.values(local.agents).every(cfg => cfg.max >= 1 && cfg.max <= 10);
 
   const roles = [
@@ -426,37 +437,85 @@ function SettingsModal({ settings, onClose, onApply }) {
             fontSize: 11, fontWeight: 600, color: 'var(--text2)',
             letterSpacing: 1, marginBottom: 8,
           }}>
-            REPOS DIRECTORY
+            WORKSPACE FOLDER
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <div style={{
-              flex: 1, padding: '6px 8px', fontSize: 12,
-              background: 'var(--bg)', border: '1px solid var(--border)',
-              borderRadius: 4, color: local.reposDir ? 'var(--text)' : 'var(--text3)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {local.reposDir || '/path/to/repos'}
-            </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+            <input
+              type="text"
+              value={local.workspaceRoot || ''}
+              onChange={e => setLocal(prev => ({ ...prev, workspaceRoot: e.target.value }))}
+              placeholder="/path/to/workspaces"
+              style={{ flex: 1, fontSize: 12, padding: '6px 10px' }}
+            />
             <button
-              onClick={() => setShowDirPicker(true)}
+              onClick={() => setShowWorkspacePicker(true)}
               style={{
-                padding: '6px 12px', fontSize: 12,
+                fontSize: 12, padding: '6px 10px',
                 background: 'var(--bg2)', border: '1px solid var(--border)',
-                borderRadius: 4, color: 'var(--text)', flexShrink: 0,
+                borderRadius: 4, color: 'var(--text)', cursor: 'pointer',
               }}
             >
-              Browse...
+              Browse
             </button>
           </div>
-          {showDirPicker && (
+          <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+            Local folder used when the app creates per-task working copies.
+          </div>
+          {showWorkspacePicker && (
             <DirectoryPicker
-              initialPath={local.reposDir || ''}
-              onSelect={(path) => { updateReposDir(path); setShowDirPicker(false); }}
-              onClose={() => setShowDirPicker(false)}
+              initialPath={local.workspaceRoot || ''}
+              onSelect={(path) => {
+                setLocal(prev => ({ ...prev, workspaceRoot: path }));
+                setShowWorkspacePicker(false);
+              }}
+              onClose={() => setShowWorkspacePicker(false)}
             />
           )}
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
-            Directory containing git repositories. Subdirectories with .git folders will be discovered automatically.
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <div style={{
+            fontSize: 11, fontWeight: 600, color: 'var(--text2)',
+            letterSpacing: 1, marginBottom: 8,
+          }}>
+            REPOSITORIES
+          </div>
+          {(local.repos || []).map(r => (
+            <div key={r} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <span
+                style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                title={r}
+              >
+                {r}
+              </span>
+              <button onClick={() => removeRepo(r)} style={{ color: 'var(--red)', fontSize: 12, flexShrink: 0 }}>×</button>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <input
+              type="text"
+              value={newRepoPath}
+              onChange={e => setNewRepoPath(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') addRepo(); }}
+              placeholder="https://github.com/org/repo"
+              style={{ flex: 1, fontSize: 12, padding: '6px 10px' }}
+            />
+            <button
+              onClick={addRepo}
+              disabled={!newRepoPath.trim()}
+              style={{
+                fontSize: 12, padding: '6px 10px',
+                background: newRepoPath.trim() ? 'var(--bg2)' : 'var(--bg)',
+                border: '1px solid var(--border)',
+                borderRadius: 4, color: newRepoPath.trim() ? 'var(--text)' : 'var(--text3)',
+                cursor: newRepoPath.trim() ? 'pointer' : 'default',
+              }}
+            >
+              Add Repo
+            </button>
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>
+            Add repository URLs for task assignment. The workspace folder above controls where the app checks them out locally.
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -6,6 +6,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, '..', '..');
 const DATA_DIR = join(rootDir, '.data');
 const SETTINGS_FILE = join(DATA_DIR, 'config.json');
+
+export const DEFAULT_WORKSPACES_DIR = join(DATA_DIR, 'workspaces');
 
 let envVars = {};
 try {
@@ -31,24 +33,15 @@ function get(key, fallback = '') {
 const config = {
   PORT: parseInt(get('PORT', '3001'), 10),
   REPOS: get('REPOS').split(',').map(s => s.trim()).filter(Boolean),
-  GITHUB_REPO: get('GITHUB_REPO'),
-  GITHUB_TOKEN: get('GITHUB_TOKEN'),
   IMPLEMENTOR_1_CLI: get('IMPLEMENTOR_1_CLI', 'claude'),
   IMPLEMENTOR_2_CLI: get('IMPLEMENTOR_2_CLI', 'codex'),
   ROOT_DIR: rootDir,
 };
 
-// Derive default reposDir from the first REPOS entry's parent, or project root
-function defaultReposDir() {
-  if (config.REPOS.length > 0) {
-    return dirname(config.REPOS[0]);
-  }
-  return rootDir;
-}
-
 export function getDefaults() {
   return {
-    reposDir: defaultReposDir(),
+    repos: config.REPOS.length > 0 ? [...config.REPOS] : [],
+    workspaceRoot: DEFAULT_WORKSPACES_DIR,
     agents: {
       planners:     { max: 4, cli: 'claude' },
       implementors: { max: 8, cli: config.IMPLEMENTOR_1_CLI },
@@ -62,9 +55,11 @@ export function loadSettings() {
     if (existsSync(SETTINGS_FILE)) {
       const data = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'));
       const defaults = getDefaults();
-      // Ensure reposDir exists
-      if (!data.reposDir) {
-        data.reposDir = defaults.reposDir;
+      if (!Array.isArray(data.repos)) data.repos = defaults.repos;
+      if (typeof data.workspaceRoot !== 'string' || !data.workspaceRoot.trim()) {
+        data.workspaceRoot = typeof data.reposDir === 'string' && data.reposDir.trim()
+          ? data.reposDir
+          : defaults.workspaceRoot;
       }
       // Merge agent defaults
       for (const role of Object.keys(defaults.agents)) {
@@ -95,8 +90,12 @@ export function validateSettings(settings) {
     return ['Missing agents configuration'];
   }
 
-  if (typeof settings.reposDir !== 'string' || !settings.reposDir.trim()) {
-    errors.push('Repos directory must be a non-empty string');
+  if (typeof settings.workspaceRoot !== 'string' || !settings.workspaceRoot.trim()) {
+    errors.push('workspaceRoot is required');
+  }
+
+  if (!Array.isArray(settings.repos)) {
+    errors.push('repos must be an array');
   }
 
   const validClis = ['claude', 'codex'];
@@ -116,47 +115,8 @@ export function validateSettings(settings) {
   return errors;
 }
 
-// Discover git repos in a directory
-export function discoverRepos(dir) {
-  if (!dir || !existsSync(dir)) return [];
-  try {
-    const entries = readdirSync(dir);
-    const repos = [];
-    for (const entry of entries) {
-      if (entry.startsWith('.')) continue;
-      const fullPath = join(dir, entry);
-      try {
-        if (!statSync(fullPath).isDirectory()) continue;
-        const gitDir = join(fullPath, '.git');
-        if (existsSync(gitDir)) {
-          repos.push(fullPath);
-        }
-      } catch {
-        // Skip entries we can't stat
-      }
-    }
-    return repos.sort();
-  } catch {
-    return [];
-  }
-}
-
-// Current repos list — discovered from reposDir setting, falling back to env REPOS
-let currentRepos = config.REPOS.length > 0 ? [...config.REPOS] : [];
-
-export function refreshRepos(reposDir) {
-  const discovered = discoverRepos(reposDir);
-  currentRepos = discovered.length > 0 ? discovered : config.REPOS;
-}
-
-export function getRepos() {
-  return currentRepos;
-}
-
-// Initialize repos from saved settings
-const initialSettings = loadSettings();
-if (initialSettings.reposDir) {
-  refreshRepos(initialSettings.reposDir);
+export function getWorkspacesDir(settings = loadSettings()) {
+  return settings.workspaceRoot || settings.reposDir || DEFAULT_WORKSPACES_DIR;
 }
 
 export default config;

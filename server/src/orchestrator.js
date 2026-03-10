@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { simpleGit } from 'simple-git';
-import config, { refreshRepos, getRepos, loadSettings } from './config.js';
+import config, { loadSettings, getWorkspacesDir } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
@@ -80,7 +81,7 @@ Instructions:
 - Commit after each logical unit of work with descriptive commit messages
 - Run existing tests after implementation to verify nothing broke
 - When fully complete, output this exact string on its own line:
-  === IMPLEMENTATION COMPLETE ===
+  === IMPLEMENTATION COMPLETE ${task.id} ===
 - If you encounter a blocker you cannot resolve, output:
   === BLOCKED: {reason} ===
 
@@ -121,8 +122,7 @@ SUMMARY: (2-3 sentences summarising the review)
 
 async function setupWorkspace(task) {
   const settings = loadSettings();
-  const reposDir = settings.reposDir;
-  const workspaceRoot = join(reposDir, 'workspaces', task.id);
+  const workspaceRoot = join(getWorkspacesDir(settings), task.id);
 
   // Crash recovery: remove partial clone if exists
   if (existsSync(workspaceRoot)) {
@@ -167,8 +167,7 @@ function startPlanning(task) {
 
   const prompt = buildPlannerPrompt(task);
   const cmd = `claude --print '${escapePrompt(prompt)}'`;
-  const settings = loadSettings();
-  const plannerCwd = settings.reposDir;
+  const plannerCwd = task.repoPath;
   const ok = planner.spawn(plannerCwd, cmd);
   if (!ok) {
     store.updateTask(task.id, {
@@ -392,52 +391,22 @@ async function onReviewComplete(agentId, taskId) {
 
 async function createPR(taskId) {
   const task = store.getTask(taskId);
-  if (!config.GITHUB_TOKEN || !config.GITHUB_REPO) {
-    store.updateTask(taskId, { status: 'awaiting_human_review' });
-    console.log(`GitHub not configured — skipping PR creation for ${taskId}`);
-    // Cleanup workspace since task is terminal
-    const updatedTask = store.getTask(taskId);
-    cleanupWorkspace(updatedTask).catch(err => console.error(`Workspace cleanup error:`, err.message));
-    return;
-  }
-
   try {
-    const [owner, repo] = config.GITHUB_REPO.split('/');
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${config.GITHUB_TOKEN}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/vnd.github.v3+json',
-      },
-      body: JSON.stringify({
-        title: `[${task.id}] ${task.title}`,
-        head: task.branch,
-        base: 'main',
-        body: `## Plan\n\n${task.plan}\n\n## Review\n\n${task.review || 'N/A'}`,
-      }),
-    });
-
-    if (response.ok) {
-      const pr = await response.json();
-      store.updateTask(taskId, {
-        status: 'awaiting_human_review',
-        prUrl: pr.html_url,
-        prNumber: pr.number,
-      });
-      bus.emit('pr:created', { taskId, prUrl: pr.html_url });
-    } else {
-      console.error(`PR creation failed:`, await response.text());
-      store.updateTask(taskId, { status: 'awaiting_human_review' });
-    }
+    await simpleGit(task.repoPath).push('origin', task.branch);
+    const prUrl = execFileSync('gh', [
+      'pr', 'create',
+      '--title', `[${task.id}] ${task.title}`,
+      '--body', `## Plan\n\n${task.plan}\n\n## Review\n\n${task.review || 'N/A'}`,
+      '--head', task.branch,
+      '--base', 'main',
+    ], { cwd: task.repoPath, encoding: 'utf-8' }).trim();
+    store.updateTask(taskId, { status: 'awaiting_human_review', prUrl });
+    bus.emit('pr:created', { taskId, prUrl });
   } catch (err) {
     console.error(`PR creation error:`, err.message);
     store.updateTask(taskId, { status: 'awaiting_human_review' });
   }
-
-  // Cleanup workspace since task is now terminal
-  const finalTask = store.getTask(taskId);
-  cleanupWorkspace(finalTask).catch(err => console.error(`Workspace cleanup error:`, err.message));
+  cleanupWorkspace(store.getTask(taskId)).catch(err => console.error(`Workspace cleanup error:`, err.message));
 }
 
 async function abortTask(taskId) {
@@ -487,11 +456,11 @@ function checkSignals() {
   for (const agent of agentManager.getAgentsByRole('imp')) {
     if (agent.status === 'active' && agent.currentTask) {
       const buf = agent.getBufferString(50);
-      if (buf.includes('=== IMPLEMENTATION COMPLETE ===')) {
+      if (buf.includes(`=== IMPLEMENTATION COMPLETE ${agent.currentTask} ===`)) {
         onImplementationComplete(agent.id);
       } else {
         const trustMatch = buf.match(/trust the files|Do you trust|allow.*to run in this/i);
-        if (trustMatch && !buf.includes('=== IMPLEMENTATION COMPLETE ===')) {
+        if (trustMatch && !buf.includes(`=== IMPLEMENTATION COMPLETE ${agent.currentTask} ===`)) {
           store.updateTask(agent.currentTask, {
             status: 'blocked',
             blockedReason: 'Agent is awaiting user input — open the terminal and respond to the prompt',
@@ -613,7 +582,7 @@ function pollLoop() {
         const buf = agent.getBufferString(100);
         if (buf.includes('=== PLAN END ===')) {
           onPlanComplete(agent.id, taskId);
-        } else if (buf.includes('=== IMPLEMENTATION COMPLETE ===')) {
+        } else if (buf.includes(`=== IMPLEMENTATION COMPLETE ${taskId} ===`)) {
           onImplementationComplete(agent.id);
         } else if (buf.includes('=== REVIEW END ===')) {
           onReviewComplete(agent.id, taskId);
@@ -656,7 +625,7 @@ bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
       onPlanComplete(agentId, taskId);
       return;
     }
-    if (buf.includes('=== IMPLEMENTATION COMPLETE ===')) {
+    if (buf.includes(`=== IMPLEMENTATION COMPLETE ${taskId} ===`)) {
       onImplementationComplete(agentId);
       return;
     }
@@ -683,12 +652,7 @@ bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
 bus.on('settings:changed', (settings) => {
   agentManager.reconfigure(settings);
   bus.emit('agents:updated', agentManager.getAllStatus());
-
-  // Re-discover repos if reposDir changed
-  if (settings.reposDir) {
-    refreshRepos(settings.reposDir);
-    bus.emit('repos:updated', getRepos());
-  }
+  bus.emit('repos:updated', settings.repos || []);
 });
 
 // --- Public API ---

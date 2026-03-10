@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { readdirSync, statSync, existsSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve, dirname as pathDirname, join } from 'node:path';
-import config, { loadSettings, saveSettings, validateSettings, getRepos, refreshRepos } from './config.js';
+import config, { loadSettings, saveSettings, validateSettings, getWorkspacesDir } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
@@ -24,7 +24,7 @@ app.get('/api/status', (req, res) => {
 });
 
 app.get('/api/repos', (req, res) => {
-  res.json({ repos: getRepos() });
+  res.json({ repos: loadSettings().repos || [] });
 });
 
 app.get('/api/browse-dir', (req, res) => {
@@ -118,7 +118,7 @@ wss.on('connection', (ws) => {
     payload: {
       tasks: store.getAllTasks(),
       agents: agentManager.getAllStatus(),
-      repos: getRepos(),
+      repos: loadSettings().repos || [],
       settings: loadSettings(),
     },
     ts: Date.now(),
@@ -315,8 +315,7 @@ store.restartRecovery();
 
 // Startup orphan workspace cleanup
 {
-  const settings = loadSettings();
-  const workspacesDir = join(settings.reposDir, 'workspaces');
+  const workspacesDir = getWorkspacesDir();
   if (existsSync(workspacesDir)) {
     const terminalStatuses = ['done', 'backlog', 'awaiting_human_review'];
     let entries;
