@@ -5,8 +5,8 @@ const COLUMNS = [
   { id: 'backlog',        title: 'Backlog',        icon: '\u25CB', statuses: ['backlog', 'paused'],             agentPrefix: null,   color: 'var(--text3)'  },
   { id: 'planning',       title: 'Planning',       icon: '\u270E', statuses: ['planning', 'awaiting_approval'], agentPrefix: 'plan', color: 'var(--steel2)' },
   { id: 'implementation', title: 'Implementation', icon: '\u2692', statuses: ['queued', 'workspace_setup', 'implementing'], agentPrefix: 'imp',  color: 'var(--green)'  },
-  { id: 'review',         title: 'Review',         icon: '\u2714', statuses: ['review'],                        agentPrefix: 'rev',  color: 'var(--yellow)' },
-  { id: 'done',           title: 'Done',           icon: '\u2713', statuses: ['awaiting_human_review', 'done'], agentPrefix: null,   color: 'var(--green)'  },
+  { id: 'review',         title: 'Review',         icon: '\u2315', statuses: ['review'],                        agentPrefix: 'rev',  color: 'var(--yellow)' },
+  { id: 'done',           title: 'Done',           icon: '\u2714', statuses: ['awaiting_human_review', 'done'], agentPrefix: null,   color: 'var(--green)'  },
 ];
 
 export default function KanbanBoard({
