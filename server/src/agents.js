@@ -28,7 +28,8 @@ const ROLE_META = {
   },
 };
 
-const CLAUDE_TOKEN_RE = /(\d[\d,]+)\s+(?:input\s+)?tokens/i;
+const CLAUDE_TOKEN_RE = /(\d[\d, ]+)\s+(?:input\s+)?tokens/i;
+const CLAUDE_TOKENS_USED_RE = /tokens used\s*[\r\n]+(\d[\d, ]+)/i;
 const CODEX_TOKEN_RE = /context:\s*(\d[\d,]+)/i;
 
 class Agent {
@@ -143,9 +144,15 @@ class Agent {
   }
 
   _parseTokens(data) {
-    let match = data.match(CLAUDE_TOKEN_RE) || data.match(CODEX_TOKEN_RE);
+    const recentBuffer = this.getBufferString(80);
+    let match = recentBuffer.match(CLAUDE_TOKENS_USED_RE)
+      || recentBuffer.match(CLAUDE_TOKEN_RE)
+      || recentBuffer.match(CODEX_TOKEN_RE)
+      || data.match(CLAUDE_TOKENS_USED_RE)
+      || data.match(CLAUDE_TOKEN_RE)
+      || data.match(CODEX_TOKEN_RE);
     if (match) {
-      const parsed = parseInt(match[1].replace(/,/g, ''), 10);
+      const parsed = parseInt(match[1].replace(/[,\s]/g, ''), 10);
       if (parsed > this.tokens) {
         this.tokens = parsed;
       }
