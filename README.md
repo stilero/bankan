@@ -1,6 +1,6 @@
-# AI Dev Factory
+# Ban Kan
 
-Local AI agent orchestration dashboard that uses Claude and Codex CLIs to plan, implement, review, and open pull requests for code changes — automatically.
+Local AI agent orchestration dashboard that uses Claude and Codex CLIs to plan, implement, review, and open pull requests for code changes automatically.
 
 ## Prerequisites
 

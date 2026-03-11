@@ -1,7 +1,8 @@
 import pty from 'node-pty';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, statSync, appendFileSync } from 'node:fs';
 import bus from './events.js';
 import { loadSettings } from './config.js';
+import store from './store.js';
 
 const ROLE_META = {
   planner: {
@@ -43,12 +44,20 @@ class Agent {
     this.currentTask = null;
     this.taskLabel = '';
     this.tokens = 0;
+    this.taskTokenBase = 0;
     this.maxTokens = 200000;
     this.startedAt = null;
     this.process = null;
     this.terminalBuffer = [];
     this.subscribers = new Set();
     this.lastOutputAt = null;
+    this.bridge = {
+      active: false,
+      mode: null,
+      owner: null,
+      openedAt: null,
+      outputPath: null,
+    };
   }
 
   spawn(cwd, command) {
@@ -74,7 +83,15 @@ class Agent {
     this.startedAt = Date.now();
     this.terminalBuffer = [];
     this.tokens = 0;
+    this.taskTokenBase = this.currentTask ? (store.getTask(this.currentTask)?.totalTokens || 0) : 0;
     this.lastOutputAt = Date.now();
+    this.bridge = {
+      active: false,
+      mode: null,
+      owner: null,
+      openedAt: null,
+      outputPath: null,
+    };
 
     const env = { ...process.env, TERM: 'xterm-256color' };
     delete env.CLAUDECODE;
@@ -93,6 +110,10 @@ class Agent {
       }
       this.lastOutputAt = Date.now();
       this._parseTokens(data);
+      this._syncTaskTokens();
+      if (this.bridge.active && this.bridge.outputPath) {
+        try { appendFileSync(this.bridge.outputPath, data); } catch { /* ignore */ }
+      }
 
       for (const ws of this.subscribers) {
         try {
@@ -131,6 +152,12 @@ class Agent {
     }
   }
 
+  _syncTaskTokens() {
+    if (!this.currentTask || this.tokens <= 0) return;
+    store.updateTaskTokens(this.currentTask, this.taskTokenBase + this.tokens);
+    bus.emit('agent:updated', this.getStatus());
+  }
+
   write(data) {
     if (this.process) {
       this.process.write(data);
@@ -164,6 +191,14 @@ class Agent {
     this.status = 'idle';
     this.currentTask = null;
     this.taskLabel = '';
+    this.taskTokenBase = 0;
+    this.bridge = {
+      active: false,
+      mode: null,
+      owner: null,
+      openedAt: null,
+      outputPath: null,
+    };
     bus.emit('agent:updated', this.getStatus());
   }
 
@@ -184,6 +219,13 @@ class Agent {
       tokens: this.tokens,
       maxTokens: this.maxTokens,
       uptime: this.startedAt ? Math.floor((Date.now() - this.startedAt) / 1000) : 0,
+      bridgeActive: this.bridge.active,
+      bridgeMode: this.bridge.mode,
+      bridgeOwner: this.bridge.owner,
+      bridgeOpenedAt: this.bridge.openedAt,
+      aggregatedTokens: this.currentTask
+        ? Math.max(store.getTask(this.currentTask)?.totalTokens || 0, this.taskTokenBase + this.tokens)
+        : 0,
     };
   }
 }

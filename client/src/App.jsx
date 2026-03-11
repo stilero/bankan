@@ -31,9 +31,9 @@ export default function App() {
   const {
     connected, agents, tasks, repos, settings, notifications,
     addTask, approvePlan, rejectPlan,
-    pauseTask, resumeTask, editTask, abortTask, resetTask, retryTask,
+    pauseTask, resumeTask, editTask, abortTask, resetTask, retryTask, deleteTask,
     injectMessage, sendRaw, pauseAgent, resumeAgent,
-    updateSettings, subscribeTerminal,
+    updateSettings, subscribeTerminal, openAgentTerminal, returnAgentTerminal,
   } = useFactory();
 
   const [selectedAgent, setSelectedAgent] = useState(null);
@@ -80,7 +80,7 @@ export default function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Logo />
           <span style={{ fontFamily: 'var(--font-head)', fontWeight: 800, fontSize: 15, letterSpacing: 1 }}>
-            AI FACTORY
+            BAN KAN
           </span>
         </div>
 
@@ -173,6 +173,8 @@ export default function App() {
           subscribeTerminal={subscribeTerminal}
           injectMessage={injectMessage}
           sendRaw={sendRaw}
+          openAgentTerminal={openAgentTerminal}
+          returnAgentTerminal={returnAgentTerminal}
           onClose={() => setSelectedAgent(null)}
         />
       )}
@@ -190,6 +192,7 @@ export default function App() {
           onAbort={(id) => { abortTask(id); setSelectedTask(null); }}
           onReset={(id) => { resetTask(id); setSelectedTask(null); }}
           onRetry={(id) => { retryTask(id); setSelectedTask(null); }}
+          onDelete={(id) => { deleteTask(id); setSelectedTask(null); }}
         />
       )}
 

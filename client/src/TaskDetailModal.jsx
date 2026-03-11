@@ -28,6 +28,11 @@ function truncateText(text, maxLength = 120) {
   return normalized.slice(0, maxLength - 1).trimEnd() + '…';
 }
 
+function formatTokens(tokens = 0) {
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`;
+  return String(tokens || 0);
+}
+
 export default function TaskDetailModal({
   task,
   onClose,
@@ -39,6 +44,7 @@ export default function TaskDetailModal({
   onAbort,
   onReset,
   onRetry,
+  onDelete,
 }) {
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
@@ -49,6 +55,7 @@ export default function TaskDetailModal({
   const [showReview, setShowReview] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const canPause = !['done', 'paused', 'aborted'].includes(task.status);
   const canResume = task.status === 'paused';
@@ -218,6 +225,13 @@ export default function TaskDetailModal({
                   </div>
                 </div>
               )}
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={labelStyle}>Total Tokens</div>
+              <div style={{ ...valueStyle, fontFamily: 'var(--font-mono)' }}>
+                {formatTokens(task.totalTokens || 0)}
+              </div>
             </div>
 
             {task.description && (
@@ -463,6 +477,26 @@ export default function TaskDetailModal({
                   Abort
                 </button>
               )}
+
+              {task.status === 'done' && onDelete && (
+                <button
+                  onClick={() => {
+                    if (confirmDelete) {
+                      onDelete(task.id);
+                      return;
+                    }
+                    setConfirmDelete(true);
+                  }}
+                  style={{
+                    padding: '6px 14px', fontSize: 12,
+                    background: confirmDelete ? 'rgba(255, 77, 77, 0.2)' : 'rgba(255, 77, 77, 0.1)',
+                    border: '1px solid rgba(255, 77, 77, 0.3)',
+                    borderRadius: 4, color: 'var(--red)',
+                  }}
+                >
+                  {confirmDelete ? 'Confirm Delete' : 'Delete from Done'}
+                </button>
+              )}
             </div>
 
             {canReset && (
@@ -485,6 +519,12 @@ export default function TaskDetailModal({
                   }}
                   style={{ width: '100%', fontSize: 11, padding: '6px 10px' }}
                 />
+              </div>
+            )}
+
+            {confirmDelete && task.status === 'done' && (
+              <div style={{ marginTop: 10, fontSize: 10, color: 'var(--text3)', lineHeight: 1.5 }}>
+                Delete removes the completed task from Ban Kan state and clears any saved plan/workspace artifacts.
               </div>
             )}
           </>

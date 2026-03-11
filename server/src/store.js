@@ -63,6 +63,7 @@ class TaskStore {
             reviewCycleCount: 0,
             lastActiveStage: statusToStage(task.status) || 'backlog',
             previousStatus: null,
+            totalTokens: 0,
             ...task,
           };
 
@@ -75,6 +76,9 @@ class TaskStore {
           }
           if (typeof normalized.reviewCycleCount !== 'number' || normalized.reviewCycleCount < 0) {
             normalized.reviewCycleCount = 0;
+          }
+          if (typeof normalized.totalTokens !== 'number' || normalized.totalTokens < 0) {
+            normalized.totalTokens = 0;
           }
           if (!normalized.lastActiveStage) {
             normalized.lastActiveStage = statusToStage(normalized.status) || 'backlog';
@@ -116,6 +120,7 @@ class TaskStore {
       reviewCycleCount: 0,
       lastActiveStage: 'backlog',
       previousStatus: null,
+      totalTokens: 0,
       progress: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -175,6 +180,27 @@ class TaskStore {
     return task;
   }
 
+  updateTaskTokens(id, totalTokens) {
+    const task = this.getTask(id);
+    if (!task) return null;
+    if (typeof totalTokens !== 'number' || totalTokens < task.totalTokens) return task;
+    task.totalTokens = totalTokens;
+    task.updatedAt = new Date().toISOString();
+    this._save();
+    bus.emit('task:updated', task);
+    bus.emit('tasks:changed', this.tasks);
+    return task;
+  }
+
+  deleteTask(id) {
+    const index = this.tasks.findIndex(t => t.id === id);
+    if (index === -1) return null;
+    const [task] = this.tasks.splice(index, 1);
+    this._save();
+    bus.emit('tasks:changed', this.tasks);
+    return task;
+  }
+
   restartRecovery() {
     const recoveryMap = {
       planning: 'backlog',
@@ -191,6 +217,10 @@ class TaskStore {
       }
       if (typeof task.reviewCycleCount !== 'number' || task.reviewCycleCount < 0) {
         task.reviewCycleCount = 0;
+        changed = true;
+      }
+      if (typeof task.totalTokens !== 'number' || task.totalTokens < 0) {
+        task.totalTokens = 0;
         changed = true;
       }
       if (task.status === 'awaiting_human_review') {

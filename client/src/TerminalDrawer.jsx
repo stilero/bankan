@@ -18,7 +18,15 @@ function formatUptime(seconds) {
   return `${h}h ${m}m`;
 }
 
-export default function TerminalDrawer({ agent, subscribeTerminal, injectMessage, sendRaw, onClose }) {
+export default function TerminalDrawer({
+  agent,
+  subscribeTerminal,
+  injectMessage,
+  sendRaw,
+  openAgentTerminal,
+  returnAgentTerminal,
+  onClose,
+}) {
   const containerRef = useRef(null);
   const termRef = useRef(null);
   const [height, setHeight] = useState(420);
@@ -101,7 +109,7 @@ export default function TerminalDrawer({ agent, subscribeTerminal, injectMessage
   }, [agent?.id]);
 
   const handleInject = (e) => {
-    if (e.key === 'Enter' && inputValue.trim()) {
+    if (e.key === 'Enter' && inputValue.trim() && !agent.bridgeActive) {
       injectMessage(agent.id, inputValue.trim());
       setInputValue('');
     }
@@ -155,10 +163,41 @@ export default function TerminalDrawer({ agent, subscribeTerminal, injectMessage
         <div style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: 24, color: 'var(--text2)' }}>
           <span>Task: <span style={{ color: agentColor }}>{agent.currentTask || '\u2014'}</span></span>
           <span>Tokens: {formatTokens(agent.tokens || 0)} / 200k</span>
+          <span>Total: {formatTokens(agent.aggregatedTokens || 0)}</span>
           <span>Uptime: {formatUptime(agent.uptime)}</span>
         </div>
 
         {/* Right */}
+        {agent.status === 'active' && !agent.bridgeActive && (
+          <button
+            onClick={() => openAgentTerminal(agent.id)}
+            style={{
+              color: 'var(--text2)',
+              fontSize: 11,
+              padding: '3px 8px',
+              background: 'var(--bg2)',
+              border: '1px solid var(--border)',
+              borderRadius: 4,
+            }}
+          >
+            Open in Terminal
+          </button>
+        )}
+        {agent.bridgeActive && (
+          <button
+            onClick={() => returnAgentTerminal(agent.id)}
+            style={{
+              color: 'var(--amber)',
+              fontSize: 11,
+              padding: '3px 8px',
+              background: 'rgba(245, 166, 35, 0.12)',
+              border: '1px solid rgba(245, 166, 35, 0.3)',
+              borderRadius: 4,
+            }}
+          >
+            Return to Ban Kan
+          </button>
+        )}
         <button
           onClick={onClose}
           style={{ color: 'var(--text3)', fontSize: 14 }}
@@ -178,8 +217,8 @@ export default function TerminalDrawer({ agent, subscribeTerminal, injectMessage
         <input
           type="text"
           value={inputValue}
-          placeholder="Send message to agent..."
-          disabled={agent.status !== 'active'}
+          placeholder={agent.bridgeActive ? 'Input moved to Terminal.app while bridged...' : 'Send message to agent...'}
+          disabled={agent.status !== 'active' || agent.bridgeActive}
           onChange={e => setInputValue(e.target.value)}
           onKeyDown={handleInject}
           style={{
@@ -190,10 +229,15 @@ export default function TerminalDrawer({ agent, subscribeTerminal, injectMessage
             padding: '5px 10px',
             fontSize: 12,
             caretColor: agentColor,
-            opacity: agent.status === 'active' ? 1 : 0.55,
+            opacity: agent.status === 'active' && !agent.bridgeActive ? 1 : 0.55,
           }}
         />
-        {agent.status !== 'active' && (
+        {agent.bridgeActive && (
+          <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text3)' }}>
+            Terminal.app currently owns input for this live session. Type `/return` there or use the button above to hand control back.
+          </div>
+        )}
+        {agent.status !== 'active' && !agent.bridgeActive && (
           <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text3)' }}>
             Agent input is unavailable because the session is not running. Resolve the blocker, then retry the task.
           </div>

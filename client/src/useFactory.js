@@ -122,6 +122,21 @@ export default function useFactory() {
         case 'TASK_RETRIED':
           addNotification(`Task ${msg.payload.taskId} retrying from ${msg.payload.retryStatus}`, 'info');
           break;
+        case 'TASK_DELETED':
+          addNotification(`Task ${msg.payload.taskId} deleted from Done`, 'info');
+          break;
+        case 'BRIDGE_OPENED':
+          addNotification(`${msg.payload.agentName} opened in Terminal`, 'info');
+          break;
+        case 'BRIDGE_RETURNED':
+          addNotification(`${msg.payload.agentName} returned to Ban Kan`, 'info');
+          break;
+        case 'BRIDGE_ERROR':
+          addNotification(msg.payload?.message || 'Terminal bridge failed', 'error');
+          break;
+        case 'SETTINGS_ERROR':
+          addNotification((msg.payload?.errors || []).join(', ') || 'Settings update failed', 'error');
+          break;
       }
     };
 
@@ -198,8 +213,20 @@ export default function useFactory() {
     send('RETRY_TASK', { taskId });
   }, [send]);
 
+  const deleteTask = useCallback((taskId) => {
+    send('DELETE_TASK', { taskId });
+  }, [send]);
+
   const updateSettings = useCallback((newSettings) => {
     send('UPDATE_SETTINGS', newSettings);
+  }, [send]);
+
+  const openAgentTerminal = useCallback((agentId) => {
+    send('OPEN_AGENT_TERMINAL', { agentId });
+  }, [send]);
+
+  const returnAgentTerminal = useCallback((agentId) => {
+    send('RETURN_AGENT_TERMINAL', { agentId });
   }, [send]);
 
   const subscribeTerminal = useCallback((agentId, callback) => {
@@ -227,11 +254,14 @@ export default function useFactory() {
     abortTask,
     resetTask,
     retryTask,
+    deleteTask,
     injectMessage,
     sendRaw,
     pauseAgent,
     resumeAgent,
     updateSettings,
     subscribeTerminal,
+    openAgentTerminal,
+    returnAgentTerminal,
   };
 }

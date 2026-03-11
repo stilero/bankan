@@ -849,10 +849,24 @@ async function resetTask(taskId) {
     previousStatus: null,
     reviewCycleCount: 0,
     progress: 0,
+    totalTokens: 0,
   });
   store.appendLog(taskId, 'Task reset to backlog and workspace deleted');
 
   bus.emit('task:reset', { taskId });
+}
+
+async function deleteTask(taskId) {
+  const task = store.getTask(taskId);
+  if (!task || task.status !== 'done') return false;
+
+  if (task.workspacePath) {
+    await cleanupWorkspace(task);
+  }
+
+  store.removePlan(taskId);
+  store.deleteTask(taskId);
+  return true;
 }
 
 // --- Signal Detection ---
@@ -1162,6 +1176,7 @@ const orchestrator = {
   },
   abortTask,
   resetTask,
+  deleteTask,
 };
 
 export default orchestrator;

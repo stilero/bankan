@@ -2,9 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'node:http';
-import { readdirSync, statSync, existsSync, rmSync } from 'node:fs';
+import { readdirSync, statSync, existsSync, rmSync, mkdirSync, writeFileSync, readFileSync, chmodSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve, dirname as pathDirname, join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import config, { loadSettings, saveSettings, validateSettings, getWorkspacesDir } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
@@ -134,6 +135,15 @@ app.patch('/api/tasks/:id/reject', (req, res) => {
   res.json({ ok: true });
 });
 
+app.delete('/api/tasks/:id', async (req, res) => {
+  const task = store.getTask(req.params.id);
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  if (task.status !== 'done') return res.status(400).json({ error: 'Only completed tasks can be deleted' });
+  await orchestrator.deleteTask(task.id);
+  broadcast('TASK_DELETED', { taskId: task.id });
+  res.json({ ok: true });
+});
+
 app.get('/api/settings', (req, res) => {
   res.json(loadSettings());
 });
@@ -155,12 +165,174 @@ const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
 const wsClients = new Set();
+const bridgeSessions = new Map();
+const BRIDGES_DIR = join(config.ROOT_DIR, '.data', 'terminal-bridges');
 
 function broadcast(type, payload) {
   const msg = JSON.stringify({ type, payload, ts: Date.now() });
   for (const ws of wsClients) {
     try { ws.send(msg); } catch { wsClients.delete(ws); }
   }
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+function ensureBridgeFiles() {
+  mkdirSync(BRIDGES_DIR, { recursive: true });
+}
+
+function getBridgeStatus(outputPath) {
+  return {
+    active: true,
+    mode: 'terminal-app',
+    owner: 'Terminal.app',
+    openedAt: new Date().toISOString(),
+    outputPath,
+  };
+}
+
+function closeBridge(agent, { broadcastEvent = true, notifyType = 'BRIDGE_RETURNED' } = {}) {
+  const session = bridgeSessions.get(agent.id);
+  if (session) {
+    clearInterval(session.pollTimer);
+    try { rmSync(session.dir, { recursive: true, force: true }); } catch { /* ignore */ }
+    bridgeSessions.delete(agent.id);
+  }
+
+  if (agent.bridge.active) {
+    agent.bridge = {
+      active: false,
+      mode: null,
+      owner: null,
+      openedAt: null,
+      outputPath: null,
+    };
+    bus.emit('agent:updated', agent.getStatus());
+    if (broadcastEvent) {
+      broadcast(notifyType, { agentId: agent.id, agentName: agent.name });
+    }
+  }
+}
+
+function readBridgeAppend(session, key) {
+  try {
+    const content = readFileSync(session[key], 'utf-8');
+    const previousLength = session.offsets[key] || 0;
+    const chunk = content.slice(previousLength);
+    session.offsets[key] = content.length;
+    return chunk;
+  } catch {
+    return '';
+  }
+}
+
+function processBridgeInput(agent, session) {
+  const controlChunk = readBridgeAppend(session, 'controlPath');
+  if (controlChunk.includes('RETURN')) {
+    closeBridge(agent);
+    return;
+  }
+
+  const inputChunk = readBridgeAppend(session, 'inputPath');
+  if (!inputChunk) return;
+
+  const lines = inputChunk
+    .split('\n')
+    .map(line => line.replace(/\r$/, ''))
+    .filter(Boolean);
+
+  for (const line of lines) {
+    agent.write(line + '\n');
+  }
+}
+
+function openBridgeInTerminal(agent) {
+  if (!agent?.process || !agent.currentTask) {
+    return { ok: false, message: 'Agent session is not running.' };
+  }
+
+  const task = store.getTask(agent.currentTask);
+  if (!task) {
+    return { ok: false, message: 'Task state was not found for this agent.' };
+  }
+
+  if (agent.bridge.active) {
+    return { ok: true };
+  }
+
+  ensureBridgeFiles();
+  const sessionDir = join(BRIDGES_DIR, agent.id);
+  mkdirSync(sessionDir, { recursive: true });
+
+  const inputPath = join(sessionDir, 'input.log');
+  const controlPath = join(sessionDir, 'control.log');
+  const outputPath = join(sessionDir, 'output.log');
+  const scriptPath = join(sessionDir, 'bridge.sh');
+
+  writeFileSync(inputPath, '');
+  writeFileSync(controlPath, '');
+  writeFileSync(outputPath, agent.getBufferString(500));
+  writeFileSync(scriptPath, `#!/bin/bash
+clear
+echo "Ban Kan terminal bridge for ${agent.name}"
+echo "Task: ${task.title}"
+echo
+echo "Type a line and press Enter to send it to the live agent session."
+echo "Type /return to hand control back to Ban Kan."
+echo
+tail -n +1 -f ${shellQuote(outputPath)} &
+TAIL_PID=$!
+trap 'kill $TAIL_PID 2>/dev/null' EXIT
+
+while IFS= read -r line; do
+  if [ "$line" = "/return" ]; then
+    printf "RETURN\\n" >> ${shellQuote(controlPath)}
+    break
+  fi
+  printf "%s\\n" "$line" >> ${shellQuote(inputPath)}
+done
+`);
+  chmodSync(scriptPath, 0o755);
+
+  const session = {
+    dir: sessionDir,
+    inputPath,
+    controlPath,
+    outputPath,
+    offsets: {
+      inputPath: 0,
+      controlPath: 0,
+    },
+    pollTimer: null,
+  };
+
+  session.pollTimer = setInterval(() => {
+    if (!agent.process) {
+      closeBridge(agent, { broadcastEvent: false });
+      return;
+    }
+    processBridgeInput(agent, session);
+  }, 250);
+
+  bridgeSessions.set(agent.id, session);
+  agent.bridge = getBridgeStatus(outputPath);
+  bus.emit('agent:updated', agent.getStatus());
+
+  try {
+    const shellCommand = `bash ${shellQuote(scriptPath)}`;
+    execFileSync('osascript', [
+      '-e', 'tell application "Terminal" to activate',
+      '-e', `tell application "Terminal" to do script ${JSON.stringify(shellCommand)}`,
+    ]);
+  } catch (err) {
+    closeBridge(agent, { broadcastEvent: false });
+    return { ok: false, message: `Failed to open Terminal.app: ${err.message}` };
+  }
+
+  broadcast('BRIDGE_OPENED', { agentId: agent.id, agentName: agent.name });
+  return { ok: true };
 }
 
 wss.on('connection', (ws) => {
@@ -258,6 +430,15 @@ wss.on('connection', (ws) => {
         if (taskId) orchestrator.resetTask(taskId);
         break;
       }
+      case 'DELETE_TASK': {
+        const { taskId } = msg.payload || {};
+        const task = store.getTask(taskId);
+        if (task?.status === 'done') {
+          orchestrator.deleteTask(taskId);
+          broadcast('TASK_DELETED', { taskId });
+        }
+        break;
+      }
       case 'RETRY_TASK': {
         const { taskId } = msg.payload || {};
         const task = store.getTask(taskId);
@@ -297,13 +478,52 @@ wss.on('connection', (ws) => {
       case 'INJECT_MESSAGE': {
         const { agentId, message } = msg.payload || {};
         const agent = agentManager.get(agentId);
-        if (agent) agent.write(message + '\n');
+        if (agent?.bridge.active) {
+          try {
+            ws.send(JSON.stringify({
+              type: 'BRIDGE_ERROR',
+              payload: { message: `${agent.name} input is currently locked to Terminal.app.` },
+              ts: Date.now(),
+            }));
+          } catch { /* ignore */ }
+        } else if (agent) {
+          agent.write(message + '\n');
+        }
         break;
       }
       case 'INJECT_RAW': {
         const { agentId, data } = msg.payload || {};
         const agent = agentManager.get(agentId);
-        if (agent) agent.write(data);
+        if (agent?.bridge.active) {
+          try {
+            ws.send(JSON.stringify({
+              type: 'BRIDGE_ERROR',
+              payload: { message: `${agent.name} input is currently locked to Terminal.app.` },
+              ts: Date.now(),
+            }));
+          } catch { /* ignore */ }
+        } else if (agent) {
+          agent.write(data);
+        }
+        break;
+      }
+      case 'OPEN_AGENT_TERMINAL': {
+        const agent = agentManager.get(msg.payload?.agentId);
+        const result = openBridgeInTerminal(agent);
+        if (!result.ok) {
+          try {
+            ws.send(JSON.stringify({
+              type: 'BRIDGE_ERROR',
+              payload: { message: result.message },
+              ts: Date.now(),
+            }));
+          } catch { /* ignore */ }
+        }
+        break;
+      }
+      case 'RETURN_AGENT_TERMINAL': {
+        const agent = agentManager.get(msg.payload?.agentId);
+        if (agent) closeBridge(agent);
         break;
       }
       case 'PAUSE_AGENT': {
@@ -353,7 +573,6 @@ wss.on('connection', (ws) => {
 // Event bus → WS broadcast
 bus.on('tasks:changed', (tasks) => broadcast('TASKS_UPDATED', { tasks }));
 bus.on('task:added', (task) => broadcast('TASK_ADDED', { task }));
-bus.on('agent:updated', (agent) => broadcast('AGENT_UPDATED', { agent }));
 bus.on('agents:updated', (agents) => broadcast('AGENTS_UPDATED', { agents }));
 bus.on('agent:removed', (data) => broadcast('AGENT_REMOVED', data));
 bus.on('plan:ready', (data) => broadcast('PLAN_READY', data));
@@ -365,6 +584,13 @@ bus.on('repos:updated', (repos) => broadcast('REPOS_UPDATED', { repos }));
 bus.on('plan:partial', (data) => broadcast('PLAN_PARTIAL', data));
 bus.on('task:aborted', (data) => broadcast('TASK_ABORTED', data));
 bus.on('task:reset', (data) => broadcast('TASK_RESET', data));
+bus.on('agent:updated', (agentStatus) => {
+  broadcast('AGENT_UPDATED', { agent: agentStatus });
+  if (!agentStatus.bridgeActive && bridgeSessions.has(agentStatus.id)) {
+    const agent = agentManager.get(agentStatus.id);
+    if (agent) closeBridge(agent, { broadcastEvent: false });
+  }
+});
 
 // Startup
 store.restartRecovery();
@@ -395,5 +621,5 @@ const { default: orchestrator } = await import('./orchestrator.js');
 orchestrator.start();
 
 server.listen(config.PORT, () => {
-  console.log(`AI Factory server running on http://localhost:${config.PORT}`);
+  console.log(`Ban Kan server running on http://localhost:${config.PORT}`);
 });
