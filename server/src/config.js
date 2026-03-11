@@ -38,6 +38,18 @@ const config = {
   ROOT_DIR: rootDir,
 };
 
+const DEFAULT_PROMPTS = {
+  planning: `Produce a detailed step-by-step implementation plan.`,
+  implementation: `Follow the plan step by step
+- If required tools or dependencies are missing in the workspace, install them before continuing
+- Commit after each logical unit of work with descriptive commit messages
+- Run existing tests after implementation to verify nothing broke`,
+  review: `1. Run: git diff main...{branch}
+2. Review for: correctness, security vulnerabilities, code quality, test coverage, edge cases
+3. Classify each issue as CRITICAL (blocks merge), MINOR (should fix), or STYLE (optional)
+4. VERDICT must be PASS if there are zero CRITICAL issues`,
+};
+
 export function getDefaults() {
   return {
     repos: config.REPOS.length > 0 ? [...config.REPOS] : [],
@@ -47,6 +59,7 @@ export function getDefaults() {
       implementors: { max: 8, cli: config.IMPLEMENTOR_1_CLI },
       reviewers:    { max: 4, cli: 'claude' },
     },
+    prompts: { ...DEFAULT_PROMPTS },
   };
 }
 
@@ -71,6 +84,10 @@ export function loadSettings() {
           delete data.agents[role].count;
         }
       }
+      data.prompts = {
+        ...defaults.prompts,
+        ...(data.prompts || {}),
+      };
       return data;
     }
   } catch {
@@ -99,16 +116,32 @@ export function validateSettings(settings) {
   }
 
   const validClis = ['claude', 'codex'];
+  const allowedRanges = {
+    planners: { min: 0, max: 10 },
+    implementors: { min: 1, max: 10 },
+    reviewers: { min: 0, max: 10 },
+  };
 
   for (const role of ['planners', 'implementors', 'reviewers']) {
     const cfg = settings.agents[role];
     if (!cfg) { errors.push(`Missing ${role} configuration`); continue; }
 
-    if (typeof cfg.max !== 'number' || cfg.max < 1 || cfg.max > 10) {
-      errors.push(`${role}.max must be between 1 and 10`);
+    const range = allowedRanges[role];
+    if (typeof cfg.max !== 'number' || cfg.max < range.min || cfg.max > range.max) {
+      errors.push(`${role}.max must be between ${range.min} and ${range.max}`);
     }
     if (!validClis.includes(cfg.cli)) {
       errors.push(`${role}.cli must be one of: ${validClis.join(', ')}`);
+    }
+  }
+
+  if (!settings.prompts || typeof settings.prompts !== 'object') {
+    errors.push('prompts configuration is required');
+  } else {
+    for (const stage of Object.keys(DEFAULT_PROMPTS)) {
+      if (typeof settings.prompts[stage] !== 'string') {
+        errors.push(`prompts.${stage} must be a string`);
+      }
     }
   }
 
@@ -119,4 +152,5 @@ export function getWorkspacesDir(settings = loadSettings()) {
   return settings.workspaceRoot || settings.reposDir || DEFAULT_WORKSPACES_DIR;
 }
 
+export { DEFAULT_PROMPTS };
 export default config;

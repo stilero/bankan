@@ -371,6 +371,7 @@ function SettingsModal({ settings, onClose, onApply }) {
   const [local, setLocal] = useState(() => JSON.parse(JSON.stringify(settings)));
   const [newRepoPath, setNewRepoPath] = useState('');
   const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
+  const [activeTab, setActiveTab] = useState('general');
 
   const updateRole = (role, field, value) => {
     setLocal(prev => {
@@ -378,6 +379,16 @@ function SettingsModal({ settings, onClose, onApply }) {
       next.agents[role][field] = value;
       return next;
     });
+  };
+
+  const updatePrompt = (stage, value) => {
+    setLocal(prev => ({
+      ...prev,
+      prompts: {
+        ...(prev.prompts || {}),
+        [stage]: value,
+      },
+    }));
   };
 
   const addRepo = () => {
@@ -394,14 +405,132 @@ function SettingsModal({ settings, onClose, onApply }) {
     setLocal(prev => ({ ...prev, repos: (prev.repos || []).filter(r => r !== path) }));
   };
 
-  const isValid = Boolean(local.workspaceRoot?.trim()) &&
-    Object.values(local.agents).every(cfg => cfg.max >= 1 && cfg.max <= 10);
+  const maxRules = {
+    planners: { min: 0, max: 10 },
+    implementors: { min: 1, max: 10 },
+    reviewers: { min: 0, max: 10 },
+  };
 
-  const roles = [
-    { key: 'planners', label: 'PLANNERS' },
-    { key: 'implementors', label: 'IMPLEMENTORS' },
-    { key: 'reviewers', label: 'REVIEWERS' },
+  const isValid = Boolean(local.workspaceRoot?.trim()) &&
+    Object.entries(local.agents || {}).every(([role, cfg]) => {
+      const range = maxRules[role] || { min: 1, max: 10 };
+      return cfg.max >= range.min && cfg.max <= range.max;
+    }) &&
+    ['planning', 'implementation', 'review'].every(stage => typeof local.prompts?.[stage] === 'string');
+
+  const tabs = [
+    { key: 'general', label: 'General' },
+    { key: 'planning', label: 'Planning' },
+    { key: 'implementation', label: 'Implementation' },
+    { key: 'review', label: 'Review' },
   ];
+
+  const stageConfig = {
+    planning: {
+      roleKey: 'planners',
+      promptKey: 'planning',
+      description: 'Set max agents to 0 to disable planning and skip directly into implementation.',
+    },
+    implementation: {
+      roleKey: 'implementors',
+      promptKey: 'implementation',
+      description: 'Implementation cannot be disabled. The prompt body customizes the engineer instructions only.',
+    },
+    review: {
+      roleKey: 'reviewers',
+      promptKey: 'review',
+      description: 'Set max agents to 0 to disable review and create the PR immediately after implementation.',
+    },
+  };
+
+  const renderStageTab = (stage) => {
+    const cfgMeta = stageConfig[stage];
+    const cfg = local.agents[cfgMeta.roleKey];
+    const range = maxRules[cfgMeta.roleKey];
+
+    return (
+      <>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{
+            fontSize: 11, fontWeight: 600, color: 'var(--text2)',
+            letterSpacing: 1, marginBottom: 10,
+          }}>
+            AGENTS
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--text2)', width: 45 }}>Max:</span>
+            <input
+              type="number"
+              min={range.min}
+              max={range.max}
+              value={cfg.max}
+              onChange={e => {
+                const fallback = range.min;
+                const parsed = parseInt(e.target.value, 10);
+                const newMax = Number.isNaN(parsed) ? fallback : Math.max(range.min, Math.min(range.max, parsed));
+                updateRole(cfgMeta.roleKey, 'max', newMax);
+              }}
+              style={{
+                width: 60, padding: '4px 6px', fontSize: 12,
+                background: 'var(--bg)', border: '1px solid var(--border)',
+                borderRadius: 4, textAlign: 'center',
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--text2)', width: 45 }}>CLI:</span>
+            <select
+              value={cfg.cli}
+              onChange={e => updateRole(cfgMeta.roleKey, 'cli', e.target.value)}
+              style={{
+                padding: '4px 8px', fontSize: 12,
+                background: 'var(--bg)', border: '1px solid var(--border)',
+                borderRadius: 4,
+              }}
+            >
+              <option value="claude">claude</option>
+              <option value="codex">codex</option>
+            </select>
+          </div>
+
+          <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+            {cfgMeta.description}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <div style={{
+            fontSize: 11, fontWeight: 600, color: 'var(--text2)',
+            letterSpacing: 1, marginBottom: 8,
+          }}>
+            PROMPT BODY
+          </div>
+          <textarea
+            value={local.prompts?.[cfgMeta.promptKey] || ''}
+            onChange={e => updatePrompt(cfgMeta.promptKey, e.target.value)}
+            spellCheck={false}
+            style={{
+              width: '100%',
+              minHeight: 220,
+              resize: 'vertical',
+              padding: '10px 12px',
+              fontSize: 12,
+              lineHeight: 1.5,
+              background: 'var(--bg)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              color: 'var(--text)',
+            }}
+          />
+          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>
+            This edits the stage instructions only. Required output markers and parser-critical formatting stay fixed.
+          </div>
+        </div>
+      </>
+    );
+  };
 
   return (
     <div
@@ -416,7 +545,7 @@ function SettingsModal({ settings, onClose, onApply }) {
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          width: 440, padding: 24,
+          width: 760, maxWidth: 'calc(100vw - 32px)', padding: 24,
           background: 'var(--bg1)',
           border: '1px solid var(--border)',
           borderRadius: 8,
@@ -432,145 +561,125 @@ function SettingsModal({ settings, onClose, onApply }) {
           </button>
         </div>
 
-        <div style={{ marginBottom: 20 }}>
-          <div style={{
-            fontSize: 11, fontWeight: 600, color: 'var(--text2)',
-            letterSpacing: 1, marginBottom: 8,
-          }}>
-            WORKSPACE FOLDER
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-            <input
-              type="text"
-              value={local.workspaceRoot || ''}
-              onChange={e => setLocal(prev => ({ ...prev, workspaceRoot: e.target.value }))}
-              placeholder="/path/to/workspaces"
-              style={{ flex: 1, fontSize: 12, padding: '6px 10px' }}
-            />
+        <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
+          {tabs.map(tab => (
             <button
-              onClick={() => setShowWorkspacePicker(true)}
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
               style={{
-                fontSize: 12, padding: '6px 10px',
-                background: 'var(--bg2)', border: '1px solid var(--border)',
-                borderRadius: 4, color: 'var(--text)', cursor: 'pointer',
+                padding: '7px 12px',
+                background: activeTab === tab.key ? 'var(--amber)' : 'var(--bg2)',
+                color: activeTab === tab.key ? '#000' : 'var(--text2)',
+                border: '1px solid',
+                borderColor: activeTab === tab.key ? 'var(--amber)' : 'var(--border)',
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
               }}
             >
-              Browse
+              {tab.label}
             </button>
-          </div>
-          <div style={{ fontSize: 10, color: 'var(--text3)' }}>
-            Local folder used when the app creates per-task working copies.
-          </div>
-          {showWorkspacePicker && (
-            <DirectoryPicker
-              initialPath={local.workspaceRoot || ''}
-              onSelect={(path) => {
-                setLocal(prev => ({ ...prev, workspaceRoot: path }));
-                setShowWorkspacePicker(false);
-              }}
-              onClose={() => setShowWorkspacePicker(false)}
-            />
-          )}
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <div style={{
-            fontSize: 11, fontWeight: 600, color: 'var(--text2)',
-            letterSpacing: 1, marginBottom: 8,
-          }}>
-            REPOSITORIES
-          </div>
-          {(local.repos || []).map(r => (
-            <div key={r} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <span
-                style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                title={r}
-              >
-                {r}
-              </span>
-              <button onClick={() => removeRepo(r)} style={{ color: 'var(--red)', fontSize: 12, flexShrink: 0 }}>×</button>
-            </div>
           ))}
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <input
-              type="text"
-              value={newRepoPath}
-              onChange={e => setNewRepoPath(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') addRepo(); }}
-              placeholder="https://github.com/org/repo"
-              style={{ flex: 1, fontSize: 12, padding: '6px 10px' }}
-            />
-            <button
-              onClick={addRepo}
-              disabled={!newRepoPath.trim()}
-              style={{
-                fontSize: 12, padding: '6px 10px',
-                background: newRepoPath.trim() ? 'var(--bg2)' : 'var(--bg)',
-                border: '1px solid var(--border)',
-                borderRadius: 4, color: newRepoPath.trim() ? 'var(--text)' : 'var(--text3)',
-                cursor: newRepoPath.trim() ? 'pointer' : 'default',
-              }}
-            >
-              Add Repo
-            </button>
-          </div>
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>
-            Add repository URLs for task assignment. The workspace folder above controls where the app checks them out locally.
-          </div>
         </div>
 
-        {roles.map(({ key, label }) => {
-          const cfg = local.agents[key];
-          if (!cfg) return null;
-          return (
-            <div key={key} style={{ marginBottom: 20 }}>
-              <div style={{
-                fontSize: 11, fontWeight: 600, color: 'var(--text2)',
-                letterSpacing: 1, marginBottom: 10,
-              }}>
-                {label}
+        <div style={{ maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }}>
+          {activeTab === 'general' && (
+            <>
+              <div style={{ marginBottom: 20 }}>
+                <div style={{
+                  fontSize: 11, fontWeight: 600, color: 'var(--text2)',
+                  letterSpacing: 1, marginBottom: 8,
+                }}>
+                  WORKSPACE FOLDER
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                  <input
+                    type="text"
+                    value={local.workspaceRoot || ''}
+                    onChange={e => setLocal(prev => ({ ...prev, workspaceRoot: e.target.value }))}
+                    placeholder="/path/to/workspaces"
+                    style={{ flex: 1, fontSize: 12, padding: '6px 10px' }}
+                  />
+                  <button
+                    onClick={() => setShowWorkspacePicker(true)}
+                    style={{
+                      fontSize: 12, padding: '6px 10px',
+                      background: 'var(--bg2)', border: '1px solid var(--border)',
+                      borderRadius: 4, color: 'var(--text)', cursor: 'pointer',
+                    }}
+                  >
+                    Browse
+                  </button>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+                  Local folder used when the app creates per-task working copies.
+                </div>
+                {showWorkspacePicker && (
+                  <DirectoryPicker
+                    initialPath={local.workspaceRoot || ''}
+                    onSelect={(path) => {
+                      setLocal(prev => ({ ...prev, workspaceRoot: path }));
+                      setShowWorkspacePicker(false);
+                    }}
+                    onClose={() => setShowWorkspacePicker(false)}
+                  />
+                )}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                <span style={{ fontSize: 12, color: 'var(--text2)', width: 45 }}>Max:</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={cfg.max}
-                  onChange={e => {
-                    const newMax = Math.max(1, Math.min(10, parseInt(e.target.value, 10) || 1));
-                    updateRole(key, 'max', newMax);
-                  }}
-                  style={{
-                    width: 50, padding: '4px 6px', fontSize: 12,
-                    background: 'var(--bg)', border: '1px solid var(--border)',
-                    borderRadius: 4, textAlign: 'center',
-                  }}
-                />
+              <div style={{ marginBottom: 20 }}>
+                <div style={{
+                  fontSize: 11, fontWeight: 600, color: 'var(--text2)',
+                  letterSpacing: 1, marginBottom: 8,
+                }}>
+                  REPOSITORIES
+                </div>
+                {(local.repos || []).map(r => (
+                  <div key={r} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span
+                      style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      title={r}
+                    >
+                      {r}
+                    </span>
+                    <button onClick={() => removeRepo(r)} style={{ color: 'var(--red)', fontSize: 12, flexShrink: 0 }}>×</button>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <input
+                    type="text"
+                    value={newRepoPath}
+                    onChange={e => setNewRepoPath(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') addRepo(); }}
+                    placeholder="https://github.com/org/repo"
+                    style={{ flex: 1, fontSize: 12, padding: '6px 10px' }}
+                  />
+                  <button
+                    onClick={addRepo}
+                    disabled={!newRepoPath.trim()}
+                    style={{
+                      fontSize: 12, padding: '6px 10px',
+                      background: newRepoPath.trim() ? 'var(--bg2)' : 'var(--bg)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 4, color: newRepoPath.trim() ? 'var(--text)' : 'var(--text3)',
+                      cursor: newRepoPath.trim() ? 'pointer' : 'default',
+                    }}
+                  >
+                    Add Repo
+                  </button>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>
+                  Add repository URLs for task assignment. The workspace folder above controls where the app checks them out locally.
+                </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontSize: 12, color: 'var(--text2)', width: 45 }}>CLI:</span>
-                <select
-                  value={cfg.cli}
-                  onChange={e => updateRole(key, 'cli', e.target.value)}
-                  style={{
-                    padding: '4px 8px', fontSize: 12,
-                    background: 'var(--bg)', border: '1px solid var(--border)',
-                    borderRadius: 4,
-                  }}
-                >
-                  <option value="claude">claude</option>
-                  <option value="codex">codex</option>
-                </select>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 16, fontStyle: 'italic' }}>
+                Orchestrator scales agents up on demand, up to the max per role. Planning and Review can be disabled by setting max to 0.
               </div>
-            </div>
-          );
-        })}
+            </>
+          )}
 
-        <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 16, fontStyle: 'italic' }}>
-          Orchestrator scales agents up on demand, up to the max per role.
+          {activeTab !== 'general' && renderStageTab(activeTab)}
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

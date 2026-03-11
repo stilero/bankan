@@ -156,6 +156,48 @@ function extractSingleLine(text, label) {
   return match ? match[1].trim() : '';
 }
 
+function getPromptBody(stage) {
+  const settings = loadSettings();
+  return settings.prompts?.[stage] || '';
+}
+
+function isStageDisabled(stage) {
+  const settings = loadSettings();
+  if (stage === 'planning') return settings.agents?.planners?.max === 0;
+  if (stage === 'review') return settings.agents?.reviewers?.max === 0;
+  return false;
+}
+
+function slugifyTitle(title) {
+  const slug = String(title || 'auto')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return slug || 'auto';
+}
+
+function generateBranchName(task) {
+  return `feature/${task.id.toLowerCase()}-${slugifyTitle(task.title)}`;
+}
+
+function buildSyntheticPlan(task) {
+  return `=== PLAN START ===
+SUMMARY: Planning skipped because planner max is set to 0. Implement the requested task directly.
+BRANCH: ${generateBranchName(task)}
+FILES_TO_MODIFY:
+- Determine the affected files based on the task description during implementation
+STEPS:
+1. Review the repository context and task details.
+2. Implement the requested changes for "${task.title}".
+3. Run the most relevant existing verification before handing off.
+TESTS_NEEDED:
+- Run the most relevant existing tests or checks for the modified area
+RISKS:
+- Planning was skipped, so implementation must validate scope and touched files carefully
+=== PLAN END ===`;
+}
+
 function buildPullRequestBody(task) {
   const planSummary = extractSingleLine(task.plan, 'SUMMARY:');
   const filesToModify = parseBulletList(
@@ -229,6 +271,7 @@ function getAuthBlockedReason(buffer, cli = '') {
 }
 
 function buildPlannerPrompt(task) {
+  const promptBody = getPromptBody('planning');
   let prompt = `You are a senior software architect. A task has been assigned to you.
 Repository: ${task.repoPath}
 Workspace: ${task.workspacePath}
@@ -244,12 +287,12 @@ PRIORITY: ${task.priority}`;
 
   prompt += `
 
-Produce a detailed step-by-step implementation plan.
+${promptBody}
 Output ONLY in this exact format, with no text before or after the delimiters:
 
 === PLAN START ===
 SUMMARY: (one sentence describing what will be built)
-BRANCH: (feature/${task.id.toLowerCase()}-short-descriptive-slug)
+BRANCH: (${generateBranchName(task).replace(slugifyTitle(task.title), 'short-descriptive-slug')})
 FILES_TO_MODIFY:
 - path/to/file.ts (reason for modification)
 STEPS:
@@ -266,6 +309,7 @@ RISKS:
 
 function buildImplementorPrompt(task, workspacePath) {
   const repoDir = workspacePath || task.repoPath;
+  const promptBody = getPromptBody('implementation');
   let prompt = `You are an expert software engineer implementing a feature on a real codebase.
 
 TASK: ${task.title}
@@ -284,10 +328,7 @@ ${task.plan}
 
 Instructions:
 - You are already on branch ${task.branch} in ${repoDir}
-- Follow the plan step by step
-- If required tools or dependencies are missing in the workspace, install them before continuing
-- Commit after each logical unit of work with descriptive commit messages
-- Run existing tests after implementation to verify nothing broke
+${promptBody}
 - When fully complete, output this exact string on its own line:
   === IMPLEMENTATION COMPLETE ${task.id} ===
 - If you encounter a blocker you cannot resolve, output:
@@ -299,6 +340,7 @@ Begin implementation now.`;
 }
 
 function buildReviewerPrompt(task) {
+  const promptBody = getPromptBody('review').replaceAll('{branch}', task.branch || 'main');
   return `You are a senior code reviewer. A feature branch is ready for review.
 
 TASK: ${task.title}
@@ -309,10 +351,7 @@ ORIGINAL PLAN:
 ${task.plan}
 
 Instructions:
-1. Run: git diff main...${task.branch}
-2. Review for: correctness, security vulnerabilities, code quality, test coverage, edge cases
-3. Classify each issue as CRITICAL (blocks merge), MINOR (should fix), or STYLE (optional)
-4. VERDICT must be PASS if there are zero CRITICAL issues
+${promptBody}
 
 Output ONLY in this exact format:
 
@@ -412,6 +451,23 @@ async function cleanupWorkspace(task) {
 // --- Stage Transitions ---
 
 async function startPlanning(task) {
+  if (isStageDisabled('planning')) {
+    const planText = buildSyntheticPlan(task);
+    const branch = extractSingleLine(planText, 'BRANCH:') || generateBranchName(task);
+    store.savePlan(task.id, planText);
+    store.updateTask(task.id, {
+      status: 'queued',
+      plan: planText,
+      branch,
+      review: null,
+      reviewFeedback: null,
+      reviewCycleCount: 0,
+      blockedReason: null,
+      assignedTo: null,
+    });
+    return true;
+  }
+
   const planner = agentManager.getAvailablePlanner();
   if (!planner) return false;
 
@@ -479,7 +535,7 @@ function onPlanComplete(agentId, taskId) {
 
   // Parse branch name
   const branchMatch = planText.match(/BRANCH:\s*(.+)/);
-  const branch = branchMatch ? branchMatch[1].trim() : `feature/${taskId.toLowerCase()}-auto`;
+  const branch = branchMatch ? branchMatch[1].trim() : generateBranchName(store.getTask(taskId) || { id: taskId, title: 'auto' });
 
   // Save plan
   store.savePlan(taskId, planText);
@@ -604,6 +660,25 @@ async function onImplementationComplete(agentId) {
 }
 
 function startReview(task) {
+  if (isStageDisabled('review')) {
+    store.updateTask(task.id, {
+      status: 'review',
+      assignedTo: 'orch',
+      blockedReason: null,
+      review: `=== REVIEW START ===
+VERDICT: PASS
+CRITICAL_ISSUES:
+- none
+MINOR_ISSUES:
+- none
+SUMMARY: Review skipped because reviewer max is set to 0.
+=== REVIEW END ===`,
+    });
+    bus.emit('review:passed', { taskId: task.id });
+    createPR(task.id);
+    return;
+  }
+
   const reviewer = agentManager.getAvailableReviewer();
   if (!reviewer) return;
 
@@ -687,7 +762,18 @@ async function createPR(taskId) {
       throw new Error('Workspace is missing before PR creation');
     }
 
-    await simpleGit(task.workspacePath).push('origin', task.branch);
+    const git = simpleGit(task.workspacePath);
+    await git.fetch('origin', 'main');
+    await git.checkout(task.branch);
+
+    try {
+      await git.rebase(['origin/main']);
+    } catch (err) {
+      try { await git.raw(['rebase', '--abort']); } catch { /* ignore */ }
+      throw new Error(`Rebase against origin/main failed: ${err.message}`);
+    }
+
+    await git.raw(['push', '--force-with-lease', 'origin', task.branch]);
     const prBody = buildPullRequestBody(task);
     const prUrl = execFileSync('gh', [
       'pr', 'create',
@@ -849,6 +935,10 @@ function pollLoop() {
       return (prio[a.priority] ?? 2) - (prio[b.priority] ?? 2);
     });
   for (const backlogTask of backlogTasks) {
+    if (isStageDisabled('planning')) {
+      startPlanning(backlogTask);
+      continue;
+    }
     if (!agentManager.getAvailablePlanner()) {
       // Try to scale up if there's demand
       agentManager.scaleUp('planners');

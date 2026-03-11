@@ -213,7 +213,7 @@ class AgentManager {
     orch.taskLabel = 'Pipeline Control';
     this.agents.set('orch', orch);
 
-    // Create initial agents from settings (1 per role)
+    // Create initial agents from settings
     this.reconfigure(loadSettings());
   }
 
@@ -223,9 +223,9 @@ class AgentManager {
       this._maxSettings[settingsKey] = cfg.max;
       this._cliSettings[settingsKey] = cfg.cli;
 
-      // Ensure at least 1 agent per role exists
+      // Ensure an agent exists only when the role is enabled
       const current = this.getAgentsByRole(prefix);
-      if (current.length === 0) {
+      if (cfg.max > 0 && current.length === 0) {
         const color = meta.colors ? meta.colors[0] : meta.color;
         const agent = new Agent({
           id: `${prefix}-1`,
@@ -265,7 +265,7 @@ class AgentManager {
   // Scale up a role by one agent, returns the new agent or null if at max
   scaleUp(settingsKey) {
     const { meta, prefix } = ROLE_MAP[settingsKey];
-    const max = this._maxSettings[settingsKey] || 1;
+    const max = this._maxSettings[settingsKey] ?? 1;
     const cli = this._cliSettings[settingsKey] || 'claude';
     const current = this.getAgentsByRole(prefix);
 
@@ -290,7 +290,7 @@ class AgentManager {
   }
 
   getMaxForRole(settingsKey) {
-    return this._maxSettings[settingsKey] || 1;
+    return this._maxSettings[settingsKey] ?? 1;
   }
 
   get(id) {

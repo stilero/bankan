@@ -15,6 +15,8 @@ app.use(cors());
 app.use(express.json());
 
 function stageToResumeStatus(task) {
+  const settings = loadSettings();
+  const planningDisabled = settings.agents?.planners?.max === 0;
   const previousStatus = task.previousStatus;
   if (previousStatus) {
     if (previousStatus === 'blocked') {
@@ -24,6 +26,9 @@ function stageToResumeStatus(task) {
       return 'awaiting_approval';
     }
     if (['workspace_setup', 'planning', 'backlog', 'queued', 'implementing', 'review'].includes(previousStatus)) {
+      if (planningDisabled && ['workspace_setup', 'planning', 'backlog'].includes(previousStatus)) {
+        return 'queued';
+      }
       return previousStatus;
     }
   }
@@ -34,12 +39,14 @@ function stageToResumeStatus(task) {
     return 'queued';
   }
   if (task.lastActiveStage === 'planning') {
-    return task.plan ? 'awaiting_approval' : 'backlog';
+    return task.plan ? 'awaiting_approval' : (planningDisabled ? 'queued' : 'backlog');
   }
-  return 'backlog';
+  return planningDisabled ? 'queued' : 'backlog';
 }
 
 function stageToRetryStatus(task) {
+  const settings = loadSettings();
+  const planningDisabled = settings.agents?.planners?.max === 0;
   if (task.assignedTo) {
     if (task.assignedTo.startsWith('plan-')) return 'planning';
     if (task.assignedTo.startsWith('imp-')) return 'implementing';
@@ -56,9 +63,9 @@ function stageToRetryStatus(task) {
     return 'queued';
   }
   if (task.lastActiveStage === 'planning') {
-    return task.plan ? 'awaiting_approval' : 'backlog';
+    return task.plan ? 'awaiting_approval' : (planningDisabled ? 'queued' : 'backlog');
   }
-  return 'backlog';
+  return planningDisabled ? 'queued' : 'backlog';
 }
 
 // REST API
