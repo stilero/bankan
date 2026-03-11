@@ -253,6 +253,11 @@ wss.on('connection', (ws) => {
         if (taskId) orchestrator.abortTask(taskId);
         break;
       }
+      case 'RESET_TASK': {
+        const { taskId } = msg.payload || {};
+        if (taskId) orchestrator.resetTask(taskId);
+        break;
+      }
       case 'RETRY_TASK': {
         const { taskId } = msg.payload || {};
         const task = store.getTask(taskId);
@@ -359,6 +364,7 @@ bus.on('task:blocked', (data) => broadcast('TASK_BLOCKED', data));
 bus.on('repos:updated', (repos) => broadcast('REPOS_UPDATED', { repos }));
 bus.on('plan:partial', (data) => broadcast('PLAN_PARTIAL', data));
 bus.on('task:aborted', (data) => broadcast('TASK_ABORTED', data));
+bus.on('task:reset', (data) => broadcast('TASK_RESET', data));
 
 // Startup
 store.restartRecovery();

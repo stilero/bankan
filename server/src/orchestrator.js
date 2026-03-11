@@ -822,6 +822,39 @@ async function abortTask(taskId) {
   bus.emit('task:aborted', { taskId });
 }
 
+async function resetTask(taskId) {
+  const task = store.getTask(taskId);
+  if (!task || task.status === 'done') return;
+
+  if (task.assignedTo) {
+    const agent = agentManager.get(task.assignedTo);
+    if (agent) agent.kill();
+  }
+
+  await cleanupWorkspace(task);
+  store.removePlan(taskId);
+
+  store.updateTask(taskId, {
+    status: 'backlog',
+    assignedTo: null,
+    workspacePath: null,
+    branch: null,
+    plan: null,
+    review: null,
+    prUrl: null,
+    prNumber: null,
+    blockedReason: null,
+    reviewFeedback: null,
+    planFeedback: null,
+    previousStatus: null,
+    reviewCycleCount: 0,
+    progress: 0,
+  });
+  store.appendLog(taskId, 'Task reset to backlog and workspace deleted');
+
+  bus.emit('task:reset', { taskId });
+}
+
 // --- Signal Detection ---
 
 function checkSignals() {
@@ -1128,6 +1161,7 @@ const orchestrator = {
     if (signalTimer) clearInterval(signalTimer);
   },
   abortTask,
+  resetTask,
 };
 
 export default orchestrator;

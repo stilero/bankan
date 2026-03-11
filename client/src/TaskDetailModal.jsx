@@ -37,6 +37,7 @@ export default function TaskDetailModal({
   onResume,
   onEdit,
   onAbort,
+  onReset,
   onRetry,
 }) {
   const [editing, setEditing] = useState(false);
@@ -52,6 +53,7 @@ export default function TaskDetailModal({
   const canPause = !['done', 'paused', 'aborted'].includes(task.status);
   const canResume = task.status === 'paused';
   const canAbort = !['done', 'aborted'].includes(task.status);
+  const canReset = task.status !== 'done';
   const canRetry = task.status === 'blocked';
 
   const handleSave = () => {
@@ -347,6 +349,7 @@ export default function TaskDetailModal({
               display: 'flex', gap: 8, justifyContent: 'flex-end',
               borderTop: '1px solid var(--border)', paddingTop: 16,
               marginTop: 8,
+              flexWrap: 'wrap',
             }}>
               <button
                 onClick={() => {
@@ -432,6 +435,21 @@ export default function TaskDetailModal({
                 </button>
               )}
 
+              {canReset && onReset && (
+                <button
+                  onClick={() => onReset(task.id)}
+                  title="Delete the local workspace and clear plan, review, branch, PR, blockers, and progress before returning to backlog."
+                  style={{
+                    padding: '6px 14px', fontSize: 12,
+                    background: 'rgba(245, 166, 35, 0.12)',
+                    border: '1px solid rgba(245, 166, 35, 0.3)',
+                    borderRadius: 4, color: 'var(--amber)',
+                  }}
+                >
+                  Reset to Backlog
+                </button>
+              )}
+
               {canAbort && onAbort && (
                 <button
                   onClick={() => onAbort(task.id)}
@@ -446,6 +464,12 @@ export default function TaskDetailModal({
                 </button>
               )}
             </div>
+
+            {canReset && (
+              <div style={{ marginTop: 10, fontSize: 10, color: 'var(--text3)', lineHeight: 1.5 }}>
+                Reset deletes the local workspace and discards the current plan, review, branch, blocker, and PR state.
+              </div>
+            )}
 
             {rejecting && (
               <div style={{ marginTop: 10, animation: 'fade-in 0.15s ease-out' }}>

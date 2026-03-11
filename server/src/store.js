@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { v4 as uuidv4 } from 'uuid';
@@ -158,6 +158,21 @@ class TaskStore {
 
   savePlan(taskId, planText) {
     writeFileSync(join(PLANS_DIR, `${taskId}.md`), planText);
+  }
+
+  removePlan(taskId) {
+    rmSync(join(PLANS_DIR, `${taskId}.md`), { force: true });
+  }
+
+  appendLog(id, message) {
+    const task = this.getTask(id);
+    if (!task) return null;
+    task.log.push({ ts: new Date().toISOString(), message });
+    task.updatedAt = new Date().toISOString();
+    this._save();
+    bus.emit('task:updated', task);
+    bus.emit('tasks:changed', this.tasks);
+    return task;
   }
 
   restartRecovery() {

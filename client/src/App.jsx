@@ -31,7 +31,7 @@ export default function App() {
   const {
     connected, agents, tasks, repos, settings, notifications,
     addTask, approvePlan, rejectPlan,
-    pauseTask, resumeTask, editTask, abortTask, retryTask,
+    pauseTask, resumeTask, editTask, abortTask, resetTask, retryTask,
     injectMessage, sendRaw, pauseAgent, resumeAgent,
     updateSettings, subscribeTerminal,
   } = useFactory();
@@ -188,6 +188,7 @@ export default function App() {
           onResume={(id) => { resumeTask(id); }}
           onEdit={(id, updates) => { editTask(id, updates); }}
           onAbort={(id) => { abortTask(id); setSelectedTask(null); }}
+          onReset={(id) => { resetTask(id); setSelectedTask(null); }}
           onRetry={(id) => { retryTask(id); setSelectedTask(null); }}
         />
       )}
