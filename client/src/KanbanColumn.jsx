@@ -29,7 +29,17 @@ export default function KanbanColumn({
       <div style={{ padding: '12px 12px 8px', borderBottom: `2px solid ${column.color}30` }}>
         {/* Title row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: columnAgents.length > 0 ? 8 : 0 }}>
-          <span style={{ fontSize: 14 }}>{column.icon}</span>
+          <span style={{
+            width: 16,
+            height: 16,
+            color: column.color,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            {column.icon}
+          </span>
           <span style={{
             fontFamily: 'var(--font-head)',
             fontWeight: 700,
