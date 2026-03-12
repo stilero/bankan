@@ -155,9 +155,10 @@ app.put('/api/settings', (req, res) => {
     return res.status(400).json({ errors });
   }
   saveSettings(settings);
-  bus.emit('settings:changed', settings);
-  broadcast('SETTINGS_UPDATED', settings);
-  res.json(settings);
+  const persistedSettings = loadSettings();
+  bus.emit('settings:changed', persistedSettings);
+  broadcast('SETTINGS_UPDATED', persistedSettings);
+  res.json(persistedSettings);
 });
 
 // HTTP + WebSocket server
@@ -384,8 +385,9 @@ wss.on('connection', (ws) => {
           break;
         }
         saveSettings(settings);
-        bus.emit('settings:changed', settings);
-        broadcast('SETTINGS_UPDATED', settings);
+        const persistedSettings = loadSettings();
+        bus.emit('settings:changed', persistedSettings);
+        broadcast('SETTINGS_UPDATED', persistedSettings);
         break;
       }
       case 'PAUSE_TASK': {

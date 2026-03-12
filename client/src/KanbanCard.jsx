@@ -38,11 +38,6 @@ function truncateText(text, maxLength = 72) {
   return normalized.slice(0, maxLength - 1).trimEnd() + '…';
 }
 
-function formatTokens(tokens = 0) {
-  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`;
-  return String(tokens || 0);
-}
-
 export default function KanbanCard({
   task,
   columnColor,
@@ -143,13 +138,6 @@ export default function KanbanCard({
             {assignedAgent.name}
           </span>
         )}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: task.progress > 0 ? 6 : 8 }}>
-        <span style={{ fontSize: 10, color: 'var(--text3)' }}>Tokens</span>
-        <span style={{ fontSize: 10, color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
-          {formatTokens(task.totalTokens || 0)}
-        </span>
       </div>
 
       {/* Row 4: Progress bar */}

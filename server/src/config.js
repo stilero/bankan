@@ -53,6 +53,7 @@ const DEFAULT_PROMPTS = {
 export function getDefaults() {
   return {
     repos: config.REPOS.length > 0 ? [...config.REPOS] : [],
+    defaultRepoPath: config.REPOS[0] || '',
     workspaceRoot: DEFAULT_WORKSPACES_DIR,
     agents: {
       planners:     { max: 4, cli: 'claude' },
@@ -63,32 +64,46 @@ export function getDefaults() {
   };
 }
 
+function normalizeDefaultRepoPath(repos, defaultRepoPath) {
+  if (!Array.isArray(repos) || repos.length === 0) return '';
+  if (typeof defaultRepoPath === 'string' && repos.includes(defaultRepoPath)) {
+    return defaultRepoPath;
+  }
+  return repos[0];
+}
+
+function normalizeSettingsShape(data) {
+  const defaults = getDefaults();
+  if (!Array.isArray(data.repos)) data.repos = defaults.repos;
+  if (typeof data.workspaceRoot !== 'string' || !data.workspaceRoot.trim()) {
+    data.workspaceRoot = typeof data.reposDir === 'string' && data.reposDir.trim()
+      ? data.reposDir
+      : defaults.workspaceRoot;
+  }
+  data.defaultRepoPath = normalizeDefaultRepoPath(data.repos, data.defaultRepoPath);
+
+  for (const role of Object.keys(defaults.agents)) {
+    if (!data.agents?.[role]) {
+      data.agents = data.agents || {};
+      data.agents[role] = defaults.agents[role];
+    } else {
+      delete data.agents[role].count;
+    }
+  }
+
+  data.prompts = {
+    ...defaults.prompts,
+    ...(data.prompts || {}),
+  };
+
+  return data;
+}
+
 export function loadSettings() {
   try {
     if (existsSync(SETTINGS_FILE)) {
       const data = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'));
-      const defaults = getDefaults();
-      if (!Array.isArray(data.repos)) data.repos = defaults.repos;
-      if (typeof data.workspaceRoot !== 'string' || !data.workspaceRoot.trim()) {
-        data.workspaceRoot = typeof data.reposDir === 'string' && data.reposDir.trim()
-          ? data.reposDir
-          : defaults.workspaceRoot;
-      }
-      // Merge agent defaults
-      for (const role of Object.keys(defaults.agents)) {
-        if (!data.agents?.[role]) {
-          data.agents = data.agents || {};
-          data.agents[role] = defaults.agents[role];
-        } else {
-          // Remove legacy 'count' field if present
-          delete data.agents[role].count;
-        }
-      }
-      data.prompts = {
-        ...defaults.prompts,
-        ...(data.prompts || {}),
-      };
-      return data;
+      return normalizeSettingsShape(data);
     }
   } catch {
     // Fall through to defaults
@@ -98,7 +113,7 @@ export function loadSettings() {
 
 export function saveSettings(settings) {
   mkdirSync(DATA_DIR, { recursive: true });
-  writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+  writeFileSync(SETTINGS_FILE, JSON.stringify(normalizeSettingsShape(settings), null, 2));
 }
 
 export function validateSettings(settings) {
@@ -113,6 +128,11 @@ export function validateSettings(settings) {
 
   if (!Array.isArray(settings.repos)) {
     errors.push('repos must be an array');
+  }
+  if (typeof settings.defaultRepoPath !== 'string') {
+    errors.push('defaultRepoPath must be a string');
+  } else if (Array.isArray(settings.repos) && settings.defaultRepoPath && !settings.repos.includes(settings.defaultRepoPath)) {
+    errors.push('defaultRepoPath must match one of the configured repos');
   }
 
   const validClis = ['claude', 'codex'];

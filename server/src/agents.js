@@ -28,9 +28,13 @@ const ROLE_META = {
   },
 };
 
-const CLAUDE_TOKEN_RE = /(\d[\d, ]+)\s+(?:input\s+)?tokens/i;
-const CLAUDE_TOKENS_USED_RE = /tokens used\s*[\r\n]+(\d[\d, ]+)/i;
-const CODEX_TOKEN_RE = /context:\s*(\d[\d,]+)/i;
+const TOKEN_PATTERNS = [
+  /tokens used\s*[:\r\n]+\s*(\d[\d, ]*)/i,
+  /total tokens\s*[:=]\s*(\d[\d, ]*)/i,
+  /total[_ ]tokens["'\s:=>]+(\d[\d, ]*)/i,
+  /context(?: used)?\s*:\s*(\d[\d, ]*)/i,
+  /(\d[\d, ]*)\s+(?:input\s+)?tokens\b/i,
+];
 
 class Agent {
   constructor(def) {
@@ -145,16 +149,14 @@ class Agent {
 
   _parseTokens(data) {
     const recentBuffer = this.getBufferString(80);
-    let match = recentBuffer.match(CLAUDE_TOKENS_USED_RE)
-      || recentBuffer.match(CLAUDE_TOKEN_RE)
-      || recentBuffer.match(CODEX_TOKEN_RE)
-      || data.match(CLAUDE_TOKENS_USED_RE)
-      || data.match(CLAUDE_TOKEN_RE)
-      || data.match(CODEX_TOKEN_RE);
-    if (match) {
-      const parsed = parseInt(match[1].replace(/[,\s]/g, ''), 10);
-      if (parsed > this.tokens) {
-        this.tokens = parsed;
+    for (const source of [recentBuffer, data]) {
+      for (const pattern of TOKEN_PATTERNS) {
+        const match = source.match(pattern);
+        if (!match) continue;
+        const parsed = parseInt(match[1].replace(/[,\s]/g, ''), 10);
+        if (Number.isFinite(parsed) && parsed > this.tokens) {
+          this.tokens = parsed;
+        }
       }
     }
   }

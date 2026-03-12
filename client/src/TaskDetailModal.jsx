@@ -35,6 +35,7 @@ function formatTokens(tokens = 0) {
 
 export default function TaskDetailModal({
   task,
+  repos = [],
   onClose,
   onApprove,
   onReject,
@@ -170,15 +171,21 @@ export default function TaskDetailModal({
                 ))}
               </div>
             </div>
-            <div style={{ marginBottom: 14 }}>
-              <div style={labelStyle}>Repository Path</div>
-              <input
-                type="text"
-                value={editRepoPath}
-                onChange={e => setEditRepoPath(e.target.value)}
-                style={{ width: '100%', padding: '6px 10px', fontSize: 12 }}
-              />
-            </div>
+            {repos.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={labelStyle}>Repository</div>
+                <select
+                  value={editRepoPath}
+                  onChange={e => setEditRepoPath(e.target.value)}
+                  style={{ width: '100%', padding: '6px 10px', fontSize: 12 }}
+                >
+                  <option value="">No repository</option>
+                  {repos.map(repo => (
+                    <option key={repo} value={repo}>{repo}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setEditing(false)}

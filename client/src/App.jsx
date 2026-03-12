@@ -17,6 +17,14 @@ function formatTokens(n) {
   return String(n);
 }
 
+function getDefaultRepo(repos, settings) {
+  if (!Array.isArray(repos) || repos.length === 0) return '';
+  if (settings?.defaultRepoPath && repos.includes(settings.defaultRepoPath)) {
+    return settings.defaultRepoPath;
+  }
+  return repos[0] || '';
+}
+
 // --- Logo SVG ---
 function Logo() {
   return (
@@ -47,8 +55,8 @@ export default function App() {
     [tasks]
   );
   const totalTokens = useMemo(() =>
-    agents.reduce((a, b) => a + (b.tokens || 0), 0),
-    [agents]
+    tasks.reduce((sum, task) => sum + (task.totalTokens || 0), 0),
+    [tasks]
   );
   const activeCount = useMemo(() => agents.filter(a => a.status === 'active').length, [agents]);
   const blockedCount = useMemo(() => agents.filter(a => a.status === 'blocked').length, [agents]);
@@ -183,6 +191,7 @@ export default function App() {
       {selectedTask && (
         <TaskDetailModal
           task={tasks.find(t => t.id === selectedTask.id) || selectedTask}
+          repos={repos}
           onClose={() => setSelectedTask(null)}
           onApprove={(id) => { approvePlan(id); setSelectedTask(null); }}
           onReject={(id, fb) => { rejectPlan(id, fb); setSelectedTask(null); }}
@@ -200,6 +209,7 @@ export default function App() {
       {showAddModal && (
         <AddTaskModal
           repos={repos}
+          settings={settings}
           onClose={() => setShowAddModal(false)}
           onSubmit={(title, priority, description, repoPath) => {
             addTask(title, priority, description, repoPath);
@@ -246,11 +256,11 @@ export default function App() {
 }
 
 // --- Add Task Modal ---
-function AddTaskModal({ repos, onClose, onSubmit }) {
+function AddTaskModal({ repos, settings, onClose, onSubmit }) {
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('medium');
   const [description, setDescription] = useState('');
-  const [repoPath, setRepoPath] = useState(repos[0] || '');
+  const [repoPath, setRepoPath] = useState(() => getDefaultRepo(repos, settings));
 
   const handleSubmit = () => {
     if (!title.trim()) return;
@@ -289,6 +299,7 @@ function AddTaskModal({ repos, onClose, onSubmit }) {
               onChange={e => setRepoPath(e.target.value)}
               style={{ width: '100%', fontSize: 12, padding: '6px 8px' }}
             >
+              <option value="">No repository</option>
               {repos.map(r => (
                 <option key={r} value={r}>{r}</option>
               ))}
@@ -400,13 +411,25 @@ function SettingsModal({ settings, onClose, onApply }) {
     if (!path) return;
     setLocal(prev => {
       if ((prev.repos || []).includes(path)) return prev;
-      return { ...prev, repos: [...(prev.repos || []), path] };
+      const repos = [...(prev.repos || []), path];
+      return {
+        ...prev,
+        repos,
+        defaultRepoPath: prev.defaultRepoPath || path,
+      };
     });
     setNewRepoPath('');
   };
 
   const removeRepo = (path) => {
-    setLocal(prev => ({ ...prev, repos: (prev.repos || []).filter(r => r !== path) }));
+    setLocal(prev => {
+      const repos = (prev.repos || []).filter(r => r !== path);
+      return {
+        ...prev,
+        repos,
+        defaultRepoPath: prev.defaultRepoPath === path ? (repos[0] || '') : prev.defaultRepoPath,
+      };
+    });
   };
 
   const maxRules = {
@@ -676,6 +699,30 @@ function SettingsModal({ settings, onClose, onApply }) {
                   Add repository URLs for task assignment. The workspace folder above controls where the app checks them out locally.
                 </div>
               </div>
+
+              {local.repos?.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{
+                    fontSize: 11, fontWeight: 600, color: 'var(--text2)',
+                    letterSpacing: 1, marginBottom: 8,
+                  }}>
+                    DEFAULT REPOSITORY
+                  </div>
+                  <select
+                    value={local.defaultRepoPath || ''}
+                    onChange={e => setLocal(prev => ({ ...prev, defaultRepoPath: e.target.value }))}
+                    style={{ width: '100%', fontSize: 12, padding: '6px 10px' }}
+                  >
+                    <option value="">No default repository</option>
+                    {(local.repos || []).map(repo => (
+                      <option key={repo} value={repo}>{repo}</option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>
+                    New tasks preselect this repository. If it is removed, the first remaining repository becomes the default.
+                  </div>
+                </div>
+              )}
 
               <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 16, fontStyle: 'italic' }}>
                 Orchestrator scales agents up on demand, up to the max per role. Planning and Review can be disabled by setting max to 0.
