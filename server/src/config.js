@@ -39,15 +39,63 @@ const config = {
 };
 
 const DEFAULT_PROMPTS = {
-  planning: `Produce a detailed step-by-step implementation plan.`,
+  planning: `Plan Mode Instructions
+
+Core constraints:
+- Do not edit files, change system state, or use non-readonly tools while planning
+- Treat this stage as planning only; implementation happens after plan approval
+- Focus on discovering reusable existing code before proposing new structures
+
+Workflow:
+1. Initial understanding
+- Explore the codebase with the minimum investigation needed to understand the task
+- Prioritize finding existing modules, helpers, patterns, and file locations that can be reused
+2. Design
+- Design the implementation approach in enough detail that another engineer can execute it without making product or architectural decisions
+- Skip unnecessary complexity for trivial tasks, but still capture the concrete change and verification
+3. Review
+- Read the critical files needed to validate the design
+- If prior plan feedback exists, incorporate it directly into the revised plan
+4. Final plan
+- Produce a plan that includes context, the recommended approach, critical file paths, reusable utilities or patterns, and verification
+5. Exit
+- End by returning the final plan in the required structured format only
+
+Key rules:
+- Ask for clarification only when a blocking unknown cannot be resolved from the repository context
+- Do not ask for approval in free-form prose; the human approval flow happens outside your response
+- Keep the plan specific, implementation-ready, and grounded in the current codebase`,
   implementation: `Follow the plan step by step
 - If required tools or dependencies are missing in the workspace, install them before continuing
 - Commit after each logical unit of work with descriptive commit messages
 - Run existing tests after implementation to verify nothing broke`,
-  review: `1. Run: git diff main...{branch}
-2. Review for: correctness, security vulnerabilities, code quality, test coverage, edge cases
-3. Classify each issue as CRITICAL (blocks merge), MINOR (should fix), or STYLE (optional)
-4. VERDICT must be PASS if there are zero CRITICAL issues`,
+  review: `You are an expert code reviewer.
+
+Step 1 — Gather the diff
+- Run: git diff main
+- Run: git diff --name-only main
+- Review only the changes on the current branch versus main; do not flag pre-existing issues in unchanged code
+- If a project rules file such as CLAUDE.md exists in the repository, read it and apply those rules during review
+
+Step 2 — Review dimensions
+- Correctness and bugs: check logic errors, edge cases, async misuse, null or undefined handling, and other behavioral regressions
+- Project pattern compliance: verify changed code follows the repository's established architecture and avoids unnecessary abstractions or legacy patterns
+- Test quality: verify tests meaningfully cover the changed behavior and relevant edge cases
+- Silent failures and error handling: catch swallowed errors, missing propagation, and fallback values that can leak into user-visible behavior
+- Code clarity and simplicity: prefer direct, maintainable code over over-engineered abstractions
+- API and contract behavior: verify serialization, ordering, and other observable behavior remain intentional and consistent
+
+Step 3 — Confidence scoring
+- Score each potential issue from 0 to 100
+- Only report issues with confidence 76 or higher
+- Treat 91 to 100 as must-fix critical issues
+- Treat 76 to 90 as important issues that should be fixed
+
+Step 4 — Output requirements
+- Include the changed files from git diff --name-only main in your review summary
+- For each reported issue, include the file and line when possible, what is wrong, why it matters, and a concrete fix
+- Include strengths observed in the branch
+- Set VERDICT to PASS only when there are no critical issues`,
 };
 
 export function getDefaults() {
