@@ -6,11 +6,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/stilero/ai-dev-factory.git"
+    "url": "git+https://github.com/stilero/bankan.git"
   },
-  "homepage": "https://github.com/stilero/ai-dev-factory#readme",
+  "homepage": "https://github.com/stilero/bankan#readme",
   "bugs": {
-    "url": "https://github.com/stilero/ai-dev-factory/issues"
+    "url": "https://github.com/stilero/bankan/issues"
   },
   "keywords": [
     "ai",

@@ -1,25 +1,45 @@
-# Ban Kan
+<p align="center">
+  <img src="https://raw.githubusercontent.com/stilero/bankan/main/client/src/assets/ban_kan_logo.svg" alt="Ban Kan logo" width="360" />
+</p>
+
+# stilero/bankan
 
 Local AI agent orchestration dashboard packaged as a global npm app.
 
-[GitHub repository](https://github.com/stilero/ai-dev-factory) · [Issue tracker](https://github.com/stilero/ai-dev-factory/issues)
+[CI](https://github.com/stilero/bankan/actions/workflows/ci.yml) · [GitHub repository](https://github.com/stilero/bankan) · [Issue tracker](https://github.com/stilero/bankan/issues)
 
-## Install
+## Installation
+
+### Requirements
+
+- Node.js `>= 18`
+- `git`
+- At least one AI CLI: [`claude`](https://docs.anthropic.com/en/docs/claude-code) or [`codex`](https://github.com/openai/codex)
+- Native build tools for `node-pty`
+  - macOS: Xcode Command Line Tools
+  - Linux: `build-essential`
+
+### Install from npm
 
 ```bash
 npm install -g bankan
+bankan
 ```
 
-Or run it without installing globally:
+### Run without installing
 
 ```bash
 npx bankan
 ```
 
-Then start the app with:
+### Install from source
 
 ```bash
-bankan
+git clone https://github.com/stilero/bankan.git
+cd bankan
+npm run install:all
+npm run setup
+npm run dev
 ```
 
 By default, Ban Kan starts a local server, opens your browser automatically, and serves the UI from the same process.
@@ -36,18 +56,15 @@ It will prompt for:
 - `IMPLEMENTOR_1_CLI`: `claude` or `codex`
 - `IMPLEMENTOR_2_CLI`: `claude` or `codex`
 
-## Requirements
+## CLI Options
 
-- Node.js `>= 18`
-- `git`
-- At least one AI CLI: [`claude`](https://docs.anthropic.com/en/docs/claude-code) or [`codex`](https://github.com/openai/codex)
-- Native build tools for `node-pty`
-  - macOS: Xcode Command Line Tools
-  - Linux: `build-essential`
+```bash
+bankan --port 3005
+bankan --no-open
+```
 
-## License
-
-MIT
+- `--port`: bind to a specific port
+- `--no-open`: start without opening a browser
 
 ## Runtime Storage
 
@@ -59,24 +76,7 @@ Ban Kan does not write state into the npm global install directory.
   - Windows: `%AppData%\bankan`
 - Temporary terminal bridge files are stored under the OS temp directory
 
-## CLI Options
-
-```bash
-bankan --port 3005
-bankan --no-open
-```
-
-- `--port`: bind to a specific port
-- `--no-open`: start without opening a browser
-
 ## Development
-
-From source:
-
-```bash
-npm run setup
-npm run dev
-```
 
 Useful scripts:
 
@@ -85,44 +85,18 @@ Useful scripts:
 - `npm run setup` runs the interactive setup wizard
 - `npm run install:all` installs root, server, and client dependencies
 
-## Publish To npm
+## Release
 
-Before publishing:
+This repository includes:
 
-1. Confirm the package name is available:
-   ```bash
-   npm view bankan
-   ```
-   If the package already exists, rename the package or switch to a scoped name before publishing.
-2. Install dependencies:
-   ```bash
-   npm run install:all
-   ```
-3. Build the client bundle:
-   ```bash
-   npm run build
-   ```
-4. Inspect the package contents:
-   ```bash
-   npm pack
-   ```
-5. Authenticate:
-   ```bash
-   npm login
-   ```
-6. Publish:
-   ```bash
-   npm publish
-   ```
+- `CI`: installs all packages, builds the client, and validates the publishable package shape
+- `Publish to npm`: publishes `bankan` when a GitHub Release is published
 
-After publishing, verify:
+To enable npm publishing in GitHub Actions, add an `NPM_TOKEN` repository secret with publish access to the package.
 
-```bash
-npm view bankan
-npm install -g bankan
-bankan --no-open
-npx bankan --no-open
-```
+## License
+
+MIT
 
 ## Architecture
 
