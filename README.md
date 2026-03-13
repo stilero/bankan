@@ -1,19 +1,19 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/stilero/bankan/main/client/src/assets/ban_kan_logo.svg" alt="Ban Kan logo" width="360" />
+  <img src="client/src/assets/ban_kan_logo.svg" alt="Ban Kan logo" width="360" />
 </p>
 
 # Ban Kan
 
 <p align="center">
-  Run AI coding agents like a Kanban board.
+  The control center for managing many AI coding agents in one simple UI.
 </p>
 
 <p align="center">
-  Plan -> Implement -> Review -> Pull Request
+  See every task, every stage, and every agent at a glance.
 </p>
 
 <p align="center">
-  Local-first orchestration for parallel AI development.
+  Bring order to parallel AI development without leaving your local workflow.
 </p>
 
 <p align="center">
