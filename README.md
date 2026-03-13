@@ -2,6 +2,8 @@
 
 Local AI agent orchestration dashboard packaged as a global npm app.
 
+[GitHub repository](https://github.com/stilero/ai-dev-factory) · [Issue tracker](https://github.com/stilero/ai-dev-factory/issues)
+
 ## Install
 
 ```bash
@@ -42,6 +44,10 @@ It will prompt for:
 - Native build tools for `node-pty`
   - macOS: Xcode Command Line Tools
   - Linux: `build-essential`
+
+## License
+
+MIT
 
 ## Runtime Storage
 

@@ -4,6 +4,7 @@ import KanbanBoard from './KanbanBoard.jsx';
 import TerminalDrawer from './TerminalDrawer.jsx';
 import DirectoryPicker from './DirectoryPicker.jsx';
 import TaskDetailModal from './TaskDetailModal.jsx';
+import logoUrl from './assets/ban_kan_logo.svg';
 
 const PRIORITY_COLORS = {
   critical: 'var(--red)',
@@ -25,13 +26,24 @@ function getDefaultRepo(repos, settings) {
   return repos[0] || '';
 }
 
-// --- Logo SVG ---
 function Logo() {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-      <polygon points="12,2 22,8 22,16 12,22 2,16 2,8" stroke="#F5A623" strokeWidth="1.5" fill="none" />
-      <polygon points="12,6 17,9 17,15 12,18 7,15 7,9" fill="#F5A623" opacity="0.3" />
-    </svg>
+    <div style={{
+      height: 34,
+      display: 'flex',
+      alignItems: 'center',
+      flexShrink: 0,
+    }}>
+      <img
+        src={logoUrl}
+        alt="Ban Kan"
+        style={{
+          height: 34,
+          width: 'auto',
+          display: 'block',
+        }}
+      />
+    </div>
   );
 }
 
@@ -79,17 +91,14 @@ export default function App() {
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* TOP BAR */}
       <div style={{
-        height: 44, minHeight: 44,
+        height: 54, minHeight: 54,
         display: 'flex', alignItems: 'center', gap: 16,
         padding: '0 16px',
         background: 'var(--bg1)',
         borderBottom: '1px solid var(--border)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
           <Logo />
-          <span style={{ fontFamily: 'var(--font-head)', fontWeight: 800, fontSize: 15, letterSpacing: 1 }}>
-            BAN KAN
-          </span>
         </div>
 
         {/* Stats */}

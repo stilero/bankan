@@ -610,33 +610,42 @@ bus.on('agent:updated', (agentStatus) => {
   }
 });
 
-// Startup
-store.restartRecovery();
+let orchestrator = null;
+let startupPromise = null;
 
-// Startup orphan workspace cleanup
-{
-  const workspacesDir = getWorkspacesDir();
-  if (existsSync(workspacesDir)) {
-    const terminalStatuses = ['done', 'backlog', 'aborted', 'awaiting_human_review'];
-    let entries;
-    try { entries = readdirSync(workspacesDir); } catch { entries = []; }
-    for (const entry of entries) {
-      const task = store.getTask(entry);
-      if (!task || terminalStatuses.includes(task.status)) {
-        try {
-          rmSync(join(workspacesDir, entry), { recursive: true, force: true });
-          console.log(`Cleaned up orphan workspace: ${entry}`);
-        } catch (err) {
-          console.error(`Failed to cleanup workspace ${entry}:`, err.message);
+async function ensureAppStarted() {
+  if (startupPromise) {
+    return startupPromise;
+  }
+
+  startupPromise = (async () => {
+    store.restartRecovery();
+
+    const workspacesDir = getWorkspacesDir();
+    if (existsSync(workspacesDir)) {
+      const terminalStatuses = ['done', 'backlog', 'aborted', 'awaiting_human_review'];
+      let entries;
+      try { entries = readdirSync(workspacesDir); } catch { entries = []; }
+      for (const entry of entries) {
+        const task = store.getTask(entry);
+        if (!task || terminalStatuses.includes(task.status)) {
+          try {
+            rmSync(join(workspacesDir, entry), { recursive: true, force: true });
+            console.log(`Cleaned up orphan workspace: ${entry}`);
+          } catch (err) {
+            console.error(`Failed to cleanup workspace ${entry}:`, err.message);
+          }
         }
       }
     }
-  }
-}
 
-// Import orchestrator after everything is set up
-const { default: orchestrator } = await import('./orchestrator.js');
-orchestrator.start();
+    const imported = await import('./orchestrator.js');
+    orchestrator = imported.default;
+    orchestrator.start();
+  })();
+
+  return startupPromise;
+}
 
 let started = false;
 
@@ -648,6 +657,8 @@ export async function startServer({ port = config.PORT, host = '127.0.0.1' } = {
     }
     return { server, port, host };
   }
+
+  await ensureAppStarted();
 
   await new Promise((resolvePromise, rejectPromise) => {
     server.once('error', rejectPromise);

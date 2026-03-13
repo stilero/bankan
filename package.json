@@ -3,12 +3,30 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Local AI agent orchestration dashboard with a global `bankan` CLI.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stilero/ai-dev-factory.git"
+  },
+  "homepage": "https://github.com/stilero/ai-dev-factory#readme",
+  "bugs": {
+    "url": "https://github.com/stilero/ai-dev-factory/issues"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "kanban",
+    "dashboard",
+    "cli",
+    "orchestration"
+  ],
   "bin": {
     "bankan": "./bin/bankan.js"
   },
   "files": [
     "bin",
     "client/dist",
+    "LICENSE",
     "scripts/setup.js",
     "server/src",
     "README.md"
