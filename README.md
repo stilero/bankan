@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="client/src/assets/ban_kan_logo.svg" alt="Ban Kan logo" width="360" />
+  <img src="docs/ban_kan_logo_readme.svg" alt="Ban Kan logo" width="520" />
 </p>
 
 # Ban Kan
