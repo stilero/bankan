@@ -1,13 +1,13 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { v4 as uuidv4 } from 'uuid';
 import bus from './events.js';
+import { getRuntimeStatePaths } from './config.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(__dirname, '..', '..', '.data');
-const TASKS_FILE = join(DATA_DIR, 'tasks.json');
-const PLANS_DIR = join(DATA_DIR, 'plans');
+const runtimePaths = getRuntimeStatePaths();
+const DATA_DIR = runtimePaths.dataDir;
+const TASKS_FILE = runtimePaths.tasksFile;
+const PLANS_DIR = runtimePaths.plansDir;
 
 function statusToStage(status) {
   if (['workspace_setup', 'planning', 'awaiting_approval'].includes(status)) return 'planning';

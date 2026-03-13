@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 
 import { createInterface } from 'node:readline';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getRuntimePaths } from '../server/src/paths.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
-const ENV_FILE = join(ROOT, '.env.local');
+const IS_PACKAGED_RUNTIME = process.env.BANKAN_RUNTIME_MODE === 'packaged';
+const runtimePaths = getRuntimePaths();
+const ENV_FILE = runtimePaths.envFile;
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 
@@ -62,11 +65,11 @@ async function main() {
   console.clear();
   console.log('');
   console.log(cyan(bold('  ╔═══════════════════════════════════════╗')));
-  console.log(cyan(bold('  ║         AI FACTORY  Setup             ║')));
+  console.log(cyan(bold('  ║           BAN KAN Setup               ║')));
   console.log(cyan(bold('  ╚═══════════════════════════════════════╝')));
   console.log('');
   console.log('  Local AI agent orchestration dashboard.');
-  console.log('  This wizard will configure your environment.\n');
+  console.log(`  This wizard will configure your environment${IS_PACKAGED_RUNTIME ? ' and save it under your user profile' : ''}.\n`);
 
   // Step 1: Prerequisites
   console.log(bold('  Prerequisites\n'));
@@ -169,6 +172,7 @@ async function main() {
   console.log('');
 
   // Step 6: Write .env.local
+  mkdirSync(runtimePaths.dataDir, { recursive: true });
   const envLines = [
     `REPOS=${config.REPOS || ''}`,
     `GITHUB_REPO=${config.GITHUB_REPO || ''}`,
@@ -178,7 +182,16 @@ async function main() {
     `PORT=${config.PORT}`,
   ];
   writeFileSync(ENV_FILE, envLines.join('\n') + '\n');
-  console.log(`  ${green('✓')} .env.local written\n`);
+  console.log(`  ${green('✓')} Config written to ${ENV_FILE}\n`);
+
+  if (IS_PACKAGED_RUNTIME) {
+    console.log(green(bold('  ✓ Setup complete!')));
+    console.log('');
+    console.log(`  Configuration stored at: ${cyan(runtimePaths.dataDir)}`);
+    console.log('');
+    rl.close();
+    return;
+  }
 
   // Step 7: Install Dependencies
   console.log(bold('  Installing dependencies...\n'));

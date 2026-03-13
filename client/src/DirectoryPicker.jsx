@@ -15,7 +15,7 @@ export default function DirectoryPicker({ initialPath, onSelect, onClose }) {
       const url = path
         ? `/api/browse-dir?path=${encodeURIComponent(path)}`
         : '/api/browse-dir';
-      const res = await fetch(`http://localhost:3001${url}`);
+      const res = await fetch(url);
       if (!res.ok) {
         const data = await res.json();
         setError(data.error || 'Failed to browse directory');

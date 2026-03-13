@@ -6,7 +6,8 @@ import { readdirSync, statSync, existsSync, rmSync, mkdirSync, writeFileSync, re
 import { homedir } from 'node:os';
 import { resolve, dirname as pathDirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import config, { loadSettings, saveSettings, validateSettings, getWorkspacesDir } from './config.js';
+import { fileURLToPath } from 'node:url';
+import config, { loadSettings, saveSettings, validateSettings, getWorkspacesDir, getRuntimeStatePaths } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
@@ -161,13 +162,28 @@ app.put('/api/settings', (req, res) => {
   res.json(persistedSettings);
 });
 
+const runtimePaths = getRuntimeStatePaths();
+const CLIENT_DIST_DIR = runtimePaths.clientDistDir;
+
+if (existsSync(CLIENT_DIST_DIR)) {
+  app.use(express.static(CLIENT_DIST_DIR));
+
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) {
+      next();
+      return;
+    }
+    res.sendFile(join(CLIENT_DIST_DIR, 'index.html'));
+  });
+}
+
 // HTTP + WebSocket server
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
 const wsClients = new Set();
 const bridgeSessions = new Map();
-const BRIDGES_DIR = join(config.ROOT_DIR, '.data', 'terminal-bridges');
+const BRIDGES_DIR = runtimePaths.bridgesDir;
 
 function broadcast(type, payload) {
   const msg = JSON.stringify({ type, payload, ts: Date.now() });
@@ -622,6 +638,38 @@ store.restartRecovery();
 const { default: orchestrator } = await import('./orchestrator.js');
 orchestrator.start();
 
-server.listen(config.PORT, () => {
-  console.log(`Ban Kan server running on http://localhost:${config.PORT}`);
-});
+let started = false;
+
+export async function startServer({ port = config.PORT, host = '127.0.0.1' } = {}) {
+  if (started) {
+    const address = server.address();
+    if (address && typeof address === 'object') {
+      return { server, port: address.port, host };
+    }
+    return { server, port, host };
+  }
+
+  await new Promise((resolvePromise, rejectPromise) => {
+    server.once('error', rejectPromise);
+    server.listen(port, host, () => {
+      server.off('error', rejectPromise);
+      started = true;
+      resolvePromise();
+    });
+  });
+
+  const address = server.address();
+  const resolvedPort = typeof address === 'object' && address ? address.port : port;
+  console.log(`Ban Kan server running on http://${host}:${resolvedPort}`);
+  return { server, port: resolvedPort, host };
+}
+
+const entryPath = process.argv[1] ? resolve(process.argv[1]) : null;
+const currentModulePath = fileURLToPath(import.meta.url);
+
+if (entryPath === currentModulePath) {
+  startServer().catch((err) => {
+    console.error('Failed to start Ban Kan:', err);
+    process.exit(1);
+  });
+}

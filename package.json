@@ -1,14 +1,39 @@
 {
-  "name": "ai-dev-factory",
+  "name": "bankan",
   "version": "1.0.0",
-  "private": true,
+  "type": "module",
+  "description": "Local AI agent orchestration dashboard with a global `bankan` CLI.",
+  "bin": {
+    "bankan": "./bin/bankan.js"
+  },
+  "files": [
+    "bin",
+    "client/dist",
+    "scripts/setup.js",
+    "server/src",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "setup": "node scripts/setup.js",
+    "build": "npm run build --prefix client",
     "dev": "concurrently -n server,client -c cyan,magenta \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
     "start": "npm run dev",
-    "install:all": "npm install && npm install --prefix server && npm install --prefix client"
+    "install:all": "npm install && npm install --prefix server && npm install --prefix client",
+    "prepack": "npm run build"
   },
   "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.18.3",
+    "node-pty": "^1.2.0-beta.11",
+    "simple-git": "^3.22.0",
+    "uuid": "^9.0.1",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
     "concurrently": "^8.2.2"
   }
 }

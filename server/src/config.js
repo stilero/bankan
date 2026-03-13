@@ -1,18 +1,13 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { getRuntimePaths } from './paths.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const rootDir = join(__dirname, '..', '..');
-const DATA_DIR = join(rootDir, '.data');
-const SETTINGS_FILE = join(DATA_DIR, 'config.json');
+const runtimePaths = getRuntimePaths();
 
-export const DEFAULT_WORKSPACES_DIR = join(DATA_DIR, 'workspaces');
+export const DEFAULT_WORKSPACES_DIR = runtimePaths.workspacesDir;
 
 let envVars = {};
 try {
-  const envPath = join(rootDir, '.env.local');
-  const content = readFileSync(envPath, 'utf-8');
+  const content = readFileSync(runtimePaths.envFile, 'utf-8');
   for (const line of content.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
@@ -35,7 +30,12 @@ const config = {
   REPOS: get('REPOS').split(',').map(s => s.trim()).filter(Boolean),
   IMPLEMENTOR_1_CLI: get('IMPLEMENTOR_1_CLI', 'claude'),
   IMPLEMENTOR_2_CLI: get('IMPLEMENTOR_2_CLI', 'codex'),
-  ROOT_DIR: rootDir,
+  ROOT_DIR: runtimePaths.rootDir,
+  DATA_DIR: runtimePaths.dataDir,
+  CLIENT_DIST_DIR: runtimePaths.clientDistDir,
+  BRIDGES_DIR: runtimePaths.bridgesDir,
+  ENV_FILE: runtimePaths.envFile,
+  PACKAGED_RUNTIME: runtimePaths.packaged,
 };
 
 const DEFAULT_PROMPTS = {
@@ -149,8 +149,8 @@ function normalizeSettingsShape(data) {
 
 export function loadSettings() {
   try {
-    if (existsSync(SETTINGS_FILE)) {
-      const data = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'));
+    if (existsSync(runtimePaths.settingsFile)) {
+      const data = JSON.parse(readFileSync(runtimePaths.settingsFile, 'utf-8'));
       return normalizeSettingsShape(data);
     }
   } catch {
@@ -160,8 +160,8 @@ export function loadSettings() {
 }
 
 export function saveSettings(settings) {
-  mkdirSync(DATA_DIR, { recursive: true });
-  writeFileSync(SETTINGS_FILE, JSON.stringify(normalizeSettingsShape(settings), null, 2));
+  mkdirSync(runtimePaths.dataDir, { recursive: true });
+  writeFileSync(runtimePaths.settingsFile, JSON.stringify(normalizeSettingsShape(settings), null, 2));
 }
 
 export function validateSettings(settings) {
@@ -218,6 +218,10 @@ export function validateSettings(settings) {
 
 export function getWorkspacesDir(settings = loadSettings()) {
   return settings.workspaceRoot || settings.reposDir || DEFAULT_WORKSPACES_DIR;
+}
+
+export function getRuntimeStatePaths() {
+  return { ...runtimePaths };
 }
 
 export { DEFAULT_PROMPTS };

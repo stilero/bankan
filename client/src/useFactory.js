@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WS_URL = 'ws://localhost:3001';
+const WS_URL = import.meta.env.DEV
+  ? 'ws://localhost:3001'
+  : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
 const RECONNECT_INTERVAL = 3000;
 const MAX_NOTIFICATIONS = 5;
 const NOTIFICATION_TIMEOUT = 5000;

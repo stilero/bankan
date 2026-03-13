@@ -1,82 +1,127 @@
 # Ban Kan
 
-Local AI agent orchestration dashboard that uses Claude and Codex CLIs to plan, implement, review, and open pull requests for code changes automatically.
+Local AI agent orchestration dashboard packaged as a global npm app.
 
-## Prerequisites
-
-- **Node.js** >= 18
-- **git**
-- At least one AI CLI: [`claude`](https://docs.anthropic.com/en/docs/claude-code) or [`codex`](https://github.com/openai/codex)
-- **Native build tools** (required by `node-pty`):
-  - macOS: Xcode Command Line Tools (`xcode-select --install`)
-  - Linux: `build-essential` (`apt install build-essential`)
-
-## Quick Start
+## Install
 
 ```bash
-npm run setup   # interactive wizard — configures .env.local and installs deps
-npm start       # starts server + client
+npm install -g bankan
 ```
 
-Then open [http://localhost:5173](http://localhost:5173).
+Or run it without installing globally:
 
-## Setup Wizard
+```bash
+npx bankan
+```
 
-`npm run setup` walks you through configuration:
+Then start the app with:
 
-1. Checks prerequisites (Node.js version, git, CLI tools, native build tools)
-2. Prompts for project settings:
-   - `REPOS` — comma-separated paths to local git repositories
-   - `GITHUB_REPO` — GitHub `owner/repo` for PR creation (optional)
-   - `GITHUB_TOKEN` — GitHub personal access token (optional)
-   - `IMPLEMENTOR_1_CLI` / `IMPLEMENTOR_2_CLI` — which CLI each implementor agent uses
-3. Writes `.env.local`
-4. Installs dependencies for root, server, and client
+```bash
+bankan
+```
 
-## Manual Configuration
+By default, Ban Kan starts a local server, opens your browser automatically, and serves the UI from the same process.
 
-Create a `.env.local` file in the project root:
+## First Run
 
-| Variable | Description | Default |
-|---|---|---|
-| `REPOS` | Comma-separated absolute paths to git repos | _(required)_ |
-| `GITHUB_REPO` | GitHub `owner/repo` for auto PR creation | _(optional)_ |
-| `GITHUB_TOKEN` | GitHub PAT with repo scope | _(optional)_ |
-| `IMPLEMENTOR_1_CLI` | CLI for Implementor 1 (`claude` or `codex`) | `claude` |
-| `IMPLEMENTOR_2_CLI` | CLI for Implementor 2 (`claude` or `codex`) | `codex` |
-| `PORT` | Server port | `3001` |
+On first launch, `bankan` runs an interactive setup wizard if no local configuration exists yet.
 
-## Usage
+It will prompt for:
 
-1. Open [http://localhost:5173](http://localhost:5173)
-2. Add a task — select a target repo, set a title, priority, and description
-3. The pipeline processes tasks automatically:
-   - **Backlog** → Planner generates an implementation plan
-   - **Awaiting Approval** → you review and approve/reject the plan
-   - **Implementing** → an Implementor agent writes the code and commits
-   - **Review** → the Reviewer agent checks the diff
-   - **PR / Awaiting Human Review** → a pull request is created on GitHub (if configured)
+- `REPOS`: comma-separated absolute paths to local git repositories
+- `GITHUB_REPO`: GitHub `owner/repo` for PR creation (optional)
+- `GITHUB_TOKEN`: GitHub personal access token (optional)
+- `IMPLEMENTOR_1_CLI`: `claude` or `codex`
+- `IMPLEMENTOR_2_CLI`: `claude` or `codex`
 
-Each agent has a live terminal view in the dashboard showing real-time output.
+## Requirements
+
+- Node.js `>= 18`
+- `git`
+- At least one AI CLI: [`claude`](https://docs.anthropic.com/en/docs/claude-code) or [`codex`](https://github.com/openai/codex)
+- Native build tools for `node-pty`
+  - macOS: Xcode Command Line Tools
+  - Linux: `build-essential`
+
+## Runtime Storage
+
+Ban Kan does not write state into the npm global install directory.
+
+- Durable state is stored in a per-user app-data location
+  - macOS: `~/Library/Application Support/bankan`
+  - Linux: `~/.local/share/bankan` or `$XDG_DATA_HOME/bankan`
+  - Windows: `%AppData%\bankan`
+- Temporary terminal bridge files are stored under the OS temp directory
+
+## CLI Options
+
+```bash
+bankan --port 3005
+bankan --no-open
+```
+
+- `--port`: bind to a specific port
+- `--no-open`: start without opening a browser
+
+## Development
+
+From source:
+
+```bash
+npm run setup
+npm run dev
+```
+
+Useful scripts:
+
+- `npm run build` builds the client bundle used for publishing
+- `npm run dev` runs the server and Vite client together
+- `npm run setup` runs the interactive setup wizard
+- `npm run install:all` installs root, server, and client dependencies
+
+## Publish To npm
+
+Before publishing:
+
+1. Confirm the package name is available:
+   ```bash
+   npm view bankan
+   ```
+   If the package already exists, rename the package or switch to a scoped name before publishing.
+2. Install dependencies:
+   ```bash
+   npm run install:all
+   ```
+3. Build the client bundle:
+   ```bash
+   npm run build
+   ```
+4. Inspect the package contents:
+   ```bash
+   npm pack
+   ```
+5. Authenticate:
+   ```bash
+   npm login
+   ```
+6. Publish:
+   ```bash
+   npm publish
+   ```
+
+After publishing, verify:
+
+```bash
+npm view bankan
+npm install -g bankan
+bankan --no-open
+npx bankan --no-open
+```
 
 ## Architecture
 
-Five agents managed by a central orchestrator:
+Ban Kan ships as:
 
-| Agent | Role |
-|---|---|
-| **Orchestrator** | Pipeline control — assigns tasks, monitors progress, detects completion signals |
-| **Planner** | Generates step-by-step implementation plans from task descriptions |
-| **Implementor 1** | Writes code following the plan (configurable CLI) |
-| **Implementor 2** | Second implementor for parallel work (configurable CLI) |
-| **Reviewer** | Reviews diffs for correctness, security, and code quality |
-
-The server (Express + WebSocket) spawns agent CLI processes via `node-pty` and streams terminal output to the React + xterm.js client over WebSocket.
-
-## Available Scripts
-
-| Script | Description |
-|---|---|
-| `npm run setup` | Interactive setup wizard |
-| `npm start` | Start server and client in development mode |
-| `npm run install:all` | Install all dependencies (root, server, client) |
+- a Node/Express backend with WebSocket orchestration
+- a React dashboard built with Vite and served from Express in the packaged runtime
+- a global `bankan` CLI that launches the local app
