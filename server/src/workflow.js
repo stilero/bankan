@@ -27,17 +27,33 @@ export function parseReviewResult(reviewText) {
   const minorIssues = parseBulletList(
     extractSection(reviewText, 'MINOR_ISSUES:', ['SUMMARY:', '=== REVIEW END ==='])
   ).filter(item => item.toLowerCase() !== 'none');
+  const summary = extractSection(reviewText, 'SUMMARY:', ['=== REVIEW END ===']);
 
   return {
     verdict,
     criticalIssues,
     minorIssues,
+    summary,
     hasCriticalIssues: criticalIssues.length > 0,
   };
 }
 
 export function reviewShouldPass(reviewResult) {
   return reviewResult.verdict === 'PASS' || !reviewResult.hasCriticalIssues;
+}
+
+export function isReviewResultPlaceholder(reviewText, reviewResult = parseReviewResult(reviewText)) {
+  if (typeof reviewText !== 'string' || !reviewText.trim()) return true;
+
+  const normalized = reviewText.replace(/\s+/g, ' ').trim().toLowerCase();
+  if (normalized.includes("(issue description, or 'none')")) return true;
+  if (normalized.includes('(2-3 sentences summarising the review)')) return true;
+
+  const summary = (reviewResult.summary || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (!summary) return true;
+  if (summary.includes('2-3 sentences summarising the review')) return true;
+
+  return false;
 }
 
 export function getLiveTaskAgent(task, agentManager) {
