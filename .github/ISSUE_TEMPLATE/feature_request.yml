@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest an improvement, workflow change, or new capability
+title: '[Request]: '
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for improvements, workflow changes, and new capabilities. Clear problem statements make triage faster.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: What is missing, painful, or hard to do today?
+      placeholder: It is hard to tell which agent last updated a task without opening the task details.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: Describe the change you want to see.
+      placeholder: Show the last agent name directly on each task card in the board.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you consider?
+      placeholder: I considered checking the activity feed, but that still adds extra clicks during triage.
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Share links, mockups, examples, or any other details that help explain the request.
+    validations:
+      required: false
