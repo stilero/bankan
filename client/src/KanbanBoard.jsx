@@ -94,6 +94,8 @@ export default function KanbanBoard({
   onReject,
   onAgentClick,
   onAddTask,
+  hasConfiguredRepos,
+  onOpenSettings,
   onTaskClick,
 }) {
   const prevTaskStatusRef = useRef(new Map());
@@ -175,27 +177,102 @@ export default function KanbanBoard({
   return (
     <div style={{
       flex: 1,
-      display: 'grid',
-      gridTemplateColumns: 'repeat(5, 1fr)',
-      gap: 1,
-      background: 'var(--border)',
+      display: 'flex',
+      flexDirection: 'column',
+      background: 'var(--bg)',
       minHeight: 0,
       overflow: 'hidden',
     }}>
-      {COLUMNS.map(column => (
-        <KanbanColumn
-          key={column.id}
-          column={column}
-          tasks={columnTasks[column.id]}
-          agents={agents}
-          animatingTasks={animatingTasks}
-          onApprove={onApprove}
-          onReject={onReject}
-          onAgentClick={onAgentClick}
-          onAddTask={onAddTask}
-          onTaskClick={onTaskClick}
-        />
-      ))}
+      {!hasConfiguredRepos && (
+        <div style={{
+          margin: '20px 20px 0',
+          padding: '28px 32px',
+          background: 'linear-gradient(135deg, rgba(245, 166, 35, 0.12), rgba(122, 162, 247, 0.08))',
+          border: '1px solid rgba(245, 166, 35, 0.24)',
+          borderRadius: 16,
+          boxShadow: '0 18px 36px rgba(0, 0, 0, 0.22)',
+        }}>
+          <div style={{
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: 1.4,
+            textTransform: 'uppercase',
+            color: 'var(--amber)',
+            marginBottom: 10,
+          }}>
+            Welcome to Ban Kan
+          </div>
+          <h2 style={{
+            margin: '0 0 12px',
+            fontFamily: 'var(--font-head)',
+            fontSize: 28,
+            lineHeight: 1.1,
+          }}>
+            Configure a repository before creating your first task
+          </h2>
+          <p style={{
+            margin: '0 0 10px',
+            maxWidth: 760,
+            color: 'var(--text2)',
+            fontSize: 14,
+            lineHeight: 1.6,
+          }}>
+            Open Settings, add at least one repository in the General tab, then review the Planning, Implementation, and Review tabs so your agents are configured before work begins.
+          </p>
+          <p style={{
+            margin: '0 0 20px',
+            maxWidth: 760,
+            color: 'var(--text3)',
+            fontSize: 12,
+            lineHeight: 1.6,
+          }}>
+            Once a repository is saved, this board will switch back to the normal task workflow and task creation will be enabled automatically.
+          </p>
+          <button
+            onClick={onOpenSettings}
+            style={{
+              padding: '10px 16px',
+              background: 'var(--amber)',
+              color: '#000',
+              border: 'none',
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: 0.4,
+              cursor: 'pointer',
+            }}
+          >
+            Open Settings
+          </button>
+        </div>
+      )}
+
+      <div style={{
+        flex: 1,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(5, 1fr)',
+        gap: 1,
+        background: 'var(--border)',
+        minHeight: 0,
+        overflow: 'hidden',
+        marginTop: !hasConfiguredRepos ? 20 : 0,
+      }}>
+        {COLUMNS.map(column => (
+          <KanbanColumn
+            key={column.id}
+            column={column}
+            tasks={columnTasks[column.id]}
+            agents={agents}
+            animatingTasks={animatingTasks}
+            onApprove={onApprove}
+            onReject={onReject}
+            onAgentClick={onAgentClick}
+            onAddTask={onAddTask}
+            hasConfiguredRepos={hasConfiguredRepos}
+            onTaskClick={onTaskClick}
+          />
+        ))}
+      </div>
     </div>
   );
 }
