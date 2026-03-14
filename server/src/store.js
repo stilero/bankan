@@ -62,6 +62,7 @@ class TaskStore {
           const normalized = {
             reviewCycleCount: 0,
             isReviewFixReplan: false,
+            lastApprovedPlan: null,
             lastActiveStage: statusToStage(task.status) || 'backlog',
             previousStatus: null,
             totalTokens: 0,
@@ -75,12 +76,16 @@ class TaskStore {
             normalized.assignedTo = null;
             normalized.workspacePath = null;
             normalized.isReviewFixReplan = false;
+            normalized.lastApprovedPlan = null;
           }
           if (typeof normalized.reviewCycleCount !== 'number' || normalized.reviewCycleCount < 0) {
             normalized.reviewCycleCount = 0;
           }
           if (typeof normalized.isReviewFixReplan !== 'boolean') {
             normalized.isReviewFixReplan = false;
+          }
+          if (typeof normalized.lastApprovedPlan !== 'string' || !normalized.lastApprovedPlan.trim()) {
+            normalized.lastApprovedPlan = null;
           }
           if (typeof normalized.totalTokens !== 'number' || normalized.totalTokens < 0) {
             normalized.totalTokens = 0;
@@ -124,6 +129,7 @@ class TaskStore {
       workspacePath: null,
       reviewCycleCount: 0,
       isReviewFixReplan: false,
+      lastApprovedPlan: null,
       lastActiveStage: 'backlog',
       previousStatus: null,
       totalTokens: 0,
@@ -229,6 +235,12 @@ class TaskStore {
         task.isReviewFixReplan = false;
         changed = true;
       }
+      if (typeof task.lastApprovedPlan !== 'string' || !task.lastApprovedPlan.trim()) {
+        if (task.lastApprovedPlan !== null) {
+          task.lastApprovedPlan = null;
+          changed = true;
+        }
+      }
       if (typeof task.totalTokens !== 'number' || task.totalTokens < 0) {
         task.totalTokens = 0;
         changed = true;
@@ -238,6 +250,7 @@ class TaskStore {
         task.assignedTo = null;
         task.workspacePath = null;
         task.isReviewFixReplan = false;
+        task.lastApprovedPlan = null;
         task.lastActiveStage = 'done';
         task.updatedAt = new Date().toISOString();
         task.log.push({ ts: new Date().toISOString(), message: 'Restart recovery: normalized awaiting_human_review to done' });

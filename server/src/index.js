@@ -16,10 +16,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+function hasPendingReviewFixReplan(task) {
+  return Boolean(task?.isReviewFixReplan);
+}
+
 function stageToResumeStatus(task) {
   const settings = loadSettings();
   const planningDisabled = settings.agents?.planners?.max === 0;
-  if (task.isReviewFixReplan) {
+  if (hasPendingReviewFixReplan(task)) {
     return 'backlog';
   }
   const previousStatus = task.previousStatus;
@@ -52,7 +56,7 @@ function stageToResumeStatus(task) {
 function stageToRetryStatus(task) {
   const settings = loadSettings();
   const planningDisabled = settings.agents?.planners?.max === 0;
-  if (task.isReviewFixReplan) {
+  if (hasPendingReviewFixReplan(task)) {
     return 'backlog';
   }
   if (task.assignedTo) {

@@ -10,7 +10,7 @@ This document defines the expected end-to-end task lifecycle for AI Factory.
 4. The user can inspect the plan, approve it, or send feedback to revise/replan it.
 5. After approval, an implementor agent works in the same task workspace and on the planned branch.
 6. After implementation, a reviewer agent reviews the same workspace.
-7. If review fails, the task returns to planning in the same workspace, carries forward the reviewer critical issues, generates a focused remediation plan, and then automatically returns to implementation on the same branch.
+7. If review fails, the task returns to planning in the same workspace, preserves the last approved implementation plan plus the reviewer critical issues, generates a focused remediation plan, and then automatically returns to implementation on the same branch.
 8. Review/implementation retries are capped at 3 failed review cycles. After that, the task is blocked and awaits human input instead of looping again.
 9. If review passes, the app creates a pull request from the task workspace, deletes the local task workspace, and then marks the task as done.
 

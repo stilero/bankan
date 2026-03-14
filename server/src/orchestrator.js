@@ -294,6 +294,7 @@ function getAuthBlockedReason(buffer, cli = '') {
 
 function buildPlannerPrompt(task) {
   const promptBody = getPromptBody('planning');
+  const previousApprovedPlan = task.lastApprovedPlan || task.plan;
   let prompt = `You are a senior software architect. A task has been assigned to you.
 Repository: ${task.repoPath}
 Workspace: ${task.workspacePath}
@@ -308,8 +309,8 @@ PRIORITY: ${task.priority}`;
     if (task.branch) {
       prompt += `\nKeep using the existing branch: ${task.branch}`;
     }
-    if (task.plan) {
-      prompt += `\n\nPREVIOUS APPROVED PLAN:\n${task.plan}`;
+    if (previousApprovedPlan) {
+      prompt += `\n\nPREVIOUS APPROVED PLAN:\n${previousApprovedPlan}`;
     }
     if (task.reviewFeedback) {
       prompt += `\n\nFAILED REVIEW — CRITICAL ISSUES TO FIX:\n${task.reviewFeedback}`;
@@ -488,6 +489,7 @@ async function startPlanning(task) {
     const planText = buildSyntheticPlan(task);
     const branch = extractSingleLine(planText, 'BRANCH:') || task.branch || generateBranchName(task);
     const isReviewFixReplan = Boolean(task.isReviewFixReplan);
+    const lastApprovedPlan = isReviewFixReplan ? planText : (task.lastApprovedPlan || task.plan || null);
     store.savePlan(task.id, planText);
     store.updateTask(task.id, {
       status: 'queued',
@@ -497,6 +499,7 @@ async function startPlanning(task) {
       reviewFeedback: isReviewFixReplan ? task.reviewFeedback : null,
       reviewCycleCount: isReviewFixReplan ? (task.reviewCycleCount || 0) : 0,
       isReviewFixReplan: false,
+      lastApprovedPlan,
       planFeedback: null,
       blockedReason: null,
       assignedTo: null,
@@ -575,6 +578,7 @@ function onPlanComplete(agentId, taskId) {
   const branch = branchMatch ? branchMatch[1].trim() : (task.branch || generateBranchName(task));
   const isReviewFixReplan = Boolean(task.isReviewFixReplan);
   const reviewCycleCount = task.reviewCycleCount || 0;
+  const lastApprovedPlan = isReviewFixReplan ? planText : (task.lastApprovedPlan || null);
 
   // Save plan
   store.savePlan(taskId, planText);
@@ -588,6 +592,7 @@ function onPlanComplete(agentId, taskId) {
     blockedReason: null,
     planFeedback: null,
     isReviewFixReplan: false,
+    lastApprovedPlan,
     assignedTo: null,
   });
 
@@ -599,6 +604,7 @@ function onPlanComplete(agentId, taskId) {
 function approvePlan(taskId) {
   const task = store.getTask(taskId);
   if (!task || task.status !== 'awaiting_approval') return;
+  store.updateTask(taskId, { lastApprovedPlan: task.plan });
   startImplementation(task);
 }
 
@@ -793,6 +799,7 @@ async function onReviewComplete(agentId, taskId) {
       reviewFeedback: criticalIssues,
       reviewCycleCount: nextReviewCycleCount,
       isReviewFixReplan: true,
+      lastApprovedPlan: task?.lastApprovedPlan || task?.plan || null,
       blockedReason: null,
       assignedTo: null,
     });
@@ -835,6 +842,7 @@ async function createPR(taskId) {
       status: 'done',
       assignedTo: null,
       isReviewFixReplan: false,
+      lastApprovedPlan: null,
       reviewFeedback: null,
     });
   } catch (err) {
@@ -866,6 +874,7 @@ async function abortTask(taskId) {
     blockedReason: null,
     reviewFeedback: null,
     isReviewFixReplan: false,
+    lastApprovedPlan: null,
     previousStatus: null,
     reviewCycleCount: 0,
   });
@@ -897,6 +906,7 @@ async function resetTask(taskId) {
     blockedReason: null,
     reviewFeedback: null,
     isReviewFixReplan: false,
+    lastApprovedPlan: null,
     planFeedback: null,
     previousStatus: null,
     reviewCycleCount: 0,
