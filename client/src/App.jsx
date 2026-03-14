@@ -18,6 +18,19 @@ function formatTokens(n) {
   return String(n);
 }
 
+function getTaskCompletedAt(task) {
+  if (!Array.isArray(task?.log)) return null;
+
+  for (let i = task.log.length - 1; i >= 0; i -= 1) {
+    const entry = task.log[i];
+    if (entry?.message === 'Status changed to done' && entry?.ts) {
+      return entry.ts;
+    }
+  }
+
+  return null;
+}
+
 function getDefaultRepo(repos, settings) {
   if (!Array.isArray(repos) || repos.length === 0) return '';
   if (settings?.defaultRepoPath && repos.includes(settings.defaultRepoPath)) {
@@ -66,9 +79,27 @@ export default function App() {
     tasks.filter(t => t.status === 'awaiting_approval' || t.status === 'blocked'),
     [tasks]
   );
-  const totalTokens = useMemo(() =>
-    tasks.reduce((sum, task) => sum + (task.totalTokens || 0), 0),
-    [tasks]
+  const completedToday = useMemo(() => {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(endOfDay.getDate() + 1);
+
+    return tasks.filter((task) => {
+      if (task.status !== 'done') return false;
+
+      const completedAt = getTaskCompletedAt(task) || task.updatedAt;
+      if (!completedAt) return false;
+
+      const completedDate = new Date(completedAt);
+      if (Number.isNaN(completedDate.getTime())) return false;
+
+      return completedDate >= startOfDay && completedDate < endOfDay;
+    });
+  }, [tasks]);
+  const tokensToday = useMemo(() =>
+    completedToday.reduce((sum, task) => sum + (task.totalTokens || 0), 0),
+    [completedToday]
   );
   const activeCount = useMemo(() => agents.filter(a => a.status === 'active').length, [agents]);
   const blockedCount = useMemo(() => agents.filter(a => a.status === 'blocked').length, [agents]);
@@ -106,7 +137,8 @@ export default function App() {
           <span>Active <span style={{ color: 'var(--green)' }}>{activeCount}</span>/{agents.length}</span>
           {blockedCount > 0 && <span>Blocked <span style={{ color: 'var(--red)' }}>{blockedCount}</span></span>}
           <span>In Flight <span style={{ color: 'var(--amber)' }}>{inFlight.length}</span></span>
-          <span>Context <span style={{ color: 'var(--text)' }}>{formatTokens(totalTokens)}</span></span>
+          <span>Done Today <span style={{ color: 'var(--text)' }}>{completedToday.length}</span></span>
+          {tokensToday > 0 && <span>Tokens Today <span style={{ color: 'var(--text)' }}>{formatTokens(tokensToday)}</span></span>}
         </div>
 
         {/* Attention badge */}
