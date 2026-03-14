@@ -15,6 +15,7 @@ const IMPLEMENTOR_TIMEOUT = 60 * 60 * 1000;
 const REVIEWER_TIMEOUT = 30 * 60 * 1000;
 const STUCK_TIMEOUT = 10 * 60 * 1000;
 const MAX_REVIEW_CYCLES = 3;
+const DELETABLE_TASK_STATUSES = ['done', 'paused', 'aborted'];
 
 let pollTimer = null;
 let signalTimer = null;
@@ -858,7 +859,7 @@ async function resetTask(taskId) {
 
 async function deleteTask(taskId) {
   const task = store.getTask(taskId);
-  if (!task || task.status !== 'done') return false;
+  if (!task || !DELETABLE_TASK_STATUSES.includes(task.status)) return false;
 
   if (task.workspacePath) {
     await cleanupWorkspace(task);

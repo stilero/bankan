@@ -125,7 +125,7 @@ export default function useFactory() {
           addNotification(`Task ${msg.payload.taskId} retrying from ${msg.payload.retryStatus}`, 'info');
           break;
         case 'TASK_DELETED':
-          addNotification(`Task ${msg.payload.taskId} deleted from Done`, 'info');
+          addNotification(`Task ${msg.payload.taskId} deleted`, 'info');
           break;
         case 'BRIDGE_OPENED':
           addNotification(`${msg.payload.agentName} opened in Terminal`, 'info');

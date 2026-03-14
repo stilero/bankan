@@ -21,6 +21,8 @@ const STAGE_COLORS = {
   done: 'var(--green)',
 };
 
+const DELETABLE_TASK_STATUSES = ['done', 'paused', 'aborted'];
+
 function truncateText(text, maxLength = 120) {
   if (typeof text !== 'string') return '';
   const normalized = text.replace(/\s+/g, ' ').trim();
@@ -65,6 +67,7 @@ export default function TaskDetailModal({
   const canReset = task.status !== 'done';
   const canRetry = task.status === 'blocked';
   const canOpenWorkspace = Boolean(task.workspacePath && onOpenWorkspace);
+  const canDelete = DELETABLE_TASK_STATUSES.includes(task.status) && onDelete;
 
   const handleSave = () => {
     onEdit(task.id, {
@@ -502,7 +505,7 @@ export default function TaskDetailModal({
                 </button>
               )}
 
-              {task.status === 'done' && onDelete && (
+              {canDelete && (
                 <button
                   onClick={() => {
                     if (confirmDelete) {
@@ -518,7 +521,7 @@ export default function TaskDetailModal({
                     borderRadius: 4, color: 'var(--red)',
                   }}
                 >
-                  {confirmDelete ? 'Confirm Delete' : 'Delete from Done'}
+                  {confirmDelete ? 'Confirm Delete' : 'Delete Task'}
                 </button>
               )}
             </div>
@@ -546,9 +549,9 @@ export default function TaskDetailModal({
               </div>
             )}
 
-            {confirmDelete && task.status === 'done' && (
+            {confirmDelete && canDelete && (
               <div style={{ marginTop: 10, fontSize: 10, color: 'var(--text3)', lineHeight: 1.5 }}>
-                Delete removes the completed task from Ban Kan state and clears any saved plan/workspace artifacts.
+                Delete removes the task from Ban Kan state and clears any saved plan/workspace artifacts.
               </div>
             )}
           </>

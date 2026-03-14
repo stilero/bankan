@@ -16,6 +16,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const DELETABLE_TASK_STATUSES = ['done', 'paused', 'aborted'];
+
 function stageToResumeStatus(task) {
   const settings = loadSettings();
   const planningDisabled = settings.agents?.planners?.max === 0;
@@ -139,7 +141,9 @@ app.patch('/api/tasks/:id/reject', (req, res) => {
 app.delete('/api/tasks/:id', async (req, res) => {
   const task = store.getTask(req.params.id);
   if (!task) return res.status(404).json({ error: 'Task not found' });
-  if (task.status !== 'done') return res.status(400).json({ error: 'Only completed tasks can be deleted' });
+  if (!DELETABLE_TASK_STATUSES.includes(task.status)) {
+    return res.status(400).json({ error: 'Only done, paused, or aborted tasks can be deleted' });
+  }
   await orchestrator.deleteTask(task.id);
   broadcast('TASK_DELETED', { taskId: task.id });
   res.json({ ok: true });
@@ -535,7 +539,7 @@ wss.on('connection', (ws) => {
       case 'DELETE_TASK': {
         const { taskId } = msg.payload || {};
         const task = store.getTask(taskId);
-        if (task?.status === 'done') {
+        if (task && DELETABLE_TASK_STATUSES.includes(task.status)) {
           orchestrator.deleteTask(taskId);
           broadcast('TASK_DELETED', { taskId });
         }
