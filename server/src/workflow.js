@@ -56,6 +56,17 @@ export function isReviewResultPlaceholder(reviewText, reviewResult = parseReview
   return false;
 }
 
+export function isPlanPlaceholder(planText) {
+  if (typeof planText !== 'string' || !planText.trim()) return true;
+  const normalized = planText.replace(/\s+/g, ' ').trim().toLowerCase();
+  if (normalized.includes('(one sentence describing what will be built)')) return true;
+  if (normalized.includes('(detailed, actionable step)')) return true;
+  if (normalized.includes('path/to/file.ts (reason for modification)')) return true;
+  if (normalized.includes("(test description, or 'none')")) return true;
+  if (normalized.includes("(potential issue or edge case, or 'none')")) return true;
+  return false;
+}
+
 export function getLiveTaskAgent(task, agentManager) {
   if (!task?.assignedTo) return null;
   const agent = agentManager.get(task.assignedTo);

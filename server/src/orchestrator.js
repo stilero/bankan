@@ -7,7 +7,7 @@ import config, { loadSettings, getWorkspacesDir } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
-import { isReviewResultPlaceholder, parseReviewResult, reviewShouldPass } from './workflow.js';
+import { isReviewResultPlaceholder, isPlanPlaceholder, parseReviewResult, reviewShouldPass } from './workflow.js';
 import { createSessionEntry } from './sessionHistory.js';
 
 const POLL_INTERVAL = 4000;
@@ -553,6 +553,7 @@ function onPlanComplete(agentId, taskId) {
   // Extract plan text
   const planText = getLastStructuredBlock(sourceText, '=== PLAN START ===', '=== PLAN END ===');
   if (!planText) return;
+  if (isPlanPlaceholder(planText)) return;
 
   // Parse branch name
   const branchMatch = planText.match(/BRANCH:\s*(.+)/);
@@ -928,7 +929,9 @@ function checkSignals() {
         // Live plan streaming
         if (!buf.includes('=== PLAN END ===') && buf.includes('=== PLAN START ===')) {
           const partial = buf.slice(buf.indexOf('=== PLAN START ==='));
-          bus.emit('plan:partial', { taskId: agent.currentTask, plan: partial });
+          if (!isPlanPlaceholder(partial)) {
+            bus.emit('plan:partial', { taskId: agent.currentTask, plan: partial });
+          }
         }
         if (agent.startedAt && Date.now() - agent.startedAt > PLANNER_TIMEOUT) {
           markBlocked(agent, 'Planner timed out');
@@ -1064,12 +1067,17 @@ function pollLoop() {
           const planReady = agent.cli === 'codex'
             ? hasCodexStructuredOutput(buf, '=== PLAN END ===')
             : buf.includes('=== PLAN END ===');
-          if (planReady) {
+          const planText = planReady
+            ? getLastStructuredBlock(buf, '=== PLAN START ===', '=== PLAN END ===')
+            : null;
+          if (planText && !isPlanPlaceholder(planText)) {
             onPlanComplete(agent.id, taskId);
           } else {
             store.updateTask(taskId, {
               status: 'blocked',
-              blockedReason: 'Agent process exited unexpectedly',
+              blockedReason: planReady
+                ? 'Planner exited after returning placeholder output'
+                : 'Agent process exited unexpectedly',
               assignedTo: null,
             });
           }
@@ -1160,8 +1168,14 @@ bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
         ? hasCodexStructuredOutput(buf, '=== PLAN END ===')
         : buf.includes('=== PLAN END ===');
       if (planReady) {
-        onPlanComplete(agentId, taskId);
-        return;
+        const captured = agent.cli === 'codex' ? readCapturedCodexMessage(buf, { remove: false }) : null;
+        const sourceText = captured || buf;
+        const planText = getLastStructuredBlock(sourceText, '=== PLAN START ===', '=== PLAN END ===');
+        if (planText && !isPlanPlaceholder(planText)) {
+          onPlanComplete(agentId, taskId);
+          return;
+        }
+        authBlockedReason = 'Planner exited after returning placeholder output';
       }
     } else if (isImplementor) {
       const implementationState = getImplementationCompletionState(agent, taskId);
