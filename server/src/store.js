@@ -64,6 +64,8 @@ class TaskStore {
             lastActiveStage: statusToStage(task.status) || 'backlog',
             previousStatus: null,
             totalTokens: 0,
+            startedAt: null,
+            completedAt: null,
             ...task,
           };
 
@@ -79,6 +81,12 @@ class TaskStore {
           }
           if (typeof normalized.totalTokens !== 'number' || normalized.totalTokens < 0) {
             normalized.totalTokens = 0;
+          }
+          if (normalized.startedAt !== null && typeof normalized.startedAt !== 'string') {
+            normalized.startedAt = null;
+          }
+          if (normalized.completedAt !== null && typeof normalized.completedAt !== 'string') {
+            normalized.completedAt = null;
           }
           if (!normalized.lastActiveStage) {
             normalized.lastActiveStage = statusToStage(normalized.status) || 'backlog';
@@ -121,6 +129,8 @@ class TaskStore {
       lastActiveStage: 'backlog',
       previousStatus: null,
       totalTokens: 0,
+      startedAt: null,
+      completedAt: null,
       progress: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
