@@ -95,6 +95,7 @@ export default function KanbanBoard({
   onAgentClick,
   onAddTask,
   onTaskClick,
+  canCreateTask,
 }) {
   const prevTaskStatusRef = useRef(new Map());
   const [animatingTasks, setAnimatingTasks] = useState(new Set());
@@ -194,6 +195,7 @@ export default function KanbanBoard({
           onAgentClick={onAgentClick}
           onAddTask={onAddTask}
           onTaskClick={onTaskClick}
+          canCreateTask={canCreateTask}
         />
       ))}
     </div>

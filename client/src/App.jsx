@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import useFactory from './useFactory.js';
 import KanbanBoard from './KanbanBoard.jsx';
 import TerminalDrawer from './TerminalDrawer.jsx';
@@ -49,7 +49,7 @@ function Logo() {
 
 export default function App() {
   const {
-    connected, agents, tasks, repos, settings, notifications,
+    connected, isInitialized, agents, tasks, repos, settings, notifications,
     addTask, approvePlan, rejectPlan,
     pauseTask, resumeTask, editTask, abortTask, resetTask, retryTask, deleteTask, openTaskWorkspace,
     injectMessage, sendRaw, pauseAgent, resumeAgent,
@@ -60,6 +60,9 @@ export default function App() {
   const [selectedTask, setSelectedTask] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const hasRepos = repos.length > 0;
+  const canCreateTask = hasRepos;
+  const showStartupGreeting = isInitialized && !hasRepos && tasks.length === 0;
 
   // Derived values
   const needAttention = useMemo(() =>
@@ -82,9 +85,20 @@ export default function App() {
     [agents, selectedAgent]
   );
 
+  useEffect(() => {
+    if (!canCreateTask && showAddModal) {
+      setShowAddModal(false);
+    }
+  }, [canCreateTask, showAddModal]);
+
   const handleAgentClick = (agentId) => {
     if (agentId === 'orch') return;
     setSelectedAgent(prev => prev === agentId ? null : agentId);
+  };
+
+  const openAddTaskModal = () => {
+    if (!canCreateTask) return;
+    setShowAddModal(true);
   };
 
   return (
@@ -158,30 +172,87 @@ export default function App() {
 
         {/* Add Task */}
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={openAddTaskModal}
+          disabled={!canCreateTask}
           style={{
             padding: '6px 14px',
-            background: 'var(--amber)',
-            color: '#000',
+            background: canCreateTask ? 'var(--amber)' : 'var(--bg2)',
+            color: canCreateTask ? '#000' : 'var(--text3)',
+            border: `1px solid ${canCreateTask ? 'var(--amber)' : 'var(--border)'}`,
             borderRadius: 4,
             fontWeight: 500,
             fontSize: 12,
+            cursor: canCreateTask ? 'pointer' : 'not-allowed',
+            opacity: canCreateTask ? 1 : 0.7,
           }}
+          title={canCreateTask ? 'Add Task' : 'Configure at least one repository in Settings before adding a task'}
         >
           + ADD TASK
         </button>
       </div>
 
-      {/* KANBAN BOARD */}
-      <KanbanBoard
-        tasks={tasks}
-        agents={agents}
-        onApprove={approvePlan}
-        onReject={rejectPlan}
-        onAgentClick={handleAgentClick}
-        onAddTask={() => setShowAddModal(true)}
-        onTaskClick={(task) => setSelectedTask(task)}
-      />
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {showStartupGreeting && (
+          <div style={{
+            margin: '16px 16px 0',
+            padding: '18px 20px',
+            borderRadius: 10,
+            border: '1px solid rgba(245, 166, 35, 0.35)',
+            background: 'linear-gradient(135deg, rgba(245, 166, 35, 0.18), rgba(122, 162, 247, 0.08))',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.18)',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 16,
+              flexWrap: 'wrap',
+            }}>
+              <div style={{ maxWidth: 720 }}>
+                <div style={{
+                  fontFamily: 'var(--font-head)',
+                  fontSize: 20,
+                  fontWeight: 700,
+                  marginBottom: 6,
+                }}>
+                  Welcome to Ban Kan
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.5 }}>
+                  Open Settings to add at least one repository, choose a default repository, and review the agent configuration before creating your first task.
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSettingsModal(true)}
+                style={{
+                  padding: '10px 14px',
+                  background: 'var(--amber)',
+                  color: '#000',
+                  border: '1px solid var(--amber)',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Open Settings
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* KANBAN BOARD */}
+        <KanbanBoard
+          tasks={tasks}
+          agents={agents}
+          onApprove={approvePlan}
+          onReject={rejectPlan}
+          onAgentClick={handleAgentClick}
+          onAddTask={openAddTaskModal}
+          onTaskClick={(task) => setSelectedTask(task)}
+          canCreateTask={canCreateTask}
+        />
+      </div>
 
       {/* TERMINAL DRAWER */}
       {selectedAgent && selectedAgentData && (

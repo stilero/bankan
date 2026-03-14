@@ -9,6 +9,7 @@ const NOTIFICATION_TIMEOUT = 5000;
 
 export default function useFactory() {
   const [connected, setConnected] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [agents, setAgents] = useState([]);
   const [repos, setRepos] = useState([]);
@@ -61,6 +62,7 @@ export default function useFactory() {
           setAgents(msg.payload.agents || []);
           setRepos(msg.payload.repos || []);
           if (msg.payload.settings) setSettings(msg.payload.settings);
+          setIsInitialized(true);
           break;
         case 'TASKS_UPDATED':
           setTasks(msg.payload.tasks || []);
@@ -252,6 +254,7 @@ export default function useFactory() {
 
   return {
     connected,
+    isInitialized,
     tasks,
     agents,
     repos,
