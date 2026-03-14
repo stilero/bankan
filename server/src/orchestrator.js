@@ -15,9 +15,11 @@ const IMPLEMENTOR_TIMEOUT = 60 * 60 * 1000;
 const REVIEWER_TIMEOUT = 30 * 60 * 1000;
 const STUCK_TIMEOUT = 10 * 60 * 1000;
 const MAX_REVIEW_CYCLES = 3;
+const TERMINAL_TASK_STATUSES = new Set(['done', 'blocked', 'aborted']);
 
 let pollTimer = null;
 let signalTimer = null;
+const finalizingReviewTasks = new Set();
 
 function escapePrompt(text) {
   return text.replace(/'/g, "'\\''");
@@ -159,6 +161,48 @@ function extractSingleLine(text, label) {
 function getPromptBody(stage) {
   const settings = loadSettings();
   return settings.prompts?.[stage] || '';
+}
+
+function getExpectedStage(agentId) {
+  if (agentId.startsWith('plan-')) return 'planning';
+  if (agentId.startsWith('imp-')) return 'implementation';
+  if (agentId.startsWith('rev-')) return 'review';
+  return null;
+}
+
+function getTaskOwnershipSnapshot(taskId, expectedStage, agentId) {
+  const task = store.getTask(taskId);
+  if (!task) {
+    return { task: null, valid: false };
+  }
+
+  if (TERMINAL_TASK_STATUSES.has(task.status)) {
+    return { task, valid: false };
+  }
+
+  if (task.lastActiveStage !== expectedStage) {
+    return { task, valid: false };
+  }
+
+  if (task.assignedTo !== agentId) {
+    return { task, valid: false };
+  }
+
+  return { task, valid: true };
+}
+
+function canMutateTaskFromAgent(taskId, agentId) {
+  const expectedStage = getExpectedStage(agentId);
+  if (!expectedStage) {
+    return { task: store.getTask(taskId), valid: false };
+  }
+  return getTaskOwnershipSnapshot(taskId, expectedStage, agentId);
+}
+
+function shouldHandleUnexpectedAgentState(taskId, agentId) {
+  const expectedStage = getExpectedStage(agentId);
+  if (!expectedStage) return false;
+  return canMutateTaskFromAgent(taskId, agentId).valid;
 }
 
 function isStageDisabled(stage) {
@@ -525,6 +569,8 @@ async function startPlanning(task) {
 function onPlanComplete(agentId, taskId) {
   const planner = agentManager.get(agentId);
   if (!planner) return;
+  const { valid } = getTaskOwnershipSnapshot(taskId, 'planning', agentId);
+  if (!valid) return;
   const bufStr = planner.getBufferString(100);
   const captured = planner.cli === 'codex' ? readCapturedCodexMessage(bufStr) : null;
   const sourceText = captured || bufStr;
@@ -631,7 +677,8 @@ async function onImplementationComplete(agentId) {
   const taskId = agent.currentTask;
   if (!taskId) return;
 
-  const task = store.getTask(taskId);
+  const { task, valid } = getTaskOwnershipSnapshot(taskId, 'implementation', agentId);
+  if (!valid) return;
 
   // Push branch from workspace
   if (task?.workspacePath) {
@@ -708,6 +755,9 @@ SUMMARY: Review skipped because reviewer max is set to 0.
 async function onReviewComplete(agentId, taskId) {
   const reviewer = agentManager.get(agentId);
   if (!reviewer) return;
+  if (finalizingReviewTasks.has(taskId)) return;
+  const { valid } = getTaskOwnershipSnapshot(taskId, 'review', agentId);
+  if (!valid) return;
   const bufStr = reviewer.getBufferString(100);
 
   const captured = reviewer.cli === 'codex' ? readCapturedCodexMessage(bufStr) : null;
@@ -722,8 +772,13 @@ async function onReviewComplete(agentId, taskId) {
   if (reviewer.draining) agentManager.removeAgent(agentId);
 
   if (verdict === 'PASS') {
-    bus.emit('review:passed', { taskId });
-    await createPR(taskId);
+    finalizingReviewTasks.add(taskId);
+    try {
+      bus.emit('review:passed', { taskId });
+      await createPR(taskId);
+    } finally {
+      finalizingReviewTasks.delete(taskId);
+    }
   } else {
     // Extract critical issues
     const issuesMatch = reviewText.match(/CRITICAL_ISSUES:\s*([\s\S]*?)(?=MINOR_ISSUES:|SUMMARY:|=== REVIEW END ===)/i);
@@ -952,7 +1007,7 @@ function checkSignals() {
 }
 
 function markBlocked(agent, reason) {
-  if (agent.currentTask) {
+  if (agent.currentTask && shouldHandleUnexpectedAgentState(agent.currentTask, agent.id)) {
     store.updateTask(agent.currentTask, {
       status: 'blocked',
       blockedReason: reason,
@@ -1032,6 +1087,7 @@ function pollLoop() {
         const isPlanner = agent.id.startsWith('plan-');
         const isImplementor = agent.id.startsWith('imp-');
         const isReviewer = agent.id.startsWith('rev-');
+        const canHandleTask = canMutateTaskFromAgent(taskId, agent.id).valid;
 
         if (isPlanner) {
           const planReady = agent.cli === 'codex'
@@ -1039,7 +1095,7 @@ function pollLoop() {
             : buf.includes('=== PLAN END ===');
           if (planReady) {
             onPlanComplete(agent.id, taskId);
-          } else {
+          } else if (canHandleTask) {
             store.updateTask(taskId, {
               status: 'blocked',
               blockedReason: 'Agent process exited unexpectedly',
@@ -1050,13 +1106,13 @@ function pollLoop() {
           const implementationState = getImplementationCompletionState(agent, taskId);
           if (implementationState.complete) {
             onImplementationComplete(agent.id);
-          } else if (implementationState.blockedReason) {
+          } else if (implementationState.blockedReason && canHandleTask) {
             store.updateTask(taskId, {
               status: 'blocked',
               blockedReason: implementationState.blockedReason,
               assignedTo: null,
             });
-          } else {
+          } else if (canHandleTask) {
             store.updateTask(taskId, {
               status: 'blocked',
               blockedReason: 'Agent process exited unexpectedly',
@@ -1069,7 +1125,7 @@ function pollLoop() {
             : buf.includes('=== REVIEW END ===');
           if (reviewReady) {
             onReviewComplete(agent.id, taskId);
-          } else {
+          } else if (canHandleTask) {
             store.updateTask(taskId, {
               status: 'blocked',
               blockedReason: 'Agent process exited unexpectedly',
@@ -1105,6 +1161,7 @@ bus.on('plan:rejected', ({ taskId, feedback }) => rejectPlan(taskId, feedback));
 bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
   const agent = agentManager.get(agentId);
   let authBlockedReason = null;
+  const canHandleTask = shouldHandleUnexpectedAgentState(taskId, agentId);
   if (agent) {
     const buf = agent.getBufferString(100);
     authBlockedReason = getAuthBlockedReason(buf, agent.cli);
@@ -1145,7 +1202,7 @@ bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
     bus.emit('agent:updated', agent.getStatus());
   }
   const task = store.getTask(taskId);
-  if (task && !['blocked', 'done', 'aborted', 'backlog', 'paused'].includes(task.status)) {
+  if (task && canHandleTask && !['blocked', 'done', 'aborted', 'backlog', 'paused'].includes(task.status)) {
     store.updateTask(taskId, {
       status: 'blocked',
       blockedReason: authBlockedReason || 'Agent process exited unexpectedly',
