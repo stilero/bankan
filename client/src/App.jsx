@@ -71,6 +71,7 @@ export default function App() {
     [tasks]
   );
   const hasConfiguredRepos = useMemo(() => Array.isArray(repos) && repos.length > 0, [repos]);
+  const canCreateTasks = useMemo(() => reposLoaded && hasConfiguredRepos, [reposLoaded, hasConfiguredRepos]);
   const shouldShowRepoSetup = useMemo(() => reposLoaded && !hasConfiguredRepos, [reposLoaded, hasConfiguredRepos]);
   const activeCount = useMemo(() => agents.filter(a => a.status === 'active').length, [agents]);
   const blockedCount = useMemo(() => agents.filter(a => a.status === 'blocked').length, [agents]);
@@ -161,22 +162,22 @@ export default function App() {
         {/* Add Task */}
         <button
           onClick={() => {
-            if (shouldShowRepoSetup) return;
+            if (!canCreateTasks) return;
             setShowAddModal(true);
           }}
-          disabled={shouldShowRepoSetup}
+          disabled={!canCreateTasks}
           style={{
             padding: '6px 14px',
-            background: shouldShowRepoSetup ? 'var(--bg2)' : 'var(--amber)',
-            color: shouldShowRepoSetup ? 'var(--text3)' : '#000',
+            background: canCreateTasks ? 'var(--amber)' : 'var(--bg2)',
+            color: canCreateTasks ? '#000' : 'var(--text3)',
             borderRadius: 4,
             fontWeight: 500,
             fontSize: 12,
-            border: shouldShowRepoSetup ? '1px solid var(--border)' : 'none',
-            cursor: shouldShowRepoSetup ? 'not-allowed' : 'pointer',
-            opacity: shouldShowRepoSetup ? 0.7 : 1,
+            border: canCreateTasks ? 'none' : '1px solid var(--border)',
+            cursor: canCreateTasks ? 'pointer' : 'not-allowed',
+            opacity: canCreateTasks ? 1 : 0.7,
           }}
-          title={shouldShowRepoSetup ? 'Configure at least one repository in Settings before creating tasks' : 'Add task'}
+          title={canCreateTasks ? 'Add task' : 'Configure at least one repository in Settings before creating tasks'}
         >
           + ADD TASK
         </button>
@@ -189,7 +190,11 @@ export default function App() {
         onApprove={approvePlan}
         onReject={rejectPlan}
         onAgentClick={handleAgentClick}
-        onAddTask={() => setShowAddModal(true)}
+        onAddTask={() => {
+          if (!canCreateTasks) return;
+          setShowAddModal(true);
+        }}
+        hasConfiguredRepos={hasConfiguredRepos}
         shouldShowRepoSetup={shouldShowRepoSetup}
         onOpenSettings={() => setShowSettingsModal(true)}
         onTaskClick={(task) => setSelectedTask(task)}
@@ -228,12 +233,13 @@ export default function App() {
       )}
 
       {/* ADD TASK MODAL */}
-      {showAddModal && !shouldShowRepoSetup && (
+      {showAddModal && canCreateTasks && (
         <AddTaskModal
           repos={repos}
           settings={settings}
           onClose={() => setShowAddModal(false)}
           onSubmit={(title, priority, description, repoPath) => {
+            if (!canCreateTasks) return;
             addTask(title, priority, description, repoPath);
             setShowAddModal(false);
           }}

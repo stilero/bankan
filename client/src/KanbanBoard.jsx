@@ -94,6 +94,7 @@ export default function KanbanBoard({
   onReject,
   onAgentClick,
   onAddTask,
+  hasConfiguredRepos,
   shouldShowRepoSetup,
   onOpenSettings,
   onTaskClick,
@@ -174,19 +175,22 @@ export default function KanbanBoard({
     return result;
   }, [tasks]);
 
-  return (
-    <div style={{
-      flex: 1,
-      display: 'flex',
-      flexDirection: 'column',
-      background: 'var(--bg)',
-      minHeight: 0,
-      overflow: 'hidden',
-    }}>
-      {shouldShowRepoSetup && (
+  if (shouldShowRepoSetup) {
+    return (
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        padding: 20,
+        background: 'var(--bg)',
+        minHeight: 0,
+        overflow: 'hidden',
+      }}>
         <div style={{
-          margin: '20px 20px 0',
-          padding: '28px 32px',
+          width: 'min(860px, 100%)',
+          margin: '0 auto',
+          padding: '36px 40px',
           background: 'linear-gradient(135deg, rgba(245, 166, 35, 0.12), rgba(122, 162, 247, 0.08))',
           border: '1px solid rgba(245, 166, 35, 0.24)',
           borderRadius: 16,
@@ -245,8 +249,19 @@ export default function KanbanBoard({
             Open Settings
           </button>
         </div>
-      )}
+      </div>
+    );
+  }
 
+  return (
+    <div style={{
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column',
+      background: 'var(--bg)',
+      minHeight: 0,
+      overflow: 'hidden',
+    }}>
       <div style={{
         flex: 1,
         display: 'grid',
@@ -255,7 +270,6 @@ export default function KanbanBoard({
         background: 'var(--border)',
         minHeight: 0,
         overflow: 'hidden',
-        marginTop: shouldShowRepoSetup ? 20 : 0,
       }}>
         {COLUMNS.map(column => (
           <KanbanColumn
@@ -268,7 +282,7 @@ export default function KanbanBoard({
             onReject={onReject}
             onAgentClick={onAgentClick}
             onAddTask={onAddTask}
-            shouldShowRepoSetup={shouldShowRepoSetup}
+            hasConfiguredRepos={hasConfiguredRepos}
             onTaskClick={onTaskClick}
           />
         ))}

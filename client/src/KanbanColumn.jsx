@@ -10,7 +10,7 @@ export default function KanbanColumn({
   onReject,
   onAgentClick,
   onAddTask,
-  shouldShowRepoSetup,
+  hasConfiguredRepos,
   onTaskClick,
 }) {
   // Get agents for this column's role
@@ -134,7 +134,7 @@ export default function KanbanColumn({
             padding: 16,
           }}>
             {column.id === 'backlog' ? (
-              shouldShowRepoSetup ? (
+              !hasConfiguredRepos ? (
                 'Set up a repository in Settings to unlock task creation'
               ) : (
                 <span
