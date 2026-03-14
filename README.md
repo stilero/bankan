@@ -58,6 +58,7 @@ Ban Kan fixes that with a workflow developers already understand: a Kanban board
 - Route tasks through a visible board with backlog, planning, implementation, review, and done columns
 - Require human approval before implementation starts
 - Open a live terminal for any running agent and take over when needed
+- Open a task workspace directly in VS Code from the task detail modal when a local workspace exists
 - Track blocked tasks, active tasks, total context usage, and agent activity in real time
 - Point the app at one or more local repositories and a workspace root for per-task working copies
 - Tune prompts and per-role concurrency from the UI
@@ -125,6 +126,8 @@ npm run dev
 ```
 
 By default, Ban Kan starts a local server, opens your browser automatically, and serves the dashboard from the same process.
+
+If you want to open task workspaces from the dashboard, install Visual Studio Code locally. Ban Kan will try the `code` launcher first and, on macOS, fall back to the standard `open -a "Visual Studio Code"` application launch. If neither is available, the task modal shows a readable error instead of failing silently.
 
 ---
 

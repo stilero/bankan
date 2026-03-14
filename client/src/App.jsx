@@ -51,7 +51,7 @@ export default function App() {
   const {
     connected, agents, tasks, repos, settings, notifications,
     addTask, approvePlan, rejectPlan,
-    pauseTask, resumeTask, editTask, abortTask, resetTask, retryTask, deleteTask,
+    pauseTask, resumeTask, editTask, abortTask, resetTask, retryTask, deleteTask, openTaskWorkspace,
     injectMessage, sendRaw, pauseAgent, resumeAgent,
     updateSettings, subscribeTerminal, openAgentTerminal, returnAgentTerminal,
   } = useFactory();
@@ -211,6 +211,7 @@ export default function App() {
           onReset={(id) => { resetTask(id); setSelectedTask(null); }}
           onRetry={(id) => { retryTask(id); setSelectedTask(null); }}
           onDelete={(id) => { deleteTask(id); setSelectedTask(null); }}
+          onOpenWorkspace={(id) => { openTaskWorkspace(id); }}
         />
       )}
 
