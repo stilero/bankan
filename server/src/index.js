@@ -11,6 +11,7 @@ import config, { loadSettings, saveSettings, validateSettings, getWorkspacesDir,
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
+import { getLiveTaskAgent, stageToRetryStatus } from './workflow.js';
 
 const app = express();
 app.use(cors());
@@ -46,28 +47,11 @@ function stageToResumeStatus(task) {
   return planningDisabled ? 'queued' : 'backlog';
 }
 
-function stageToRetryStatus(task) {
+function resolveRetryStatus(task) {
   const settings = loadSettings();
   const planningDisabled = settings.agents?.planners?.max === 0;
-  if (task.assignedTo) {
-    if (task.assignedTo.startsWith('plan-')) return 'planning';
-    if (task.assignedTo.startsWith('imp-')) return 'implementing';
-    if (task.assignedTo.startsWith('rev-')) return 'review';
-  }
-
-  if ((task.blockedReason || '').includes('maximum review cycles')) {
-    return 'queued';
-  }
-  if (task.lastActiveStage === 'review') {
-    return 'review';
-  }
-  if (task.lastActiveStage === 'implementation') {
-    return 'queued';
-  }
-  if (task.lastActiveStage === 'planning') {
-    return task.plan ? 'awaiting_approval' : (planningDisabled ? 'queued' : 'backlog');
-  }
-  return planningDisabled ? 'queued' : 'backlog';
+  const liveAgent = getLiveTaskAgent(task, agentManager);
+  return stageToRetryStatus(task, { planningDisabled, liveAgent });
 }
 
 // REST API
@@ -545,10 +529,10 @@ wss.on('connection', (ws) => {
         const { taskId } = msg.payload || {};
         const task = store.getTask(taskId);
         if (task && task.status === 'blocked') {
-          const retryStatus = stageToRetryStatus(task);
-          const agent = task.assignedTo ? agentManager.get(task.assignedTo) : null;
+          const retryStatus = resolveRetryStatus(task);
+          const agent = getLiveTaskAgent(task, agentManager);
 
-          if (agent && agent.process) {
+          if (agent) {
             agent.status = 'active';
             bus.emit('agent:updated', agent.getStatus());
           }
@@ -556,7 +540,7 @@ wss.on('connection', (ws) => {
           store.updateTask(taskId, {
             status: retryStatus,
             blockedReason: null,
-            assignedTo: agent?.process ? task.assignedTo : null,
+            assignedTo: agent ? task.assignedTo : null,
           });
           broadcast('TASK_RETRIED', { taskId, retryStatus });
         }
