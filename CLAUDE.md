@@ -57,7 +57,7 @@ Dev mode: client runs at `http://localhost:5173` with API proxy to `:3001`.
 ### Runtime state
 
 - `.data/` (dev) or `~/Library/Application Support/bankan` (packaged) — config.json, tasks.json, plans/, workspaces/
-- `.env.local` — REPOS, GITHUB_REPO, GITHUB_TOKEN, IMPLEMENTOR_*_CLI, PORT
+- `.env.local` — IMPLEMENTOR_*_CLI, PORT
 
 ## Code Style
 
@@ -71,6 +71,6 @@ Dev mode: client runs at `http://localhost:5173` with API proxy to `:3001`.
 ## Caveats
 
 - No test suite exists. Verify UI changes at `localhost:5173`, backend changes via manual REST/WS testing.
-- `node-pty` requires native build tools (Xcode CLI on macOS, build-essential on Linux).
+- `node-pty` may need native build tools if it compiles from source during install (Xcode CLI on macOS, build-essential on Linux).
 - The orchestrator runs agents with `--dangerously-skip-permissions` for Claude CLI.
 - PR creation requires `gh` CLI to be installed and authenticated.
