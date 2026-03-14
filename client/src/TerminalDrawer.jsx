@@ -77,12 +77,16 @@ export default function TerminalDrawer({
 
     requestAnimationFrame(() => {
       try { fitAddon.fit(); } catch { /* ignore */ }
+      const tag = document.activeElement?.tagName;
+      if (!tag || tag === 'BODY' || tag === 'DIV') {
+        term.focus();
+      }
     });
 
     termRef.current = term;
 
-    term.onKey(({ key }) => {
-      sendRaw(agent.id, key);
+    term.onData((data) => {
+      sendRaw(agent.id, data);
     });
 
     const unsub = subscribeTerminal(agent.id, (data) => {
