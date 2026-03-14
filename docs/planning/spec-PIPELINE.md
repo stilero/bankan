@@ -5,11 +5,11 @@ The orchestrator is an in-process class that drives tasks through stages. It pol
 ## Stages
 
 ```
-backlog → planning → awaiting_approval → implementing → review → awaiting_human_review → done
-                                                ↑              |
-                                                └── (on FAIL) ┘
-                          ↑          |
-                          └─ (reject)┘
+backlog → planning → awaiting_approval → implementing → review → done
+                          ↑              |                |
+                          └─ (reject)┘   |                └─ (PASS)
+                                         |
+                                         └─ (FAIL) → backlog/workspace_setup → planning → queued → implementing
 
 Any stage → blocked  (when agent signals a blocker or times out)
 ```
@@ -22,9 +22,8 @@ Any stage → blocked  (when agent signals a blocker or times out)
 | `implementing` | Implementor agent is coding |
 | `queued` | Both implementors busy, task waiting |
 | `review` | Reviewer agent is reviewing the branch |
-| `awaiting_human_review` | PR open, waiting for human merge |
 | `blocked` | Agent hit a blocker or timed out |
-| `done` | Merged or manually closed |
+| `done` | PR was created successfully and local cleanup completed |
 
 ## Orchestrator Responsibilities
 
@@ -33,8 +32,8 @@ Any stage → blocked  (when agent signals a blocker or times out)
 - On human approval → assign to available Implementor, create git branch
 - On human rejection → re-run Planner with feedback appended
 - On implementation complete → push branch, assign to Reviewer
-- On review PASS → open GitHub PR (or skip if unconfigured), set `awaiting_human_review`
-- On review FAIL → return to implementing with review feedback
+- On review PASS → open GitHub PR, clean up workspace, mark `done`
+- On review FAIL → re-run Planner on the same branch with reviewer findings, then auto-queue implementation once the revised plan is ready
 - Detect stuck agents (no new output for 10 min) → mark blocked
 - Broadcast all state changes to WebSocket clients
 
@@ -52,7 +51,9 @@ The orchestrator writes the prompt to the planner's PTY stdin. See `PROMPTS.md` 
 1. Extract text between `=== PLAN START ===` and `=== PLAN END ===`
 2. Parse `BRANCH:` field with `/BRANCH:\s*(.+)/`
 3. Save full plan to `.data/plans/{taskId}.md`
-4. Update task: `status → awaiting_approval`, `plan = planText`, `branch = parsedBranch`
+4. Update task:
+   - Fresh planning: `status → awaiting_approval`, `plan = planText`, `branch = parsedBranch`
+   - Review revision planning: `status → queued`, `plan = planText`, `branch = parsedBranch`, preserving `reviewFeedback` and `reviewCycleCount`
 5. Kill planner PTY, set agent status to idle
 6. Broadcast `PLAN_READY`
 
@@ -64,7 +65,7 @@ Append `planFeedback` to task. Set `status → planning`. Re-run planner with re
 ## Implementor Agents
 
 **CLIs:** Implementor-1 defaults to `claude`, Implementor-2 defaults to `codex` — configurable via `.env.local`  
-**Trigger:** Task is approved (`awaiting_approval → implementing`) or returned from review  
+**Trigger:** Task is approved (`awaiting_approval → implementing`) or a revised plan is auto-queued after failed review  
 **Timeout:** 60 minutes → mark blocked  
 **Parallel:** Two implementors. If both busy, task waits in `queued`.
 
@@ -90,7 +91,7 @@ await git.checkoutLocalBranch(task.branch)
 3. Broadcast `TASK_BLOCKED`
 
 **Second pass (after review FAIL):**  
-Prompt includes `PREVIOUS REVIEW ISSUES TO FIX: {task.reviewFeedback}`. Same branch, no new branch creation.
+Prompt includes the revised plan plus `PREVIOUS REVIEW ISSUES TO FIX: {task.reviewFeedback}`. Same branch, no new branch creation.
 
 ## Reviewer Agent
 
@@ -106,14 +107,16 @@ Prompt includes `PREVIOUS REVIEW ISSUES TO FIX: {task.reviewFeedback}`. Same bra
 3. Save review to `task.review`
 
 **On PASS:**
-- If `GITHUB_TOKEN` + `GITHUB_REPO` configured → call GitHub API to open PR → set `prUrl`, `status → awaiting_human_review`
-- If not configured → set `status → awaiting_human_review`, notify user GitHub is not set up
+- Push/rebase the branch as needed
+- Create the PR with `gh pr create`
+- Clean up the local workspace and set `status → done`
 
 **On FAIL:**
 - Extract `CRITICAL_ISSUES:` block
-- Set `task.reviewFeedback = criticalIssues`
-- Set `status → implementing`
-- Re-assign to first available implementor (same branch, no new branch)
+- Increment `reviewCycleCount`
+- If the max review cycles is reached, set `status → blocked`
+- Otherwise set `task.reviewFeedback = criticalIssues`, mark the next planner run as auto-approved, and return the task to planning on the same branch/workspace
+- When the revised plan completes, queue implementation without stopping at human approval
 
 ## Signal Detection
 
@@ -136,7 +139,7 @@ Authorization: Bearer {GITHUB_TOKEN}
 Body: { title, head: task.branch, base: 'main', body: plan + review summary }
 ```
 
-If the API call fails, don't crash — log the error and set `status → awaiting_human_review` anyway.
+If the API call fails, don't crash. Mark the task blocked with the PR finalization failure.
 
 ## Restart Recovery
 
@@ -145,11 +148,11 @@ On server startup, tasks in transient states are reset:
 | Was in | Reset to |
 |---|---|
 | `planning` | `backlog` |
-| `implementing` | `awaiting_approval` (plan was already approved) |
-| `review` | `awaiting_approval` (re-run from approval, safer than partial review) |
-| `queued` | `awaiting_approval` |
+| `implementing` | `queued` |
+| `review` | `review` |
+| `queued` | `queued` |
 
-Tasks in `awaiting_approval`, `awaiting_human_review`, `blocked`, `done` are left as-is.
+Tasks in `awaiting_approval`, `blocked`, `done` are left as-is. Revision-planning retries rely on persisted `autoApprovePlan` so blocked or paused planner runs resume to planning instead of human approval.
 
 ## Token Counting
 
