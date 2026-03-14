@@ -1,8 +1,8 @@
 {
   "name": "@stilero/bankan",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
-  "description": "Local AI agent orchestration dashboard with a global `bankan` CLI.",
+  "description": "Run AI coding agents like a Kanban board. Plan, implement, review and ship code using parallel AI agents across your local repositories.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -14,10 +14,17 @@
   },
   "keywords": [
     "ai",
-    "agents",
+    "ai-agents",
+    "coding-agents",
+    "ai-development",
+    "developer-tools",
     "kanban",
-    "dashboard",
+    "agile",
     "cli",
+    "automation",
+    "developer-workflow",
+    "agents",
+    "dashboard",
     "orchestration"
   ],
   "bin": {
@@ -26,6 +33,7 @@
   "files": [
     "bin",
     "client/dist",
+    "docs/images",
     "LICENSE",
     "scripts/setup.js",
     "server/src",
