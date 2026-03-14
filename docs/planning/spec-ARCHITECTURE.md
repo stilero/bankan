@@ -87,7 +87,7 @@ ai-factory/
 |---|---|---|
 | `server/src/index.js` | Partial | Fix circular import with store.js — see Critical Bugs |
 | `server/src/store.js` | Partial | Remove direct import of broadcast(); use events.js instead |
-| `server/src/config.js` | Partial | Ensure `IMPLEMENTOR_1_CLI` and `IMPLEMENTOR_2_CLI` are read |
+| `server/src/config.js` | Partial | Ensure default agent settings stay aligned with persisted app settings |
 | `server/src/agents.js` | Partial | Verify node-pty spawn, token parsing, terminal streaming to WS |
 | `server/src/orchestrator.js` | Partial | Fix circular import; implement all stage transitions; add restart recovery |
 | `server/src/events.js` | Missing | Create — EventEmitter singleton used by store + server |

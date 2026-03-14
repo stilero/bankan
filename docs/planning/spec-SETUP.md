@@ -59,13 +59,10 @@ GITHUB_TOKEN    optional, GitHub personal access token
 
 Validate `REPO_PATH`: check it exists and is a git repo (`git -C {path} rev-parse HEAD`). Warn but don't fail if it's not a git repo.
 
-### Step 5: Agent Config
-```
-IMPLEMENTOR_1_CLI   [claude/codex, default: claude]
-IMPLEMENTOR_2_CLI   [claude/codex, default: codex]
-```
+### Step 5: Runtime Config
+The bootstrap setup should only collect runtime values needed before the app loads.
 
-Show defaults in prompt. Empty input = use default.
+Agent CLI selection belongs in the app settings UI so setup and the dashboard stay in sync.
 
 ### Step 6: Write Files
 
@@ -76,8 +73,6 @@ OPENAI_API_KEY=...
 REPO_PATH=...
 GITHUB_REPO=...
 GITHUB_TOKEN=...
-IMPLEMENTOR_1_CLI=claude
-IMPLEMENTOR_2_CLI=codex
 PORT=3001
 ```
 
@@ -120,8 +115,6 @@ OPENAI_API_KEY=sk-...
 REPO_PATH=/absolute/path/to/your/project
 GITHUB_REPO=owner/repo
 GITHUB_TOKEN=ghp_...
-IMPLEMENTOR_1_CLI=claude
-IMPLEMENTOR_2_CLI=codex
 PORT=3001
 ```
 
