@@ -17,11 +17,7 @@ Plan → Implement → Review → Pull Request
 </p>
 
 <p align="center">
-  See every task, every stage, and every agent at a glance.
-</p>
-
-<p align="center">
-  Bring order to parallel AI development without leaving your local workflow.
+Bring order to parallel AI development without leaving your local workflow.
 </p>
 
 <p align="center">
@@ -34,6 +30,10 @@ Plan → Implement → Review → Pull Request
   <a href="https://github.com/stilero/bankan">GitHub</a>
   ·
   <a href="https://github.com/stilero/bankan/issues">Issues</a>
+</p>
+
+<p align="center">
+⭐ If Ban Kan helps you ship faster, please consider starring the repo.
 </p>
 
 ---
