@@ -580,7 +580,12 @@ async function startImplementation(task) {
     return;
   }
 
-  store.updateTask(task.id, { status: 'workspace_setup', assignedTo: agent.id, blockedReason: null });
+  store.updateTask(task.id, {
+    status: 'workspace_setup',
+    assignedTo: agent.id,
+    blockedReason: null,
+    startedAt: task.startedAt || new Date().toISOString(),
+  });
   agent.currentTask = task.id;
   agent.taskLabel = `Setting up: ${task.title}`;
   agent.status = 'active';
@@ -782,7 +787,11 @@ async function createPR(taskId) {
       '--head', task.branch,
       '--base', 'main',
     ], { cwd: task.workspacePath, encoding: 'utf-8' }).trim();
-    store.updateTask(taskId, { prUrl, assignedTo: null });
+    store.updateTask(taskId, {
+      prUrl,
+      assignedTo: null,
+      completedAt: new Date().toISOString(),
+    });
     bus.emit('pr:created', { taskId, prUrl });
 
     await cleanupWorkspace(store.getTask(taskId));
@@ -850,6 +859,8 @@ async function resetTask(taskId) {
     reviewCycleCount: 0,
     progress: 0,
     totalTokens: 0,
+    startedAt: null,
+    completedAt: null,
   });
   store.appendLog(taskId, 'Task reset to backlog and workspace deleted');
 
