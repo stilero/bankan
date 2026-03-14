@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/ban_kan_logo_readme.svg" alt="Ban Kan logo" width="520" />
+  <img src="https://raw.githubusercontent.com/stilero/bankan/HEAD/docs/images/ban_kan_logo_readme.svg" alt="Ban Kan logo" width="520" />
 </p>
 
 # Ban Kan
@@ -21,7 +21,7 @@ Bring order to parallel AI development without leaving your local workflow.
 </p>
 
 <p align="center">
-  <img src="docs/images/bankan_screenshot.png" alt="Ban Kan dashboard showing backlog, planning, implementation, review, and done columns" width="1200" />
+  <img src="https://raw.githubusercontent.com/stilero/bankan/HEAD/docs/images/bankan_screenshot.png" alt="Ban Kan dashboard showing backlog, planning, implementation, review, and done columns" width="1200" />
 </p>
 
 <p align="center">
@@ -35,150 +35,6 @@ Bring order to parallel AI development without leaving your local workflow.
 <p align="center">
 ⭐ If Ban Kan helps you ship faster, please consider starring the repo.
 </p>
-
----
-
-## What Is Ban Kan
-
-Ban Kan is a **local control center for AI coding agents** that work across real repositories.
-
-Instead of one long AI chat trying to do everything, tasks move through a structured pipeline inspired by a Kanban board:
-
-Backlog → Planning → Implementation → Review → Done
-
-Each stage can use different agents, prompts, and concurrency settings. Developers keep full visibility and control over what is happening at every step.
-
-Ban Kan combines:
-
-- structured workflows
-- parallel agent execution
-- human approvals
-- local repository access
-- optional pull request automation
-
-All in one dashboard.
-
----
-
-## Why Ban Kan Exists
-
-Most AI coding workflows eventually break down in the same way:
-
-- one giant prompt tries to do planning, coding, and review
-- context grows and token usage explodes
-- agents overwrite each other’s work
-- there is no clear review stage
-- parallel development becomes chaos
-
-Ban Kan fixes this with a model developers already understand:
-
-**a Kanban board with specialized AI agents.**
-
-Each stage has a clear responsibility, and tasks move forward only when the previous step succeeds.
-
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <img src="docs/images/before_claude_windows.png" alt="Four separate Claude Code terminal windows used to coordinate parallel agent work before Ban Kan" width="100%" />
-      <br />
-      <strong>Before Ban Kan</strong>
-      <br />
-      Managing multiple agents means juggling separate terminal windows and fragmented context.
-    </td>
-    <td align="center" width="50%">
-      <img src="docs/images/bankan_multi_tasks.png" alt="Ban Kan dashboard showing multiple tasks and agent output in one coordinated interface" width="100%" />
-      <br />
-      <strong>With Ban Kan</strong>
-      <br />
-      Tasks, agent stages, approvals, and live output stay visible in one shared dashboard.
-    </td>
-  </tr>
-</table>
-
----
-
-## Built for Agile Development
-
-Ban Kan fits naturally into Agile workflows where work is organized as stories.
-
-Each story moves through a structured lifecycle that mirrors how real development teams operate:
-
-```mermaid
-flowchart LR
-    A[Story / Task Created] --> B[Planning Agent]
-    B --> C[Implementation Agent]
-    C --> D[Review Agent]
-    D --> E[Done / Pull Request]
-```
-
-This structure makes Ban Kan especially useful when working with:
-
-- Agile user stories
-- sprint backlogs
-- feature tasks
-- incremental development
-
-Instead of one AI trying to solve everything in a single prompt, each stage has a clear responsibility — just like in a real Agile team.
-
-Developers plan the story, agents implement the work, reviewers validate the result, and the change moves forward when it meets quality gates.
-
----
-
-## What It Looks Like In Practice
-
-Example story: **Add Stripe payments**
-
-Below is the same task moving through Ban Kan's workflow from creation to completion.
-
-### 1. Create the task
-
-<p align="center">
-  <img src="docs/images/workflow/add_task.png" alt="Ban Kan add task modal used to create the Stripe payments task" />
-</p>
-
-The developer creates a task in the dashboard and defines the story to be planned and executed.
-
-### 2. Planning starts
-
-<p align="center">
-  <img src="docs/images/workflow/planning_stage_started.png" alt="Ban Kan planning stage showing the Stripe payments task as planning starts" />
-</p>
-
-The planner agent picks up the task, analyzes the repository, and prepares an implementation plan.
-
-### 3. Review and approve the plan
-
-<p align="center">
-  <img src="docs/images/workflow/planning_approve_plan.png" alt="Ban Kan planning stage showing an approval-ready plan for the Stripe payments task" />
-</p>
-
-The generated plan is shown in the dashboard so the developer can approve it before any code is written.
-
-### 4. Implementation runs
-
-<p align="center">
-  <img src="docs/images/workflow/implementing_task.png" alt="Ban Kan implementation stage showing the Stripe payments task being actively worked on by an agent" />
-</p>
-
-After approval, the implementor agent creates its workspace, writes the code, and reports progress live in the UI.
-
-### 5. Review stage
-
-<p align="center">
-  <img src="docs/images/workflow/review_stage.png" alt="Ban Kan review stage showing the Stripe payments task being validated by a reviewer agent" />
-</p>
-
-The reviewer agent validates the implementation, checks for issues, and decides whether the task is ready to move forward.
-
-### 6. Done / ready for PR
-
-<p align="center">
-  <img src="docs/images/workflow/done_stage.png" alt="Ban Kan done stage showing the Stripe payments task completed and ready for pull request creation" />
-</p>
-
-Once review passes, the task moves to Done and can be used as the basis for a pull request.
-
-Multiple tasks can move through these stages simultaneously with different agents assigned to each step.
 
 ---
 
@@ -245,6 +101,150 @@ bankan
 6. Watch agents implement and review the change
 
 7. Optionally create a pull request
+
+---
+
+## What Is Ban Kan
+
+Ban Kan is a **local control center for AI coding agents** that work across real repositories.
+
+Instead of one long AI chat trying to do everything, tasks move through a structured pipeline inspired by a Kanban board:
+
+Backlog → Planning → Implementation → Review → Done
+
+Each stage can use different agents, prompts, and concurrency settings. Developers keep full visibility and control over what is happening at every step.
+
+Ban Kan combines:
+
+- structured workflows
+- parallel agent execution
+- human approvals
+- local repository access
+- optional pull request automation
+
+All in one dashboard.
+
+---
+
+## Why Ban Kan Exists
+
+Most AI coding workflows eventually break down in the same way:
+
+- one giant prompt tries to do planning, coding, and review
+- context grows and token usage explodes
+- agents overwrite each other’s work
+- there is no clear review stage
+- parallel development becomes chaos
+
+Ban Kan fixes this with a model developers already understand:
+
+**a Kanban board with specialized AI agents.**
+
+Each stage has a clear responsibility, and tasks move forward only when the previous step succeeds.
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="https://raw.githubusercontent.com/stilero/bankan/HEAD/docs/images/before_claude_windows.png" alt="Four separate Claude Code terminal windows used to coordinate parallel agent work before Ban Kan" width="100%" />
+      <br />
+      <strong>Before Ban Kan</strong>
+      <br />
+      Managing multiple agents means juggling separate terminal windows and fragmented context.
+    </td>
+    <td align="center" width="50%">
+      <img src="https://raw.githubusercontent.com/stilero/bankan/HEAD/docs/images/bankan_multi_tasks.png" alt="Ban Kan dashboard showing multiple tasks and agent output in one coordinated interface" width="100%" />
+      <br />
+      <strong>With Ban Kan</strong>
+      <br />
+      Tasks, agent stages, approvals, and live output stay visible in one shared dashboard.
+    </td>
+  </tr>
+</table>
+
+---
+
+## Built for Agile Development
+
+Ban Kan fits naturally into Agile workflows where work is organized as stories.
+
+Each story moves through a structured lifecycle that mirrors how real development teams operate:
+
+```mermaid
+flowchart LR
+    A[Story / Task Created] --> B[Planning Agent]
+    B --> C[Implementation Agent]
+    C --> D[Review Agent]
+    D --> E[Done / Pull Request]
+```
+
+This structure makes Ban Kan especially useful when working with:
+
+- Agile user stories
+- sprint backlogs
+- feature tasks
+- incremental development
+
+Instead of one AI trying to solve everything in a single prompt, each stage has a clear responsibility — just like in a real Agile team.
+
+Developers plan the story, agents implement the work, reviewers validate the result, and the change moves forward when it meets quality gates.
+
+---
+
+## What It Looks Like In Practice
+
+Example story: **Add Stripe payments**
+
+Below is the same task moving through Ban Kan's workflow from creation to completion.
+
+### 1. Create the task
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/stilero/bankan/HEAD/docs/images/workflow/add_task.png" alt="Ban Kan add task modal used to create the Stripe payments task" />
+</p>
+
+The developer creates a task in the dashboard and defines the story to be planned and executed.
+
+### 2. Planning starts
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/stilero/bankan/HEAD/docs/images/workflow/planning_stage_started.png" alt="Ban Kan planning stage showing the Stripe payments task as planning starts" />
+</p>
+
+The planner agent picks up the task, analyzes the repository, and prepares an implementation plan.
+
+### 3. Review and approve the plan
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/stilero/bankan/HEAD/docs/images/workflow/planning_approve_plan.png" alt="Ban Kan planning stage showing an approval-ready plan for the Stripe payments task" />
+</p>
+
+The generated plan is shown in the dashboard so the developer can approve it before any code is written.
+
+### 4. Implementation runs
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/stilero/bankan/HEAD/docs/images/workflow/implementing_task.png" alt="Ban Kan implementation stage showing the Stripe payments task being actively worked on by an agent" />
+</p>
+
+After approval, the implementor agent creates its workspace, writes the code, and reports progress live in the UI.
+
+### 5. Review stage
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/stilero/bankan/HEAD/docs/images/workflow/review_stage.png" alt="Ban Kan review stage showing the Stripe payments task being validated by a reviewer agent" />
+</p>
+
+The reviewer agent validates the implementation, checks for issues, and decides whether the task is ready to move forward.
+
+### 6. Done / ready for PR
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/stilero/bankan/HEAD/docs/images/workflow/done_stage.png" alt="Ban Kan done stage showing the Stripe payments task completed and ready for pull request creation" />
+</p>
+
+Once review passes, the task moves to Done and can be used as the basis for a pull request.
+
+Multiple tasks can move through these stages simultaneously with different agents assigned to each step.
 
 ---
 
