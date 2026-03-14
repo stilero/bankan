@@ -40,13 +40,23 @@ Bring order to parallel AI development without leaving your local workflow.
 
 ## What Is Ban Kan
 
-Ban Kan is a local dashboard for running multiple AI coding agents across real repositories.
+Ban Kan is a **local control center for AI coding agents** that work across real repositories.
 
-Instead of one long chat handling everything, tasks move through a visible pipeline:
+Instead of one long AI chat trying to do everything, tasks move through a structured pipeline inspired by a Kanban board:
 
-`Backlog -> Planning -> Implementation -> Review -> Done`
+Backlog → Planning → Implementation → Review → Done
 
-Each stage can use different agents, different prompts, and different concurrency limits. You get structured handoffs, human plan approval, live status tracking, and optional PR creation from one interface.
+Each stage can use different agents, prompts, and concurrency settings. Developers keep full visibility and control over what is happening at every step.
+
+Ban Kan combines:
+
+- structured workflows
+- parallel agent execution
+- human approvals
+- local repository access
+- optional pull request automation
+
+All in one dashboard.
 
 ---
 
