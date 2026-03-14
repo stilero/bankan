@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import useFactory from './useFactory.js';
 import KanbanBoard from './KanbanBoard.jsx';
 import TerminalDrawer from './TerminalDrawer.jsx';
@@ -86,6 +86,15 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showReportingModal, setShowReportingModal] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 30000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   // Derived values
   const needAttention = useMemo(() =>
@@ -103,7 +112,6 @@ export default function App() {
     [tasks]
   );
   const reportData = useMemo(() => {
-    const nowMs = Date.now();
     const repoMap = new Map();
 
     for (const task of tasks) {
@@ -151,7 +159,7 @@ export default function App() {
       totals,
       topRepo: reposReport[0] || null,
     };
-  }, [tasks]);
+  }, [nowMs, tasks]);
 
   const selectedAgentData = useMemo(() =>
     agents.find(a => a.id === selectedAgent),
