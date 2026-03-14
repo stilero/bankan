@@ -21,6 +21,14 @@ const MAX_REVIEW_CYCLES = 3;
 let pollTimer = null;
 let signalTimer = null;
 
+function stripAnsi(text) {
+  if (typeof text !== 'string') return text;
+  return text.replace(
+    /[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]|\x1b\].*?(?:\x07|\x1b\\)|\r/g,
+    ''
+  );
+}
+
 function escapePrompt(text) {
   return text.replace(/'/g, "'\\''");
 }
@@ -105,11 +113,12 @@ function getImplementationCompletionState(agent, taskId) {
     return { complete: false, blockedReason: null };
   }
 
-  if (buf.includes(completionMarker)) {
+  const cleanBuf = stripAnsi(buf);
+  if (cleanBuf.includes(completionMarker)) {
     return { complete: true, blockedReason: null };
   }
 
-  const blockedMatch = buf.match(/=== BLOCKED: (.+?) ===/);
+  const blockedMatch = cleanBuf.match(/=== BLOCKED: (.+?) ===/);
   return { complete: false, blockedReason: blockedMatch ? blockedMatch[1] : null };
 }
 
@@ -548,7 +557,7 @@ function onPlanComplete(agentId, taskId) {
   if (!planner) return;
   const bufStr = planner.getBufferString(100);
   const captured = planner.cli === 'codex' ? readCapturedCodexMessage(bufStr) : null;
-  const sourceText = captured || bufStr;
+  const sourceText = captured || stripAnsi(bufStr);
 
   // Extract plan text
   const planText = getLastStructuredBlock(sourceText, '=== PLAN START ===', '=== PLAN END ===');
@@ -726,7 +735,7 @@ async function onReviewComplete(agentId, taskId) {
   const bufStr = reviewer.getBufferString(100);
 
   const captured = reviewer.cli === 'codex' ? readCapturedCodexMessage(bufStr) : null;
-  const sourceText = captured || bufStr;
+  const sourceText = captured || stripAnsi(bufStr);
   const reviewText = getLastStructuredBlock(sourceText, '=== REVIEW START ===', '=== REVIEW END ===');
   if (!reviewText) return;
   const reviewResult = parseReviewResult(reviewText);
@@ -902,7 +911,7 @@ const TRUST_PROMPT_RE = /trust the files|Do you trust|allow.*to run in this/i;
 
 function checkTrustPrompt(agent, buf) {
   if (agent.status === 'blocked') return true; // already handled
-  if (!TRUST_PROMPT_RE.test(buf)) return false;
+  if (!TRUST_PROMPT_RE.test(stripAnsi(buf))) return false;
 
   store.updateTask(agent.currentTask, {
     status: 'blocked',
@@ -920,15 +929,16 @@ function checkSignals() {
   for (const agent of agentManager.getAgentsByRole('plan')) {
     if (agent.status === 'active' && agent.currentTask) {
       const buf = agent.getBufferString(50);
+      const cleanBuf = stripAnsi(buf);
       const planReady = agent.cli === 'codex'
         ? hasCodexStructuredOutput(buf, '=== PLAN END ===')
-        : buf.includes('=== PLAN END ===');
+        : cleanBuf.includes('=== PLAN END ===');
       if (planReady) {
         onPlanComplete(agent.id, agent.currentTask);
       } else if (!checkTrustPrompt(agent, buf)) {
         // Live plan streaming
-        if (!buf.includes('=== PLAN END ===') && buf.includes('=== PLAN START ===')) {
-          const partial = buf.slice(buf.indexOf('=== PLAN START ==='));
+        if (!cleanBuf.includes('=== PLAN END ===') && cleanBuf.includes('=== PLAN START ===')) {
+          const partial = cleanBuf.slice(cleanBuf.indexOf('=== PLAN START ==='));
           if (!isPlanPlaceholder(partial)) {
             bus.emit('plan:partial', { taskId: agent.currentTask, plan: partial });
           }
@@ -975,7 +985,7 @@ function checkSignals() {
       const buf = agent.getBufferString(50);
       const reviewReady = agent.cli === 'codex'
         ? hasCodexStructuredOutput(buf, '=== REVIEW END ===')
-        : buf.includes('=== REVIEW END ===');
+        : stripAnsi(buf).includes('=== REVIEW END ===');
       if (reviewReady) {
         onReviewComplete(agent.id, agent.currentTask);
       } else if (!checkTrustPrompt(agent, buf)) {
@@ -1063,12 +1073,13 @@ function pollLoop() {
         const isImplementor = agent.id.startsWith('imp-');
         const isReviewer = agent.id.startsWith('rev-');
 
+        const cleanBuf = stripAnsi(buf);
         if (isPlanner) {
           const planReady = agent.cli === 'codex'
             ? hasCodexStructuredOutput(buf, '=== PLAN END ===')
-            : buf.includes('=== PLAN END ===');
+            : cleanBuf.includes('=== PLAN END ===');
           const planText = planReady
-            ? getLastStructuredBlock(buf, '=== PLAN START ===', '=== PLAN END ===')
+            ? getLastStructuredBlock(cleanBuf, '=== PLAN START ===', '=== PLAN END ===')
             : null;
           if (planText && !isPlanPlaceholder(planText)) {
             onPlanComplete(agent.id, taskId);
@@ -1101,7 +1112,7 @@ function pollLoop() {
         } else if (isReviewer) {
           const reviewReady = agent.cli === 'codex'
             ? hasCodexStructuredOutput(buf, '=== REVIEW END ===')
-            : buf.includes('=== REVIEW END ===');
+            : cleanBuf.includes('=== REVIEW END ===');
           if (reviewReady) {
             const reviewer = agentManager.get(agent.id);
             const bufStr = reviewer?.getBufferString(100) || '';
@@ -1158,7 +1169,8 @@ bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
   let authBlockedReason = null;
   if (agent) {
     const buf = agent.getBufferString(100);
-    authBlockedReason = getAuthBlockedReason(buf, agent.cli);
+    const cleanBuf = stripAnsi(buf);
+    authBlockedReason = getAuthBlockedReason(cleanBuf, agent.cli);
     const isPlanner = agentId.startsWith('plan-');
     const isImplementor = agentId.startsWith('imp-');
     const isReviewer = agentId.startsWith('rev-');
@@ -1166,10 +1178,10 @@ bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
     if (isPlanner) {
       const planReady = agent.cli === 'codex'
         ? hasCodexStructuredOutput(buf, '=== PLAN END ===')
-        : buf.includes('=== PLAN END ===');
+        : cleanBuf.includes('=== PLAN END ===');
       if (planReady) {
         const captured = agent.cli === 'codex' ? readCapturedCodexMessage(buf, { remove: false }) : null;
-        const sourceText = captured || buf;
+        const sourceText = captured || cleanBuf;
         const planText = getLastStructuredBlock(sourceText, '=== PLAN START ===', '=== PLAN END ===');
         if (planText && !isPlanPlaceholder(planText)) {
           onPlanComplete(agentId, taskId);
@@ -1189,10 +1201,10 @@ bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
     } else if (isReviewer) {
       const reviewReady = agent.cli === 'codex'
         ? hasCodexStructuredOutput(buf, '=== REVIEW END ===')
-        : buf.includes('=== REVIEW END ===');
+        : cleanBuf.includes('=== REVIEW END ===');
       if (reviewReady) {
         const captured = agent.cli === 'codex' ? readCapturedCodexMessage(buf, { remove: false }) : null;
-        const sourceText = captured || buf;
+        const sourceText = captured || cleanBuf;
         const reviewText = getLastStructuredBlock(sourceText, '=== REVIEW START ===', '=== REVIEW END ===');
         const reviewResult = reviewText ? parseReviewResult(reviewText) : null;
         if (reviewText && reviewResult && !isReviewResultPlaceholder(reviewText, reviewResult)) {
