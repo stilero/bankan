@@ -12,6 +12,7 @@ import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
 import { getLiveTaskAgent, stageToRetryStatus } from './workflow.js';
+import { createSessionEntry } from './sessionHistory.js';
 
 const app = express();
 app.use(cors());
@@ -223,6 +224,19 @@ function closeBridge(agent, { broadcastEvent = true, notifyType = 'BRIDGE_RETURN
       broadcast(notifyType, { agentId: agent.id, agentName: agent.name });
     }
   }
+}
+
+function retireAgent(agent, { taskId = agent?.currentTask || null, outcome = 'completed' } = {}) {
+  if (!agent || agent.id === 'orch') return;
+  if (taskId) {
+    store.appendSession(taskId, createSessionEntry(agent, {
+      taskId,
+      outcome,
+      transcript: agent.getBufferString(500),
+    }));
+  }
+  agent.kill();
+  agentManager.removeAgent(agent.id);
 }
 
 function readBridgeAppend(session, key) {
@@ -483,7 +497,7 @@ wss.on('connection', (ws) => {
           if (task.assignedTo) {
             const agent = agentManager.get(task.assignedTo);
             if (agent) {
-              agent.kill();
+              retireAgent(agent, { taskId, outcome: 'paused' });
             }
           }
           store.updateTask(taskId, {

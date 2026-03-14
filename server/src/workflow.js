@@ -64,11 +64,19 @@ export function getLiveTaskAgent(task, agentManager) {
   return agent;
 }
 
+export function getAgentStage(agentId) {
+  if (agentId?.startsWith('plan-')) return 'planning';
+  if (agentId?.startsWith('imp-')) return 'implementation';
+  if (agentId?.startsWith('rev-')) return 'review';
+  return null;
+}
+
 export function stageToRetryStatus(task, { planningDisabled = false, liveAgent = null } = {}) {
   if (liveAgent) {
-    if (liveAgent.id.startsWith('plan-')) return 'planning';
-    if (liveAgent.id.startsWith('imp-')) return 'implementing';
-    if (liveAgent.id.startsWith('rev-')) return 'review';
+    const stage = getAgentStage(liveAgent.id);
+    if (stage === 'planning') return 'planning';
+    if (stage === 'implementation') return 'implementing';
+    if (stage === 'review') return 'review';
   }
 
   if ((task.blockedReason || '').includes('maximum review cycles')) {

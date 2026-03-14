@@ -80,6 +80,7 @@ export default function TaskDetailModal({
   const [rejecting, setRejecting] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [expandedSessions, setExpandedSessions] = useState({});
 
   const canPause = !['done', 'paused', 'aborted'].includes(task.status);
   const canResume = task.status === 'paused';
@@ -88,6 +89,7 @@ export default function TaskDetailModal({
   const canRetry = task.status === 'blocked';
   const canOpenWorkspace = Boolean(task.workspacePath && onOpenWorkspace);
   const totalTime = formatTotalTime(task.startedAt, task.completedAt);
+  const sessionHistory = Array.isArray(task.sessionHistory) ? task.sessionHistory.slice().reverse() : [];
 
   const handleSave = () => {
     onEdit(task.id, {
@@ -105,6 +107,10 @@ export default function TaskDetailModal({
       setRejecting(false);
       setFeedback('');
     }
+  };
+
+  const toggleSession = (sessionId) => {
+    setExpandedSessions(prev => ({ ...prev, [sessionId]: !prev[sessionId] }));
   };
 
   const labelStyle = {
@@ -371,6 +377,67 @@ export default function TaskDetailModal({
                     {task.review}
                   </pre>
                 )}
+              </div>
+            )}
+
+            {sessionHistory.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={labelStyle}>Completed Sessions</div>
+                <div style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: 4,
+                  background: 'var(--bg)',
+                  overflow: 'hidden',
+                }}>
+                  {sessionHistory.map((session, index) => {
+                    const expanded = Boolean(expandedSessions[session.id]);
+                    return (
+                      <div
+                        key={session.id || index}
+                        style={{ borderBottom: index < sessionHistory.length - 1 ? '1px solid var(--border)' : 'none' }}
+                      >
+                        <button
+                          onClick={() => toggleSession(session.id)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 12,
+                            background: 'transparent',
+                            color: 'var(--text)',
+                            fontSize: 11,
+                            textAlign: 'left',
+                          }}
+                        >
+                          <span>
+                            {expanded ? '\u25BC' : '\u25B6'} {session.agentName} · {session.stage} · {session.outcome}
+                          </span>
+                          <span style={{ color: 'var(--text3)', flexShrink: 0 }}>
+                            {new Date(session.finishedAt).toLocaleString()}
+                          </span>
+                        </button>
+                        {expanded && (
+                          <pre style={{
+                            margin: 0,
+                            padding: 10,
+                            fontSize: 11,
+                            color: 'var(--text2)',
+                            background: 'var(--bg1)',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            maxHeight: 220,
+                            overflowY: 'auto',
+                            borderTop: '1px solid var(--border)',
+                          }}>
+                            {session.transcript || '[No transcript captured]'}
+                          </pre>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
