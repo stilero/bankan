@@ -234,9 +234,12 @@ Ban Kan ships as:
 Contributions are welcome.
 
 1. Fork the repository.
-2. Create a focused branch.
-3. Make the change.
-4. Open a pull request with context and screenshots for UI updates.
+2. Open a GitHub issue before starting:
+   - use the bug report form for reproducible defects
+   - use the feature request form for improvements, workflow changes, or new capabilities
+3. Create a focused branch.
+4. Make the change.
+5. Open a pull request with context and screenshots for UI updates.
 
 ---
 
