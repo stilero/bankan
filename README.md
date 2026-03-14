@@ -166,17 +166,20 @@ bankan
 
 ## How It Works
 
-Developer creates task  
-↓  
-Planner agent analyzes repository  
-↓  
-Human reviews and approves plan  
-↓  
-Implementor agent writes code  
-↓  
-Reviewer agent validates changes  
-↓  
-Task moves to Done and optionally creates PR
+```mermaid
+flowchart TD
+    A[Developer creates task in dashboard] --> B[Planner agent analyzes repository]
+    B --> C[Plan generated and shown for approval]
+    C --> D{Approve plan?}
+    D -->|Yes| E[Implementor agent writes code]
+    D -->|No| F[Task returns for changes]
+    E --> G[Reviewer agent validates changes]
+    G --> H{Review passed?}
+    H -->|Yes| I[Task moves to Done]
+    I --> J[Optional pull request creation]
+    H -->|No| K[Task goes back to implementation]
+    K --> E
+```
 
 Multiple tasks can run in parallel across different agents.
 
