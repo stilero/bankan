@@ -53,7 +53,7 @@ function buildAgentCommand(cliTool, prompt, mode = 'interactive') {
     return buildCodexExecCommand(prompt, { captureLastMessage: false, sandbox: 'read-only' });
   }
 
-  if (mode === 'print') {
+  if (mode === 'print' || mode === 'plan' || mode === 'review') {
     return `claude --print '${escapePrompt(prompt)}'`;
   }
 
