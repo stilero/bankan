@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   getLiveTaskAgent,
+  isReviewResultPlaceholder,
   parseReviewResult,
   reviewShouldPass,
   stageToRetryStatus,
@@ -40,6 +41,36 @@ SUMMARY: A must-fix issue remains.
 
   assert.equal(result.hasCriticalIssues, true);
   assert.equal(reviewShouldPass(result), false);
+});
+
+test('placeholder review template is rejected', () => {
+  const reviewText = `=== REVIEW START ===
+VERDICT: PASS
+CRITICAL_ISSUES:
+- none
+MINOR_ISSUES:
+- (issue description, or 'none')
+SUMMARY: (2-3 sentences summarising the review)
+=== REVIEW END ===`;
+
+  const result = parseReviewResult(reviewText);
+
+  assert.equal(isReviewResultPlaceholder(reviewText, result), true);
+});
+
+test('concrete review output is not treated as placeholder', () => {
+  const reviewText = `=== REVIEW START ===
+VERDICT: PASS
+CRITICAL_ISSUES:
+- none
+MINOR_ISSUES:
+- none
+SUMMARY: Changed files: server/src/orchestrator.js, server/src/workflow.js. The review completion gate now rejects placeholder output and the branch otherwise looks consistent with existing task flow. Strengths: the change is narrowly scoped and adds regression coverage.
+=== REVIEW END ===`;
+
+  const result = parseReviewResult(reviewText);
+
+  assert.equal(isReviewResultPlaceholder(reviewText, result), false);
 });
 
 test('retry ignores stale assigned agent process from another task', () => {

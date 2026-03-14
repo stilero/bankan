@@ -7,7 +7,7 @@ import config, { loadSettings, getWorkspacesDir } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
-import { parseReviewResult, reviewShouldPass } from './workflow.js';
+import { isReviewResultPlaceholder, parseReviewResult, reviewShouldPass } from './workflow.js';
 
 const POLL_INTERVAL = 4000;
 const SIGNAL_CHECK_INTERVAL = 2500;
@@ -354,15 +354,17 @@ ${task.plan}
 Instructions:
 ${promptBody}
 
-Output ONLY in this exact format:
+Output ONLY a completed review block in this format.
+Do not copy placeholder text. Replace every field with concrete findings from the actual diff.
+Do not emit the review block until after you have run the required git diff commands and finished the review.
 
 === REVIEW START ===
-VERDICT: PASS
+VERDICT: PASS or FAIL
 CRITICAL_ISSUES:
-- none
+- concrete issue, or none
 MINOR_ISSUES:
-- (issue description, or 'none')
-SUMMARY: (2-3 sentences summarising the review)
+- concrete issue, or none
+SUMMARY: 2-3 concrete sentences summarising the review, including changed files and strengths
 === REVIEW END ===`;
 }
 
@@ -721,6 +723,7 @@ async function onReviewComplete(agentId, taskId) {
   const reviewText = getLastStructuredBlock(sourceText, '=== REVIEW START ===', '=== REVIEW END ===');
   if (!reviewText) return;
   const reviewResult = parseReviewResult(reviewText);
+  if (isReviewResultPlaceholder(reviewText, reviewResult)) return;
   const shouldPass = reviewShouldPass(reviewResult);
 
   store.updateTask(taskId, { review: reviewText });
@@ -1081,7 +1084,21 @@ function pollLoop() {
             ? hasCodexStructuredOutput(buf, '=== REVIEW END ===')
             : buf.includes('=== REVIEW END ===');
           if (reviewReady) {
-            onReviewComplete(agent.id, taskId);
+            const reviewer = agentManager.get(agent.id);
+            const bufStr = reviewer?.getBufferString(100) || '';
+            const captured = reviewer?.cli === 'codex' ? readCapturedCodexMessage(bufStr, { remove: false }) : null;
+            const sourceText = captured || bufStr;
+            const reviewText = getLastStructuredBlock(sourceText, '=== REVIEW START ===', '=== REVIEW END ===');
+            const reviewResult = reviewText ? parseReviewResult(reviewText) : null;
+            if (reviewText && reviewResult && !isReviewResultPlaceholder(reviewText, reviewResult)) {
+              onReviewComplete(agent.id, taskId);
+            } else {
+              store.updateTask(taskId, {
+                status: 'blocked',
+                blockedReason: 'Reviewer exited after returning placeholder output',
+                assignedTo: null,
+              });
+            }
           } else {
             store.updateTask(taskId, {
               status: 'blocked',
@@ -1147,8 +1164,15 @@ bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
         ? hasCodexStructuredOutput(buf, '=== REVIEW END ===')
         : buf.includes('=== REVIEW END ===');
       if (reviewReady) {
-        onReviewComplete(agentId, taskId);
-        return;
+        const captured = agent.cli === 'codex' ? readCapturedCodexMessage(buf, { remove: false }) : null;
+        const sourceText = captured || buf;
+        const reviewText = getLastStructuredBlock(sourceText, '=== REVIEW START ===', '=== REVIEW END ===');
+        const reviewResult = reviewText ? parseReviewResult(reviewText) : null;
+        if (reviewText && reviewResult && !isReviewResultPlaceholder(reviewText, reviewResult)) {
+          onReviewComplete(agentId, taskId);
+          return;
+        }
+        authBlockedReason = 'Reviewer exited after returning placeholder output';
       }
     }
     console.error(`[unexpected-exit] agent=${agentId} task=${taskId} last output:\n${buf.slice(-500)}`);
