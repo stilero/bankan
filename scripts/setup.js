@@ -134,26 +134,16 @@ async function main() {
   console.log(`  ${dim('Use the workspace folder in Settings to choose where task workspaces are created.')}`);
   console.log('');
 
-  // Step 4: Agent Config
-  console.log(bold('  Agent Configuration\n'));
-
-  const imp1Default = existing.IMPLEMENTOR_1_CLI || 'claude';
-  const imp1Answer = await ask(`  IMPLEMENTOR_1_CLI ${dim(`[${imp1Default}]`)}: `);
-  config.IMPLEMENTOR_1_CLI = imp1Answer.trim() || imp1Default;
-
-  const imp2Default = existing.IMPLEMENTOR_2_CLI || 'codex';
-  const imp2Answer = await ask(`  IMPLEMENTOR_2_CLI ${dim(`[${imp2Default}]`)}: `);
-  config.IMPLEMENTOR_2_CLI = imp2Answer.trim() || imp2Default;
+  // Step 4: Runtime Config
+  console.log(bold('  Runtime Configuration\n'));
+  console.log(`  ${dim('Agent CLI selection is configured in the app under Settings.')}`);
+  console.log('');
 
   config.PORT = existing.PORT || '3001';
-
-  console.log('');
 
   // Step 5: Write .env.local
   mkdirSync(runtimePaths.dataDir, { recursive: true });
   const envLines = [
-    `IMPLEMENTOR_1_CLI=${config.IMPLEMENTOR_1_CLI || 'claude'}`,
-    `IMPLEMENTOR_2_CLI=${config.IMPLEMENTOR_2_CLI || 'codex'}`,
     `PORT=${config.PORT}`,
   ];
   writeFileSync(ENV_FILE, envLines.join('\n') + '\n');

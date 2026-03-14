@@ -93,15 +93,17 @@ bankan
 
 2. Complete the setup wizard
 
-3. Add one or more repositories in `Settings -> General -> Repositories`
+3. Configure agent CLIs in `Settings -> Implementation` and `Settings -> Review` as needed
 
-4. Create a task in the dashboard
+4. Add one or more repositories in `Settings -> General -> Repositories`
 
-5. Approve the generated plan
+5. Create a task in the dashboard
 
-6. Watch agents implement and review the change
+6. Approve the generated plan
 
-7. Optionally create a pull request
+7. Watch agents implement and review the change
+
+8. Optionally create a pull request
 
 ---
 
@@ -340,7 +342,7 @@ Useful scripts:
 
 - `npm run build` – build client bundle
 - `npm run dev` – run server + Vite client
-- `npm run setup` – interactive setup wizard for agent CLI selection and local runtime config
+- `npm run setup` – interactive setup wizard for local runtime config
 - `npm run install:all` – install all dependencies
 
 ---

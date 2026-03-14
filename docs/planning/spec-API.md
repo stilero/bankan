@@ -125,8 +125,8 @@ Trigger notifications on these WS events:
 ```
 orch    Orchestrator   in-process, no CLI
 plan    Planner        claude
-imp1    Implementor 1  IMPLEMENTOR_1_CLI (default: claude)
-imp2    Implementor 2  IMPLEMENTOR_2_CLI (default: codex)
+imp1    Implementor 1  settings.agents.implementors.cli (default: claude)
+imp2    Implementor 2  settings.agents.implementors.cli (default: claude)
 rev     Reviewer       claude
 ```
 

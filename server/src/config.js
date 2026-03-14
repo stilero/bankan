@@ -28,8 +28,6 @@ function get(key, fallback = '') {
 const config = {
   PORT: parseInt(get('PORT', '3001'), 10),
   REPOS: get('REPOS').split(',').map(s => s.trim()).filter(Boolean),
-  IMPLEMENTOR_1_CLI: get('IMPLEMENTOR_1_CLI', 'claude'),
-  IMPLEMENTOR_2_CLI: get('IMPLEMENTOR_2_CLI', 'codex'),
   ROOT_DIR: runtimePaths.rootDir,
   DATA_DIR: runtimePaths.dataDir,
   CLIENT_DIST_DIR: runtimePaths.clientDistDir,
@@ -37,6 +35,11 @@ const config = {
   ENV_FILE: runtimePaths.envFile,
   PACKAGED_RUNTIME: runtimePaths.packaged,
 };
+
+function getLegacyImplementorCli() {
+  const legacyCli = get('IMPLEMENTOR_1_CLI', '');
+  return legacyCli === 'claude' || legacyCli === 'codex' ? legacyCli : 'claude';
+}
 
 const DEFAULT_PROMPTS = {
   planning: `Plan Mode Instructions
@@ -105,7 +108,7 @@ export function getDefaults() {
     workspaceRoot: DEFAULT_WORKSPACES_DIR,
     agents: {
       planners:     { max: 4, cli: 'claude' },
-      implementors: { max: 8, cli: config.IMPLEMENTOR_1_CLI },
+      implementors: { max: 8, cli: getLegacyImplementorCli() },
       reviewers:    { max: 4, cli: 'claude' },
     },
     prompts: { ...DEFAULT_PROMPTS },
