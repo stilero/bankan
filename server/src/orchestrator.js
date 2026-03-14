@@ -897,6 +897,23 @@ async function deleteTask(taskId) {
 
 // --- Signal Detection ---
 
+const TRUST_PROMPT_RE = /trust the files|Do you trust|allow.*to run in this/i;
+
+function checkTrustPrompt(agent, buf) {
+  if (agent.status === 'blocked') return true; // already handled
+  if (!TRUST_PROMPT_RE.test(buf)) return false;
+
+  store.updateTask(agent.currentTask, {
+    status: 'blocked',
+    blockedReason: 'Agent is awaiting user input — open the terminal and respond to the prompt',
+    assignedTo: agent.id,
+  });
+  agent.status = 'blocked';
+  bus.emit('task:blocked', { taskId: agent.currentTask, reason: 'Awaiting user input' });
+  bus.emit('agent:updated', agent.getStatus());
+  return true;
+}
+
 function checkSignals() {
   // Check planners
   for (const agent of agentManager.getAgentsByRole('plan')) {
@@ -907,7 +924,7 @@ function checkSignals() {
         : buf.includes('=== PLAN END ===');
       if (planReady) {
         onPlanComplete(agent.id, agent.currentTask);
-      } else {
+      } else if (!checkTrustPrompt(agent, buf)) {
         // Live plan streaming
         if (!buf.includes('=== PLAN END ===') && buf.includes('=== PLAN START ===')) {
           const partial = buf.slice(buf.indexOf('=== PLAN START ==='));
@@ -927,31 +944,23 @@ function checkSignals() {
       const implementationState = getImplementationCompletionState(agent, agent.currentTask);
       if (implementationState.complete) {
         onImplementationComplete(agent.id);
-      } else {
-        const trustMatch = buf.match(/trust the files|Do you trust|allow.*to run in this/i);
-        if (trustMatch && !implementationState.complete) {
+      } else if (!checkTrustPrompt(agent, buf)) {
+        if (implementationState.blockedReason) {
+          const reason = implementationState.blockedReason;
           store.updateTask(agent.currentTask, {
             status: 'blocked',
-            blockedReason: 'Agent is awaiting user input — open the terminal and respond to the prompt',
-            assignedTo: agent.id,
+            blockedReason: reason,
+            assignedTo: null,
           });
-          agent.status = 'blocked';
-          bus.emit('task:blocked', { taskId: agent.currentTask, reason: 'Awaiting user input' });
-          bus.emit('agent:updated', agent.getStatus());
-        } else {
-          if (implementationState.blockedReason) {
-            const reason = implementationState.blockedReason;
-            const blockedTaskId = agent.currentTask;
-            store.updateTask(agent.currentTask, {
-              status: 'blocked',
-              blockedReason: reason,
-              assignedTo: null,
-            });
-            retireAgentSession(agent, { taskId: blockedTaskId, outcome: 'blocked' });
-            bus.emit('task:blocked', { taskId: blockedTaskId, reason });
-          } else if (agent.startedAt && Date.now() - agent.startedAt > IMPLEMENTOR_TIMEOUT) {
-            markBlocked(agent, 'Implementor timed out');
+          agent.kill();
+          if (agent.draining) agentManager.removeAgent(agent.id);
+          else {
+            agent.status = 'blocked';
+            bus.emit('task:blocked', { taskId: agent.currentTask, reason });
+            bus.emit('agent:updated', agent.getStatus());
           }
+        } else if (agent.startedAt && Date.now() - agent.startedAt > IMPLEMENTOR_TIMEOUT) {
+          markBlocked(agent, 'Implementor timed out');
         }
       }
     }
@@ -966,8 +975,10 @@ function checkSignals() {
         : buf.includes('=== REVIEW END ===');
       if (reviewReady) {
         onReviewComplete(agent.id, agent.currentTask);
-      } else if (agent.startedAt && Date.now() - agent.startedAt > REVIEWER_TIMEOUT) {
-        markBlocked(agent, 'Reviewer timed out');
+      } else if (!checkTrustPrompt(agent, buf)) {
+        if (agent.startedAt && Date.now() - agent.startedAt > REVIEWER_TIMEOUT) {
+          markBlocked(agent, 'Reviewer timed out');
+        }
       }
     }
   }
