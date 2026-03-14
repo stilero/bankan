@@ -232,8 +232,10 @@ Contributions are welcome.
 
 1. Fork the repository.
 2. Create a focused branch.
-3. Make the change.
-4. Open a pull request with context and screenshots for UI updates.
+3. Use the GitHub issue forms before starting work:
+   report reproducible problems with the `Bug report` template and submit feature ideas or workflow improvements with the `Feature request` template.
+4. Make the change.
+5. Open a pull request with context and screenshots for UI updates.
 
 ---
 
