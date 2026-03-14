@@ -199,6 +199,13 @@ function canMutateTaskFromAgent(taskId, agentId) {
   return getTaskOwnershipSnapshot(taskId, expectedStage, agentId);
 }
 
+function updateTaskIfAgentOwnsStage(taskId, agentId, updates) {
+  const snapshot = canMutateTaskFromAgent(taskId, agentId);
+  if (!snapshot.valid) return { task: snapshot.task, updated: false };
+  store.updateTask(taskId, updates);
+  return { task: snapshot.task, updated: true };
+}
+
 function shouldHandleUnexpectedAgentState(taskId, agentId) {
   const expectedStage = getExpectedStage(agentId);
   if (!expectedStage) return false;
@@ -569,7 +576,7 @@ async function startPlanning(task) {
 function onPlanComplete(agentId, taskId) {
   const planner = agentManager.get(agentId);
   if (!planner) return;
-  const { valid } = getTaskOwnershipSnapshot(taskId, 'planning', agentId);
+  const { task, valid } = getTaskOwnershipSnapshot(taskId, 'planning', agentId);
   if (!valid) return;
   const bufStr = planner.getBufferString(100);
   const captured = planner.cli === 'codex' ? readCapturedCodexMessage(bufStr) : null;
@@ -581,11 +588,11 @@ function onPlanComplete(agentId, taskId) {
 
   // Parse branch name
   const branchMatch = planText.match(/BRANCH:\s*(.+)/);
-  const branch = branchMatch ? branchMatch[1].trim() : generateBranchName(store.getTask(taskId) || { id: taskId, title: 'auto' });
+  const branch = branchMatch ? branchMatch[1].trim() : generateBranchName(task || { id: taskId, title: 'auto' });
 
   // Save plan
   store.savePlan(taskId, planText);
-  store.updateTask(taskId, {
+  const { updated } = updateTaskIfAgentOwnsStage(taskId, agentId, {
     status: 'awaiting_approval',
     plan: planText,
     branch,
@@ -595,6 +602,7 @@ function onPlanComplete(agentId, taskId) {
     blockedReason: null,
     assignedTo: null,
   });
+  if (!updated) return;
 
   planner.kill();
   if (planner.draining) agentManager.removeAgent(agentId);
@@ -687,18 +695,24 @@ async function onImplementationComplete(agentId) {
       await git.push('origin', task.branch);
     } catch (err) {
       console.error(`Git push failed:`, err.message);
-      store.updateTask(taskId, {
+      const { updated } = updateTaskIfAgentOwnsStage(taskId, agentId, {
         status: 'blocked',
         blockedReason: `Branch push failed: ${err.message}`,
         assignedTo: null,
       });
+      if (!updated) return;
       agent.kill();
       if (agent.draining) agentManager.removeAgent(agentId);
       return;
     }
   }
 
-  store.updateTask(taskId, { status: 'review', assignedTo: null, blockedReason: null });
+  const { updated } = updateTaskIfAgentOwnsStage(taskId, agentId, {
+    status: 'review',
+    assignedTo: null,
+    blockedReason: null,
+  });
+  if (!updated) return;
   agent.kill();
   if (agent.draining) agentManager.removeAgent(agentId);
 
@@ -756,7 +770,7 @@ async function onReviewComplete(agentId, taskId) {
   const reviewer = agentManager.get(agentId);
   if (!reviewer) return;
   if (finalizingReviewTasks.has(taskId)) return;
-  const { valid } = getTaskOwnershipSnapshot(taskId, 'review', agentId);
+  const { task, valid } = getTaskOwnershipSnapshot(taskId, 'review', agentId);
   if (!valid) return;
   const bufStr = reviewer.getBufferString(100);
 
@@ -767,7 +781,8 @@ async function onReviewComplete(agentId, taskId) {
   const verdictMatch = reviewText.match(/VERDICT:\s*(PASS|FAIL)/i);
   const verdict = verdictMatch ? verdictMatch[1].toUpperCase() : 'FAIL';
 
-  store.updateTask(taskId, { review: reviewText });
+  const { updated: reviewSaved } = updateTaskIfAgentOwnsStage(taskId, agentId, { review: reviewText });
+  if (!reviewSaved) return;
   reviewer.kill();
   if (reviewer.draining) agentManager.removeAgent(agentId);
 
@@ -784,28 +799,30 @@ async function onReviewComplete(agentId, taskId) {
     const issuesMatch = reviewText.match(/CRITICAL_ISSUES:\s*([\s\S]*?)(?=MINOR_ISSUES:|SUMMARY:|=== REVIEW END ===)/i);
     const criticalIssues = issuesMatch ? issuesMatch[1].trim() : 'Critical issues found';
 
-    const task = store.getTask(taskId);
-    const nextReviewCycleCount = (task?.reviewCycleCount || 0) + 1;
+    const currentTask = store.getTask(taskId) || task;
+    const nextReviewCycleCount = (currentTask?.reviewCycleCount || 0) + 1;
 
     if (nextReviewCycleCount >= MAX_REVIEW_CYCLES) {
-      store.updateTask(taskId, {
+      const { updated } = updateTaskIfAgentOwnsStage(taskId, agentId, {
         status: 'blocked',
         reviewFeedback: criticalIssues,
         reviewCycleCount: nextReviewCycleCount,
         blockedReason: `Reached maximum review cycles (${MAX_REVIEW_CYCLES}). Human input required.`,
         assignedTo: null,
       });
+      if (!updated) return;
       bus.emit('task:blocked', { taskId, reason: 'Reached maximum review cycles' });
       return;
     }
 
-    store.updateTask(taskId, {
+    const { updated } = updateTaskIfAgentOwnsStage(taskId, agentId, {
       status: 'queued',
       reviewFeedback: criticalIssues,
       reviewCycleCount: nextReviewCycleCount,
       blockedReason: null,
       assignedTo: null,
     });
+    if (!updated) return;
     bus.emit('review:failed', { taskId, issues: criticalIssues });
   }
 }
@@ -1096,7 +1113,7 @@ function pollLoop() {
           if (planReady) {
             onPlanComplete(agent.id, taskId);
           } else if (canHandleTask) {
-            store.updateTask(taskId, {
+            updateTaskIfAgentOwnsStage(taskId, agent.id, {
               status: 'blocked',
               blockedReason: 'Agent process exited unexpectedly',
               assignedTo: null,
@@ -1107,13 +1124,13 @@ function pollLoop() {
           if (implementationState.complete) {
             onImplementationComplete(agent.id);
           } else if (implementationState.blockedReason && canHandleTask) {
-            store.updateTask(taskId, {
+            updateTaskIfAgentOwnsStage(taskId, agent.id, {
               status: 'blocked',
               blockedReason: implementationState.blockedReason,
               assignedTo: null,
             });
           } else if (canHandleTask) {
-            store.updateTask(taskId, {
+            updateTaskIfAgentOwnsStage(taskId, agent.id, {
               status: 'blocked',
               blockedReason: 'Agent process exited unexpectedly',
               assignedTo: null,
@@ -1126,7 +1143,7 @@ function pollLoop() {
           if (reviewReady) {
             onReviewComplete(agent.id, taskId);
           } else if (canHandleTask) {
-            store.updateTask(taskId, {
+            updateTaskIfAgentOwnsStage(taskId, agent.id, {
               status: 'blocked',
               blockedReason: 'Agent process exited unexpectedly',
               assignedTo: null,
@@ -1161,7 +1178,6 @@ bus.on('plan:rejected', ({ taskId, feedback }) => rejectPlan(taskId, feedback));
 bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
   const agent = agentManager.get(agentId);
   let authBlockedReason = null;
-  const canHandleTask = shouldHandleUnexpectedAgentState(taskId, agentId);
   if (agent) {
     const buf = agent.getBufferString(100);
     authBlockedReason = getAuthBlockedReason(buf, agent.cli);
@@ -1202,8 +1218,8 @@ bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
     bus.emit('agent:updated', agent.getStatus());
   }
   const task = store.getTask(taskId);
-  if (task && canHandleTask && !['blocked', 'done', 'aborted', 'backlog', 'paused'].includes(task.status)) {
-    store.updateTask(taskId, {
+  if (task && !['blocked', 'done', 'aborted', 'backlog', 'paused'].includes(task.status)) {
+    updateTaskIfAgentOwnsStage(taskId, agentId, {
       status: 'blocked',
       blockedReason: authBlockedReason || 'Agent process exited unexpectedly',
       assignedTo: null,
