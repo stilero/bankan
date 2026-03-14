@@ -17,6 +17,10 @@
 </p>
 
 <p align="center">
+  <img src="client/src/assets/bankan_screenshot.png" alt="Ban Kan dashboard showing backlog, planning, implementation, review, and done columns" width="1200" />
+</p>
+
+<p align="center">
   <a href="https://github.com/stilero/bankan/actions/workflows/ci.yml">CI</a>
   ·
   <a href="https://github.com/stilero/bankan">GitHub</a>
