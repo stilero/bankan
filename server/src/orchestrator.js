@@ -953,6 +953,11 @@ function checkSignals() {
   // Check implementors
   for (const agent of agentManager.getAgentsByRole('imp')) {
     if (agent.status === 'active' && agent.currentTask) {
+      // Skip checks during initial startup to avoid matching the completion
+      // marker in the echoed prompt text (interactive mode echoes the prompt)
+      const elapsed = agent.startedAt ? Date.now() - agent.startedAt : 0;
+      if (elapsed < 20000) continue;
+
       const buf = agent.getBufferString(50);
       const implementationState = getImplementationCompletionState(agent, agent.currentTask);
       if (implementationState.complete) {
