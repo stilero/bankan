@@ -49,7 +49,7 @@ function Logo() {
 
 export default function App() {
   const {
-    connected, agents, tasks, repos, settings, notifications,
+    connected, isInitialized, agents, tasks, repos, settings, notifications,
     addTask, approvePlan, rejectPlan,
     pauseTask, resumeTask, editTask, abortTask, resetTask, retryTask, deleteTask, openTaskWorkspace,
     injectMessage, sendRaw, pauseAgent, resumeAgent,
@@ -62,7 +62,7 @@ export default function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const hasRepos = repos.length > 0;
   const canCreateTask = hasRepos;
-  const showStartupGreeting = !hasRepos && tasks.length === 0;
+  const showStartupGreeting = isInitialized && !hasRepos && tasks.length === 0;
 
   // Derived values
   const needAttention = useMemo(() =>
