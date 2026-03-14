@@ -5,6 +5,14 @@
 # Ban Kan
 
 <p align="center">
+<strong>Run AI coding agents like a Kanban board.</strong>
+</p>
+
+<p align="center">
+Plan → Implement → Review → Pull Request
+</p>
+
+<p align="center">
   The control center for managing many AI coding agents in one simple UI.
 </p>
 
