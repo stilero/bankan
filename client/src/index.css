@@ -78,6 +78,16 @@ body {
   to { opacity: 1; transform: translateX(0); }
 }
 
+@keyframes reporting-rise {
+  from { opacity: 0; transform: translateY(18px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes reporting-card-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* Utility */
 button {
   font-family: var(--font-mono);
@@ -106,4 +116,38 @@ input:focus, textarea:focus, select:focus {
 select option {
   color: var(--text);
   background: var(--bg1);
+}
+
+.reporting-backdrop {
+  background:
+    radial-gradient(circle at top left, rgba(245, 166, 35, 0.18), transparent 34%),
+    radial-gradient(circle at top right, rgba(106, 171, 219, 0.16), transparent 28%),
+    linear-gradient(180deg, rgba(12, 12, 14, 0.74) 0%, rgba(12, 12, 14, 0.92) 100%);
+  backdrop-filter: blur(10px);
+}
+
+.reporting-shell {
+  position: relative;
+}
+
+.reporting-shell::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(245,166,35,0.18) 0%, rgba(106,171,219,0.08) 38%, rgba(167,139,250,0.14) 100%);
+  filter: blur(28px);
+  opacity: 0.65;
+  z-index: -1;
+}
+
+.reporting-card {
+  animation: reporting-card-enter 0.32s ease-out both;
+}
+
+@media (max-width: 860px) {
+  .reporting-shell {
+    padding: 18px !important;
+  }
 }

@@ -4,6 +4,7 @@ import KanbanBoard from './KanbanBoard.jsx';
 import TerminalDrawer from './TerminalDrawer.jsx';
 import DirectoryPicker from './DirectoryPicker.jsx';
 import TaskDetailModal from './TaskDetailModal.jsx';
+import ReportingModal from './ReportingModal.jsx';
 import logoUrl from './assets/ban_kan_logo.svg';
 
 const PRIORITY_COLORS = {
@@ -16,6 +17,30 @@ const PRIORITY_COLORS = {
 function formatTokens(n) {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
+}
+
+function formatDurationCompact(durationMs = 0) {
+  const totalMinutes = Math.max(0, Math.round(durationMs / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h`;
+  return `${minutes}m`;
+}
+
+function getRepoDisplayLabel(repoPath) {
+  if (typeof repoPath !== 'string' || !repoPath.trim()) return 'Unassigned work';
+  const trimmed = repoPath.trim().replace(/[\\/]+$/, '');
+  const segments = trimmed.split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] || trimmed;
+}
+
+function getActiveDuration(task, nowMs) {
+  const persistedDuration = typeof task.activeDurationMs === 'number' ? task.activeDurationMs : 0;
+  if (!task.activeStartedAt) return persistedDuration;
+  const startedAtMs = new Date(task.activeStartedAt).getTime();
+  if (Number.isNaN(startedAtMs)) return persistedDuration;
+  return persistedDuration + Math.max(0, nowMs - startedAtMs);
 }
 
 function getDefaultRepo(repos, settings) {
@@ -60,6 +85,7 @@ export default function App() {
   const [selectedTask, setSelectedTask] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showReportingModal, setShowReportingModal] = useState(false);
 
   // Derived values
   const needAttention = useMemo(() =>
@@ -76,6 +102,56 @@ export default function App() {
     tasks.filter(t => !['backlog', 'done', 'aborted'].includes(t.status)),
     [tasks]
   );
+  const reportData = useMemo(() => {
+    const nowMs = Date.now();
+    const repoMap = new Map();
+
+    for (const task of tasks) {
+      const repoPath = typeof task.repoPath === 'string' ? task.repoPath.trim() : '';
+      const key = repoPath || '__unassigned__';
+      if (!repoMap.has(key)) {
+        repoMap.set(key, {
+          key,
+          repoPath,
+          label: getRepoDisplayLabel(repoPath),
+          doneCount: 0,
+          activeDurationMs: 0,
+          totalTokens: 0,
+        });
+      }
+
+      const repo = repoMap.get(key);
+      if (task.status === 'done') repo.doneCount += 1;
+      repo.activeDurationMs += getActiveDuration(task, nowMs);
+      repo.totalTokens += typeof task.totalTokens === 'number' ? task.totalTokens : 0;
+    }
+
+    const reposReport = Array.from(repoMap.values())
+      .sort((a, b) => (
+        b.doneCount - a.doneCount
+        || b.activeDurationMs - a.activeDurationMs
+        || b.totalTokens - a.totalTokens
+        || a.label.localeCompare(b.label)
+      ));
+
+    const totals = reposReport.reduce((summary, repo) => ({
+      doneCount: summary.doneCount + repo.doneCount,
+      activeDurationMs: summary.activeDurationMs + repo.activeDurationMs,
+      totalTokens: summary.totalTokens + repo.totalTokens,
+      repoCount: summary.repoCount + 1,
+    }), {
+      doneCount: 0,
+      activeDurationMs: 0,
+      totalTokens: 0,
+      repoCount: 0,
+    });
+
+    return {
+      repos: reposReport,
+      totals,
+      topRepo: reposReport[0] || null,
+    };
+  }, [tasks]);
 
   const selectedAgentData = useMemo(() =>
     agents.find(a => a.id === selectedAgent),
@@ -138,6 +214,36 @@ export default function App() {
           width: 6, height: 6, borderRadius: '50%',
           background: connected ? 'var(--green)' : 'var(--red)',
         }} />
+
+        <button
+          onClick={() => setShowReportingModal(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '7px 12px',
+            borderRadius: 999,
+            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'linear-gradient(135deg, rgba(245,166,35,0.14) 0%, rgba(106,171,219,0.12) 100%)',
+            color: 'var(--text)',
+          }}
+          title="Reporting"
+        >
+          <span style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: 'linear-gradient(180deg, var(--amber) 0%, var(--steel2) 100%)',
+            boxShadow: '0 0 12px rgba(245,166,35,0.45)',
+          }} />
+          <span style={{ fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase' }}>Reporting</span>
+          <span style={{ color: 'var(--amber)', fontSize: 11 }}>
+            {reportData.totals.doneCount} done
+          </span>
+          <span style={{ color: 'var(--text2)', fontSize: 11 }}>
+            {formatDurationCompact(reportData.totals.activeDurationMs)}
+          </span>
+        </button>
 
         {/* Settings */}
         <button
@@ -237,6 +343,13 @@ export default function App() {
             updateSettings(newSettings);
             setShowSettingsModal(false);
           }}
+        />
+      )}
+
+      {showReportingModal && (
+        <ReportingModal
+          report={reportData}
+          onClose={() => setShowReportingModal(false)}
         />
       )}
 
