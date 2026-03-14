@@ -8,6 +8,7 @@ import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
 import { isReviewResultPlaceholder, parseReviewResult, reviewShouldPass } from './workflow.js';
+import { createSessionEntry } from './sessionHistory.js';
 
 const POLL_INTERVAL = 4000;
 const SIGNAL_CHECK_INTERVAL = 2500;
@@ -451,6 +452,29 @@ async function cleanupWorkspace(task) {
   }
 }
 
+function retireAgentSession(agent, {
+  taskId = agent?.currentTask || null,
+  outcome = 'completed',
+  transcript = null,
+} = {}) {
+  if (!agent || agent.id === 'orch') return;
+
+  const transcriptText = typeof transcript === 'string'
+    ? transcript
+    : agent.getBufferString(500);
+
+  if (taskId) {
+    store.appendSession(taskId, createSessionEntry(agent, {
+      taskId,
+      outcome,
+      transcript: transcriptText,
+    }));
+  }
+
+  agent.kill();
+  agentManager.removeAgent(agent.id);
+}
+
 // --- Stage Transitions ---
 
 async function startPlanning(task) {
@@ -489,10 +513,7 @@ async function startPlanning(task) {
       blockedReason: `Workspace setup failed: ${err.message}`,
       assignedTo: null,
     });
-    planner.currentTask = null;
-    planner.taskLabel = '';
-    planner.status = 'idle';
-    bus.emit('agent:updated', planner.getStatus());
+    retireAgentSession(planner, { taskId: task.id, outcome: 'blocked' });
     bus.emit('task:blocked', { taskId: task.id, reason: 'Workspace setup failed' });
     return false;
   }
@@ -515,10 +536,7 @@ async function startPlanning(task) {
       blockedReason: `Invalid planner working directory: ${plannerCwd}`,
       assignedTo: null,
     });
-    planner.currentTask = null;
-    planner.taskLabel = '';
-    planner.status = 'idle';
-    bus.emit('agent:updated', planner.getStatus());
+    retireAgentSession(planner, { taskId: task.id, outcome: 'blocked' });
     return false;
   }
   bus.emit('agent:updated', planner.getStatus());
@@ -553,8 +571,7 @@ function onPlanComplete(agentId, taskId) {
     assignedTo: null,
   });
 
-  planner.kill();
-  if (planner.draining) agentManager.removeAgent(agentId);
+  retireAgentSession(planner, { taskId, outcome: 'completed', transcript: sourceText });
   bus.emit('plan:ready', { taskId, plan: planText });
 }
 
@@ -604,10 +621,7 @@ async function startImplementation(task) {
       blockedReason: `Workspace setup failed: ${err.message}`,
       assignedTo: null,
     });
-    agent.currentTask = null;
-    agent.taskLabel = '';
-    agent.status = 'idle';
-    bus.emit('agent:updated', agent.getStatus());
+    retireAgentSession(agent, { taskId: task.id, outcome: 'blocked' });
     return;
   }
 
@@ -624,10 +638,7 @@ async function startImplementation(task) {
       blockedReason: `Invalid workspace path: ${workspacePath}`,
       assignedTo: null,
     });
-    agent.currentTask = null;
-    agent.taskLabel = '';
-    agent.status = 'idle';
-    bus.emit('agent:updated', agent.getStatus());
+    retireAgentSession(agent, { taskId: task.id, outcome: 'blocked' });
     return;
   }
   bus.emit('agent:updated', agent.getStatus());
@@ -653,15 +664,13 @@ async function onImplementationComplete(agentId) {
         blockedReason: `Branch push failed: ${err.message}`,
         assignedTo: null,
       });
-      agent.kill();
-      if (agent.draining) agentManager.removeAgent(agentId);
+      retireAgentSession(agent, { taskId, outcome: 'blocked' });
       return;
     }
   }
 
   store.updateTask(taskId, { status: 'review', assignedTo: null, blockedReason: null });
-  agent.kill();
-  if (agent.draining) agentManager.removeAgent(agentId);
+  retireAgentSession(agent, { taskId, outcome: 'completed' });
 
   const taskForReview = store.getTask(taskId);
   startReview(taskForReview);
@@ -704,10 +713,7 @@ SUMMARY: Review skipped because reviewer max is set to 0.
       blockedReason: `Invalid workspace path for review: ${task.workspacePath}`,
       assignedTo: null,
     });
-    reviewer.currentTask = null;
-    reviewer.taskLabel = '';
-    reviewer.status = 'idle';
-    bus.emit('agent:updated', reviewer.getStatus());
+    retireAgentSession(reviewer, { taskId: task.id, outcome: 'blocked' });
     return;
   }
   bus.emit('agent:updated', reviewer.getStatus());
@@ -727,8 +733,11 @@ async function onReviewComplete(agentId, taskId) {
   const shouldPass = reviewShouldPass(reviewResult);
 
   store.updateTask(taskId, { review: reviewText });
-  reviewer.kill();
-  if (reviewer.draining) agentManager.removeAgent(agentId);
+  retireAgentSession(reviewer, {
+    taskId,
+    outcome: shouldPass ? 'completed' : 'failed_review',
+    transcript: sourceText,
+  });
 
   if (shouldPass) {
     if (reviewResult.verdict !== 'PASS') {
@@ -818,7 +827,7 @@ async function abortTask(taskId) {
 
   if (task.assignedTo) {
     const agent = agentManager.get(task.assignedTo);
-    if (agent) agent.kill();
+    if (agent) retireAgentSession(agent, { taskId, outcome: 'aborted' });
   }
 
   await cleanupWorkspace(task);
@@ -842,7 +851,7 @@ async function resetTask(taskId) {
 
   if (task.assignedTo) {
     const agent = agentManager.get(task.assignedTo);
-    if (agent) agent.kill();
+    if (agent) retireAgentSession(agent, { taskId, outcome: 'reset' });
   }
 
   await cleanupWorkspace(task);
@@ -862,6 +871,7 @@ async function resetTask(taskId) {
     planFeedback: null,
     previousStatus: null,
     reviewCycleCount: 0,
+    sessionHistory: [],
     progress: 0,
     totalTokens: 0,
     startedAt: null,
@@ -931,18 +941,14 @@ function checkSignals() {
         } else {
           if (implementationState.blockedReason) {
             const reason = implementationState.blockedReason;
+            const blockedTaskId = agent.currentTask;
             store.updateTask(agent.currentTask, {
               status: 'blocked',
               blockedReason: reason,
               assignedTo: null,
             });
-            agent.kill();
-            if (agent.draining) agentManager.removeAgent(agent.id);
-            else {
-              agent.status = 'blocked';
-              bus.emit('task:blocked', { taskId: agent.currentTask, reason });
-              bus.emit('agent:updated', agent.getStatus());
-            }
+            retireAgentSession(agent, { taskId: blockedTaskId, outcome: 'blocked' });
+            bus.emit('task:blocked', { taskId: blockedTaskId, reason });
           } else if (agent.startedAt && Date.now() - agent.startedAt > IMPLEMENTOR_TIMEOUT) {
             markBlocked(agent, 'Implementor timed out');
           }
@@ -969,20 +975,17 @@ function checkSignals() {
 
 function markBlocked(agent, reason) {
   if (agent.currentTask) {
+    const taskId = agent.currentTask;
     store.updateTask(agent.currentTask, {
       status: 'blocked',
       blockedReason: reason,
       assignedTo: null,
     });
-    bus.emit('task:blocked', { taskId: agent.currentTask, reason });
+    bus.emit('task:blocked', { taskId, reason });
+    retireAgentSession(agent, { taskId, outcome: 'blocked' });
+    return;
   }
-  agent.kill();
-  if (agent.draining) {
-    agentManager.removeAgent(agent.id);
-  } else {
-    agent.status = 'blocked';
-    bus.emit('agent:updated', agent.getStatus());
-  }
+  retireAgentSession(agent, { outcome: 'blocked' });
 }
 
 // --- Poll Loop ---
@@ -1039,9 +1042,6 @@ function pollLoop() {
     if (agent.id === 'orch') continue;
     if (agent.status === 'idle' && !agent.process && agent.currentTask) {
       const taskId = agent.currentTask;
-      agent.currentTask = null;
-      agent.taskLabel = '';
-      bus.emit('agent:updated', agent.getStatus());
       const task = store.getTask(taskId);
       if (task && !['blocked', 'done', 'aborted', 'backlog', 'paused', 'workspace_setup'].includes(task.status)) {
         const buf = agent.getBufferString(100);
@@ -1109,6 +1109,8 @@ function pollLoop() {
         } else {
           onPlanComplete(agent.id, taskId);
         }
+      } else {
+        retireAgentSession(agent, { taskId, outcome: 'unexpected_exit' });
       }
     }
   }
@@ -1176,10 +1178,10 @@ bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
       }
     }
     console.error(`[unexpected-exit] agent=${agentId} task=${taskId} last output:\n${buf.slice(-500)}`);
-    agent.currentTask = null;
-    agent.taskLabel = '';
-    agent.status = 'idle';
-    bus.emit('agent:updated', agent.getStatus());
+    retireAgentSession(agent, {
+      taskId,
+      outcome: authBlockedReason ? 'blocked' : 'unexpected_exit',
+    });
   }
   const task = store.getTask(taskId);
   if (task && !['blocked', 'done', 'aborted', 'backlog', 'paused'].includes(task.status)) {

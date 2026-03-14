@@ -66,6 +66,7 @@ class TaskStore {
             totalTokens: 0,
             startedAt: null,
             completedAt: null,
+            sessionHistory: [],
             ...task,
           };
 
@@ -93,6 +94,9 @@ class TaskStore {
           }
           if (normalized.previousStatus === undefined) {
             normalized.previousStatus = null;
+          }
+          if (!Array.isArray(normalized.sessionHistory)) {
+            normalized.sessionHistory = [];
           }
 
           return normalized;
@@ -131,6 +135,7 @@ class TaskStore {
       totalTokens: 0,
       startedAt: null,
       completedAt: null,
+      sessionHistory: [],
       progress: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -183,6 +188,18 @@ class TaskStore {
     const task = this.getTask(id);
     if (!task) return null;
     task.log.push({ ts: new Date().toISOString(), message });
+    task.updatedAt = new Date().toISOString();
+    this._save();
+    bus.emit('task:updated', task);
+    bus.emit('tasks:changed', this.tasks);
+    return task;
+  }
+
+  appendSession(taskId, sessionEntry) {
+    const task = this.getTask(taskId);
+    if (!task || !sessionEntry) return null;
+    task.sessionHistory = Array.isArray(task.sessionHistory) ? task.sessionHistory : [];
+    task.sessionHistory.push(sessionEntry);
     task.updatedAt = new Date().toISOString();
     this._save();
     bus.emit('task:updated', task);

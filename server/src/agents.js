@@ -250,6 +250,7 @@ class AgentManager {
     this.agents = new Map();
     this._maxSettings = {};  // { planners: 4, implementors: 8, reviewers: 4 }
     this._cliSettings = {};  // { planners: 'claude', implementors: 'claude', reviewers: 'claude' }
+    this._sessionCounters = { plan: 0, imp: 0, rev: 0 };
 
     // Orchestrator is always present
     const orch = new Agent({
@@ -264,7 +265,6 @@ class AgentManager {
     orch.taskLabel = 'Pipeline Control';
     this.agents.set('orch', orch);
 
-    // Create initial agents from settings
     this.reconfigure(loadSettings());
   }
 
@@ -273,22 +273,6 @@ class AgentManager {
       const cfg = settings.agents[settingsKey];
       this._maxSettings[settingsKey] = cfg.max;
       this._cliSettings[settingsKey] = cfg.cli;
-
-      // Ensure an agent exists only when the role is enabled
-      const current = this.getAgentsByRole(prefix);
-      if (cfg.max > 0 && current.length === 0) {
-        const color = meta.colors ? meta.colors[0] : meta.color;
-        const agent = new Agent({
-          id: `${prefix}-1`,
-          name: `${meta.namePrefix} 1`,
-          role: meta.role,
-          icon: meta.icon,
-          color,
-          cli: cfg.cli,
-        });
-        this.agents.set(agent.id, agent);
-        bus.emit('agent:updated', agent.getStatus());
-      }
 
       // Scale down if current count exceeds new max
       const currentAgents = this.getAgentsByRole(prefix);
@@ -322,9 +306,8 @@ class AgentManager {
 
     if (current.length >= max) return null;
 
-    const nextNum = current.length > 0
-      ? parseInt(current[current.length - 1].id.split('-')[1], 10) + 1
-      : 1;
+    const nextNum = (this._sessionCounters[prefix] ?? 0) + 1;
+    this._sessionCounters[prefix] = nextNum;
 
     const color = meta.colors ? meta.colors[(nextNum - 1) % meta.colors.length] : meta.color;
     const agent = new Agent({
@@ -363,7 +346,12 @@ class AgentManager {
   }
 
   getAvailableByRole(prefix) {
-    return this.getAgentsByRole(prefix).find(a => a.status === 'idle' && !a.draining) || null;
+    return this.getAgentsByRole(prefix).find(a => (
+      a.status === 'idle'
+      && !a.draining
+      && !a.currentTask
+      && !a.process
+    )) || null;
   }
 
   getAvailablePlanner() {
