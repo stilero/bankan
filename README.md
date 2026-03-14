@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/ban_kan_logo_readme.svg" alt="Ban Kan logo" width="520" />
+  <img src="https://raw.githubusercontent.com/stilero/bankan/main/docs/images/ban_kan_logo_readme.svg" alt="Ban Kan logo" width="520" />
 </p>
 
 # Ban Kan
@@ -21,7 +21,7 @@ Bring order to parallel AI development without leaving your local workflow.
 </p>
 
 <p align="center">
-  <img src="docs/images/bankan_screenshot.png" alt="Ban Kan dashboard showing backlog, planning, implementation, review, and done columns" width="1200" />
+  <img src="https://raw.githubusercontent.com/stilero/bankan/main/docs/images/bankan_screenshot.png" alt="Ban Kan dashboard showing backlog, planning, implementation, review, and done columns" width="1200" />
 </p>
 
 <p align="center">
@@ -79,14 +79,14 @@ Each stage has a clear responsibility, and tasks move forward only when the prev
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="docs/images/before_claude_windows.png" alt="Four separate Claude Code terminal windows used to coordinate parallel agent work before Ban Kan" width="100%" />
+      <img src="https://raw.githubusercontent.com/stilero/bankan/main/docs/images/before_claude_windows.png" alt="Four separate Claude Code terminal windows used to coordinate parallel agent work before Ban Kan" width="100%" />
       <br />
       <strong>Before Ban Kan</strong>
       <br />
       Managing multiple agents means juggling separate terminal windows and fragmented context.
     </td>
     <td align="center" width="50%">
-      <img src="docs/images/bankan_multi_tasks.png" alt="Ban Kan dashboard showing multiple tasks and agent output in one coordinated interface" width="100%" />
+      <img src="https://raw.githubusercontent.com/stilero/bankan/main/docs/images/bankan_multi_tasks.png" alt="Ban Kan dashboard showing multiple tasks and agent output in one coordinated interface" width="100%" />
       <br />
       <strong>With Ban Kan</strong>
       <br />
@@ -133,7 +133,7 @@ Below is the same task moving through Ban Kan's workflow from creation to comple
 ### 1. Create the task
 
 <p align="center">
-  <img src="docs/images/workflow/add_task.png" alt="Ban Kan add task modal used to create the Stripe payments task" />
+  <img src="https://raw.githubusercontent.com/stilero/bankan/main/docs/images/workflow/add_task.png" alt="Ban Kan add task modal used to create the Stripe payments task" />
 </p>
 
 The developer creates a task in the dashboard and defines the story to be planned and executed.
@@ -141,7 +141,7 @@ The developer creates a task in the dashboard and defines the story to be planne
 ### 2. Planning starts
 
 <p align="center">
-  <img src="docs/images/workflow/planning_stage_started.png" alt="Ban Kan planning stage showing the Stripe payments task as planning starts" />
+  <img src="https://raw.githubusercontent.com/stilero/bankan/main/docs/images/workflow/planning_stage_started.png" alt="Ban Kan planning stage showing the Stripe payments task as planning starts" />
 </p>
 
 The planner agent picks up the task, analyzes the repository, and prepares an implementation plan.
@@ -149,7 +149,7 @@ The planner agent picks up the task, analyzes the repository, and prepares an im
 ### 3. Review and approve the plan
 
 <p align="center">
-  <img src="docs/images/workflow/planning_approve_plan.png" alt="Ban Kan planning stage showing an approval-ready plan for the Stripe payments task" />
+  <img src="https://raw.githubusercontent.com/stilero/bankan/main/docs/images/workflow/planning_approve_plan.png" alt="Ban Kan planning stage showing an approval-ready plan for the Stripe payments task" />
 </p>
 
 The generated plan is shown in the dashboard so the developer can approve it before any code is written.
@@ -157,7 +157,7 @@ The generated plan is shown in the dashboard so the developer can approve it bef
 ### 4. Implementation runs
 
 <p align="center">
-  <img src="docs/images/workflow/implementing_task.png" alt="Ban Kan implementation stage showing the Stripe payments task being actively worked on by an agent" />
+  <img src="https://raw.githubusercontent.com/stilero/bankan/main/docs/images/workflow/implementing_task.png" alt="Ban Kan implementation stage showing the Stripe payments task being actively worked on by an agent" />
 </p>
 
 After approval, the implementor agent creates its workspace, writes the code, and reports progress live in the UI.
@@ -165,7 +165,7 @@ After approval, the implementor agent creates its workspace, writes the code, an
 ### 5. Review stage
 
 <p align="center">
-  <img src="docs/images/workflow/review_stage.png" alt="Ban Kan review stage showing the Stripe payments task being validated by a reviewer agent" />
+  <img src="https://raw.githubusercontent.com/stilero/bankan/main/docs/images/workflow/review_stage.png" alt="Ban Kan review stage showing the Stripe payments task being validated by a reviewer agent" />
 </p>
 
 The reviewer agent validates the implementation, checks for issues, and decides whether the task is ready to move forward.
@@ -173,7 +173,7 @@ The reviewer agent validates the implementation, checks for issues, and decides 
 ### 6. Done / ready for PR
 
 <p align="center">
-  <img src="docs/images/workflow/done_stage.png" alt="Ban Kan done stage showing the Stripe payments task completed and ready for pull request creation" />
+  <img src="https://raw.githubusercontent.com/stilero/bankan/main/docs/images/workflow/done_stage.png" alt="Ban Kan done stage showing the Stripe payments task completed and ready for pull request creation" />
 </p>
 
 Once review passes, the task moves to Done and can be used as the basis for a pull request.
