@@ -46,6 +46,7 @@ export default function TaskDetailModal({
   onReset,
   onRetry,
   onDelete,
+  onOpenWorkspace,
 }) {
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
@@ -63,6 +64,7 @@ export default function TaskDetailModal({
   const canAbort = !['done', 'aborted'].includes(task.status);
   const canReset = task.status !== 'done';
   const canRetry = task.status === 'blocked';
+  const canOpenWorkspace = Boolean(task.workspacePath && onOpenWorkspace);
 
   const handleSave = () => {
     onEdit(task.id, {
@@ -453,6 +455,21 @@ export default function TaskDetailModal({
                   }}
                 >
                   Retry
+                </button>
+              )}
+
+              {canOpenWorkspace && (
+                <button
+                  onClick={() => onOpenWorkspace(task.id)}
+                  title={task.workspacePath}
+                  style={{
+                    padding: '6px 14px', fontSize: 12,
+                    background: 'rgba(96, 165, 250, 0.12)',
+                    border: '1px solid rgba(96, 165, 250, 0.3)',
+                    borderRadius: 4, color: '#60A5FA',
+                  }}
+                >
+                  Open in VSCode
                 </button>
               )}
 

@@ -192,6 +192,14 @@ function broadcast(type, payload) {
   }
 }
 
+function sendToClient(ws, type, payload) {
+  try {
+    ws.send(JSON.stringify({ type, payload, ts: Date.now() }));
+  } catch {
+    wsClients.delete(ws);
+  }
+}
+
 function shellQuote(value) {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
@@ -350,6 +358,82 @@ done
 
   broadcast('BRIDGE_OPENED', { agentId: agent.id, agentName: agent.name });
   return { ok: true };
+}
+
+function launchVsCodeWorkspace(workspacePath) {
+  const attempts = [];
+
+  const tryCommand = (command, args) => {
+    try {
+      execFileSync(command, args, { stdio: 'ignore' });
+      return true;
+    } catch (err) {
+      attempts.push(`${command}: ${err.message}`);
+      return false;
+    }
+  };
+
+  if (process.platform === 'darwin') {
+    if (
+      tryCommand('code', ['-n', workspacePath]) ||
+      tryCommand('open', ['-a', 'Visual Studio Code', workspacePath]) ||
+      tryCommand('open', ['-a', 'Visual Studio Code - Insiders', workspacePath])
+    ) {
+      return { ok: true };
+    }
+  } else if (process.platform === 'win32') {
+    if (
+      tryCommand('code.cmd', ['-n', workspacePath]) ||
+      tryCommand('cmd', ['/c', 'start', '', 'code', '-n', workspacePath])
+    ) {
+      return { ok: true };
+    }
+  } else {
+    if (
+      tryCommand('code', ['-n', workspacePath]) ||
+      tryCommand('code-insiders', ['-n', workspacePath])
+    ) {
+      return { ok: true };
+    }
+  }
+
+  return {
+    ok: false,
+    message: `Failed to launch VS Code. Tried: ${attempts.join('; ') || 'no launcher commands available'}`,
+  };
+}
+
+function openTaskWorkspace(taskId) {
+  const task = store.getTask(taskId);
+  if (!task) {
+    return { ok: false, message: 'Task not found.' };
+  }
+
+  if (!task.workspacePath) {
+    return { ok: false, message: `Task ${task.id} does not have a local workspace yet.` };
+  }
+
+  if (!existsSync(task.workspacePath)) {
+    return { ok: false, message: `Workspace path does not exist: ${task.workspacePath}` };
+  }
+
+  try {
+    if (!statSync(task.workspacePath).isDirectory()) {
+      return { ok: false, message: `Workspace path is not a directory: ${task.workspacePath}` };
+    }
+  } catch (err) {
+    return { ok: false, message: `Unable to inspect workspace path: ${err.message}` };
+  }
+
+  const launchResult = launchVsCodeWorkspace(task.workspacePath);
+  if (!launchResult.ok) {
+    return launchResult;
+  }
+
+  return {
+    ok: true,
+    message: `Opened ${task.id} in VS Code`,
+  };
 }
 
 wss.on('connection', (ws) => {
@@ -525,17 +609,21 @@ wss.on('connection', (ws) => {
         }
         break;
       }
+      case 'OPEN_TASK_WORKSPACE': {
+        const { taskId } = msg.payload || {};
+        const result = openTaskWorkspace(taskId);
+        if (result.ok) {
+          sendToClient(ws, 'TASK_WORKSPACE_OPENED', { taskId, message: result.message });
+        } else {
+          sendToClient(ws, 'TASK_WORKSPACE_ERROR', { taskId, message: result.message });
+        }
+        break;
+      }
       case 'OPEN_AGENT_TERMINAL': {
         const agent = agentManager.get(msg.payload?.agentId);
         const result = openBridgeInTerminal(agent);
         if (!result.ok) {
-          try {
-            ws.send(JSON.stringify({
-              type: 'BRIDGE_ERROR',
-              payload: { message: result.message },
-              ts: Date.now(),
-            }));
-          } catch { /* ignore */ }
+          sendToClient(ws, 'BRIDGE_ERROR', { message: result.message });
         }
         break;
       }

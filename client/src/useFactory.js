@@ -136,6 +136,12 @@ export default function useFactory() {
         case 'BRIDGE_ERROR':
           addNotification(msg.payload?.message || 'Terminal bridge failed', 'error');
           break;
+        case 'TASK_WORKSPACE_OPENED':
+          addNotification(msg.payload?.message || `Opened workspace for ${msg.payload?.taskId}`, 'success');
+          break;
+        case 'TASK_WORKSPACE_ERROR':
+          addNotification(msg.payload?.message || 'Failed to open task workspace', 'error');
+          break;
         case 'SETTINGS_ERROR':
           addNotification((msg.payload?.errors || []).join(', ') || 'Settings update failed', 'error');
           break;
@@ -219,6 +225,10 @@ export default function useFactory() {
     send('DELETE_TASK', { taskId });
   }, [send]);
 
+  const openTaskWorkspace = useCallback((taskId) => {
+    send('OPEN_TASK_WORKSPACE', { taskId });
+  }, [send]);
+
   const updateSettings = useCallback((newSettings) => {
     send('UPDATE_SETTINGS', newSettings);
   }, [send]);
@@ -257,6 +267,7 @@ export default function useFactory() {
     resetTask,
     retryTask,
     deleteTask,
+    openTaskWorkspace,
     injectMessage,
     sendRaw,
     pauseAgent,
