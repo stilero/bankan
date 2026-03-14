@@ -1,0 +1,67 @@
+name: Bug report
+description: Report a reproducible problem in Ban Kan
+title: '[Bug]: '
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem. Please share enough detail for someone else to reproduce it quickly.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A short description of the problem.
+      placeholder: The dashboard freezes when I move a task to Review.
+    validations:
+      required: true
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: Current behavior
+      description: What happens right now?
+      placeholder: The task snaps back to Implementation and the browser console shows an error.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: What should happen instead?
+      placeholder: The task should move to Review and stay there.
+    validations:
+      required: true
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to reproduce
+      description: List the exact steps needed to reproduce the issue.
+      placeholder: |
+        1. Start the app with `npm run dev`
+        2. Open the dashboard
+        3. Drag a task from Implementation to Review
+        4. Observe the result
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Share the relevant versions and environment details.
+      placeholder: |
+        Ban Kan version:
+        OS:
+        Node.js version:
+        Browser:
+        AI CLI in use:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, screenshots, or recordings
+      description: Add any supporting output or media that helps explain the issue.
+      render: shell
+    validations:
+      required: false

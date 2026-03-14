@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contribution guide
+    url: https://github.com/stilero/bankan#contributing
+    about: Read the repository contribution guidance before opening a pull request.
+  - name: Installation and setup
+    url: https://github.com/stilero/bankan#installation
+    about: Check the setup instructions if your issue is actually a local installation problem.
