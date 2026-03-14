@@ -75,7 +75,8 @@ Ban Kan starts a local server, opens your browser automatically, and serves the 
 - One AI CLI tool:
   - claude
   - codex
-- Native build tools for node-pty
+
+Native build tools may be needed only if `node-pty` has to compile during install.
 
 macOS: Xcode Command Line Tools  
 Linux: build-essential
@@ -92,7 +93,7 @@ bankan
 
 2. Complete the setup wizard
 
-3. Add one or more local repositories
+3. Add one or more repositories in `Settings -> General -> Repositories`
 
 4. Create a task in the dashboard
 
@@ -339,7 +340,7 @@ Useful scripts:
 
 - `npm run build` – build client bundle
 - `npm run dev` – run server + Vite client
-- `npm run setup` – interactive setup wizard
+- `npm run setup` – interactive setup wizard for agent CLI selection and local runtime config
 - `npm run install:all` – install all dependencies
 
 ---

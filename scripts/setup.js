@@ -102,20 +102,23 @@ async function main() {
     console.log(`\n  ${red('⚠')} Neither claude nor codex CLI found. At least one is required.\n`);
   }
 
-  // Check native build tools
-  const platform = process.platform;
-  if (platform === 'darwin') {
-    try {
-      execSync('xcode-select -p', { stdio: 'pipe' });
-      console.log(`  ${green('✓')} Xcode command line tools`);
-    } catch {
-      console.log(`  ${yellow('⚠')} Xcode CLI tools missing ${dim('(xcode-select --install)')}`);
-    }
-  } else if (platform === 'linux') {
-    if (checkCommand('cc')) {
-      console.log(`  ${green('✓')} C compiler`);
-    } else {
-      console.log(`  ${yellow('⚠')} C compiler missing ${dim('(apt install build-essential)')}`);
+  if (!IS_PACKAGED_RUNTIME) {
+    console.log(`  ${dim('Note: native build tools may be needed if npm has to compile node-pty during install.')}`);
+
+    const platform = process.platform;
+    if (platform === 'darwin') {
+      try {
+        execSync('xcode-select -p', { stdio: 'pipe' });
+        console.log(`  ${green('✓')} Xcode command line tools available`);
+      } catch {
+        console.log(`  ${yellow('⚠')} Xcode CLI tools not found ${dim('(only needed if node-pty builds from source: xcode-select --install)')}`);
+      }
+    } else if (platform === 'linux') {
+      if (checkCommand('cc')) {
+        console.log(`  ${green('✓')} C compiler available`);
+      } else {
+        console.log(`  ${yellow('⚠')} C compiler not found ${dim('(only needed if node-pty builds from source: apt install build-essential)')}`);
+      }
     }
   }
 
@@ -127,36 +130,11 @@ async function main() {
 
   // Step 3: Project Config
   console.log(bold('  Project Configuration\n'));
-
-  const reposHint = existing.REPOS ? dim(` (${existing.REPOS}), Enter to keep`) : '';
-  const reposAnswer = await ask(`  REPOS (comma-separated git repo paths)${reposHint}: `);
-  if (reposAnswer.trim()) {
-    config.REPOS = reposAnswer.trim();
-  }
-
-  if (config.REPOS) {
-    const repoPaths = config.REPOS.split(',').map(s => s.trim()).filter(Boolean);
-    for (const repoPath of repoPaths) {
-      try {
-        execSync(`git -C "${repoPath}" rev-parse HEAD`, { stdio: 'pipe' });
-        console.log(`  ${green('✓')} ${repoPath} — valid git repo`);
-      } catch {
-        console.log(`  ${yellow('⚠')} ${repoPath} — not a git repo or no commits yet`);
-      }
-    }
-  }
-
-  const ghRepoHint = existing.GITHUB_REPO ? dim(` (${existing.GITHUB_REPO}), Enter to keep`) : dim(' (optional, owner/repo)');
-  const ghRepoAnswer = await ask(`  GITHUB_REPO${ghRepoHint}: `);
-  if (ghRepoAnswer.trim()) config.GITHUB_REPO = ghRepoAnswer.trim();
-
-  const ghTokenHint = existing.GITHUB_TOKEN ? dim(' (already set, Enter to keep)') : dim(' (optional)');
-  const ghTokenAnswer = await ask(`  GITHUB_TOKEN${ghTokenHint}: `);
-  if (ghTokenAnswer.trim()) config.GITHUB_TOKEN = ghTokenAnswer.trim();
-
+  console.log(`  ${dim('Repositories are configured in the app under Settings → General → Repositories.')}`);
+  console.log(`  ${dim('Use the workspace folder in Settings to choose where task workspaces are created.')}`);
   console.log('');
 
-  // Step 5: Agent Config
+  // Step 4: Agent Config
   console.log(bold('  Agent Configuration\n'));
 
   const imp1Default = existing.IMPLEMENTOR_1_CLI || 'claude';
@@ -171,12 +149,9 @@ async function main() {
 
   console.log('');
 
-  // Step 6: Write .env.local
+  // Step 5: Write .env.local
   mkdirSync(runtimePaths.dataDir, { recursive: true });
   const envLines = [
-    `REPOS=${config.REPOS || ''}`,
-    `GITHUB_REPO=${config.GITHUB_REPO || ''}`,
-    `GITHUB_TOKEN=${config.GITHUB_TOKEN || ''}`,
     `IMPLEMENTOR_1_CLI=${config.IMPLEMENTOR_1_CLI || 'claude'}`,
     `IMPLEMENTOR_2_CLI=${config.IMPLEMENTOR_2_CLI || 'codex'}`,
     `PORT=${config.PORT}`,
@@ -193,7 +168,7 @@ async function main() {
     return;
   }
 
-  // Step 7: Install Dependencies
+  // Step 6: Install Dependencies
   console.log(bold('  Installing dependencies...\n'));
 
   const installSteps = [
@@ -212,7 +187,7 @@ async function main() {
     }
   }
 
-  // Step 8: Success
+  // Step 7: Success
   console.log('');
   console.log(green(bold('  ✓ Setup complete!')));
   console.log('');
@@ -220,6 +195,7 @@ async function main() {
   console.log(cyan('    npm start'));
   console.log('');
   console.log(`  Then open: ${cyan('http://localhost:5173')}`);
+  console.log(`  Configure repositories in ${cyan('Settings → General → Repositories')}.`);
   console.log('');
 
   rl.close();
