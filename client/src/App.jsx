@@ -49,7 +49,7 @@ function Logo() {
 
 export default function App() {
   const {
-    connected, agents, tasks, repos, settings, notifications,
+    connected, agents, tasks, repos, reposLoaded, settings, notifications,
     addTask, approvePlan, rejectPlan,
     pauseTask, resumeTask, editTask, abortTask, resetTask, retryTask, deleteTask, openTaskWorkspace,
     injectMessage, sendRaw, pauseAgent, resumeAgent,
@@ -71,6 +71,7 @@ export default function App() {
     [tasks]
   );
   const hasConfiguredRepos = useMemo(() => Array.isArray(repos) && repos.length > 0, [repos]);
+  const shouldShowRepoSetup = useMemo(() => reposLoaded && !hasConfiguredRepos, [reposLoaded, hasConfiguredRepos]);
   const activeCount = useMemo(() => agents.filter(a => a.status === 'active').length, [agents]);
   const blockedCount = useMemo(() => agents.filter(a => a.status === 'blocked').length, [agents]);
   const inFlight = useMemo(() =>
@@ -160,22 +161,22 @@ export default function App() {
         {/* Add Task */}
         <button
           onClick={() => {
-            if (!hasConfiguredRepos) return;
+            if (shouldShowRepoSetup) return;
             setShowAddModal(true);
           }}
-          disabled={!hasConfiguredRepos}
+          disabled={shouldShowRepoSetup}
           style={{
             padding: '6px 14px',
-            background: hasConfiguredRepos ? 'var(--amber)' : 'var(--bg2)',
-            color: hasConfiguredRepos ? '#000' : 'var(--text3)',
+            background: shouldShowRepoSetup ? 'var(--bg2)' : 'var(--amber)',
+            color: shouldShowRepoSetup ? 'var(--text3)' : '#000',
             borderRadius: 4,
             fontWeight: 500,
             fontSize: 12,
-            border: hasConfiguredRepos ? 'none' : '1px solid var(--border)',
-            cursor: hasConfiguredRepos ? 'pointer' : 'not-allowed',
-            opacity: hasConfiguredRepos ? 1 : 0.7,
+            border: shouldShowRepoSetup ? '1px solid var(--border)' : 'none',
+            cursor: shouldShowRepoSetup ? 'not-allowed' : 'pointer',
+            opacity: shouldShowRepoSetup ? 0.7 : 1,
           }}
-          title={hasConfiguredRepos ? 'Add task' : 'Configure at least one repository in Settings before creating tasks'}
+          title={shouldShowRepoSetup ? 'Configure at least one repository in Settings before creating tasks' : 'Add task'}
         >
           + ADD TASK
         </button>
@@ -189,7 +190,7 @@ export default function App() {
         onReject={rejectPlan}
         onAgentClick={handleAgentClick}
         onAddTask={() => setShowAddModal(true)}
-        hasConfiguredRepos={hasConfiguredRepos}
+        shouldShowRepoSetup={shouldShowRepoSetup}
         onOpenSettings={() => setShowSettingsModal(true)}
         onTaskClick={(task) => setSelectedTask(task)}
       />
@@ -227,7 +228,7 @@ export default function App() {
       )}
 
       {/* ADD TASK MODAL */}
-      {showAddModal && hasConfiguredRepos && (
+      {showAddModal && !shouldShowRepoSetup && (
         <AddTaskModal
           repos={repos}
           settings={settings}

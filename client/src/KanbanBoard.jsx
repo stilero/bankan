@@ -94,7 +94,7 @@ export default function KanbanBoard({
   onReject,
   onAgentClick,
   onAddTask,
-  hasConfiguredRepos,
+  shouldShowRepoSetup,
   onOpenSettings,
   onTaskClick,
 }) {
@@ -183,7 +183,7 @@ export default function KanbanBoard({
       minHeight: 0,
       overflow: 'hidden',
     }}>
-      {!hasConfiguredRepos && (
+      {shouldShowRepoSetup && (
         <div style={{
           margin: '20px 20px 0',
           padding: '28px 32px',
@@ -255,7 +255,7 @@ export default function KanbanBoard({
         background: 'var(--border)',
         minHeight: 0,
         overflow: 'hidden',
-        marginTop: !hasConfiguredRepos ? 20 : 0,
+        marginTop: shouldShowRepoSetup ? 20 : 0,
       }}>
         {COLUMNS.map(column => (
           <KanbanColumn
@@ -268,7 +268,7 @@ export default function KanbanBoard({
             onReject={onReject}
             onAgentClick={onAgentClick}
             onAddTask={onAddTask}
-            hasConfiguredRepos={hasConfiguredRepos}
+            shouldShowRepoSetup={shouldShowRepoSetup}
             onTaskClick={onTaskClick}
           />
         ))}

@@ -12,6 +12,7 @@ export default function useFactory() {
   const [tasks, setTasks] = useState([]);
   const [agents, setAgents] = useState([]);
   const [repos, setRepos] = useState([]);
+  const [reposLoaded, setReposLoaded] = useState(false);
   const [settings, setSettings] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const wsRef = useRef(null);
@@ -60,6 +61,7 @@ export default function useFactory() {
           setTasks(msg.payload.tasks || []);
           setAgents(msg.payload.agents || []);
           setRepos(msg.payload.repos || []);
+          setReposLoaded(true);
           if (msg.payload.settings) setSettings(msg.payload.settings);
           break;
         case 'TASKS_UPDATED':
@@ -89,6 +91,7 @@ export default function useFactory() {
           break;
         case 'REPOS_UPDATED':
           setRepos(msg.payload.repos || []);
+          setReposLoaded(true);
           break;
         case 'TERMINAL_DATA': {
           const cb = termSubsRef.current.get(msg.payload.agentId);
@@ -255,6 +258,7 @@ export default function useFactory() {
     tasks,
     agents,
     repos,
+    reposLoaded,
     settings,
     notifications,
     addTask,
