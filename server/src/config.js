@@ -56,8 +56,10 @@ Workflow:
 3. Review
 - Read the critical files needed to validate the design
 - If prior plan feedback exists, incorporate it directly into the revised plan
+ - If prior review feedback exists, keep the same branch in scope and turn those reviewer findings into a targeted revision plan
 4. Final plan
 - Produce a plan that includes context, the recommended approach, critical file paths, reusable utilities or patterns, and verification
+- For review-driven replanning, keep the feature scope fixed and focus the plan on must-fix review issues for the existing branch
 5. Exit
 - End by returning the final plan in the required structured format only
 

@@ -182,19 +182,31 @@ function generateBranchName(task) {
 }
 
 function buildSyntheticPlan(task) {
+  const branch = task.branch || generateBranchName(task);
+  const summary = task.reviewFeedback
+    ? 'Planning skipped because planner max is set to 0. Revise the existing implementation to address the failed review findings.'
+    : 'Planning skipped because planner max is set to 0. Implement the requested task directly.';
+  const steps = task.reviewFeedback
+    ? `1. Review the failed review findings and inspect the current implementation on "${branch}".
+2. Implement the required fixes for "${task.title}" without changing the agreed feature scope.
+3. Run the most relevant existing verification before handing off.`
+    : `1. Review the repository context and task details.
+2. Implement the requested changes for "${task.title}".
+3. Run the most relevant existing verification before handing off.`;
+  const risks = task.reviewFeedback
+    ? '- Planning was skipped, so implementation must translate reviewer findings into concrete fixes without introducing regressions'
+    : '- Planning was skipped, so implementation must validate scope and touched files carefully';
   return `=== PLAN START ===
-SUMMARY: Planning skipped because planner max is set to 0. Implement the requested task directly.
-BRANCH: ${generateBranchName(task)}
+SUMMARY: ${summary}
+BRANCH: ${branch}
 FILES_TO_MODIFY:
 - Determine the affected files based on the task description during implementation
 STEPS:
-1. Review the repository context and task details.
-2. Implement the requested changes for "${task.title}".
-3. Run the most relevant existing verification before handing off.
+${steps}
 TESTS_NEEDED:
 - Run the most relevant existing tests or checks for the modified area
 RISKS:
-- Planning was skipped, so implementation must validate scope and touched files carefully
+${risks}
 === PLAN END ===`;
 }
 
@@ -275,6 +287,7 @@ function buildPlannerPrompt(task) {
   let prompt = `You are a senior software architect. A task has been assigned to you.
 Repository: ${task.repoPath}
 Workspace: ${task.workspacePath}
+Current branch: ${task.branch || generateBranchName(task)}
 
 TASK ID: ${task.id}
 TITLE: ${task.title}
@@ -283,6 +296,10 @@ PRIORITY: ${task.priority}`;
 
   if (task.planFeedback) {
     prompt += `\n\nPrevious plan was rejected. Feedback: ${task.planFeedback}\nPlease revise accordingly.`;
+  }
+
+  if (task.reviewFeedback) {
+    prompt += `\n\nThis plan is a revision pass after a failed review. Keep the scope on the existing branch ${task.branch || generateBranchName(task)} and focus the revised plan on fixing the reviewer findings below.\nReviewer findings:\n${task.reviewFeedback}`;
   }
 
   prompt += `
@@ -451,17 +468,21 @@ async function cleanupWorkspace(task) {
 // --- Stage Transitions ---
 
 async function startPlanning(task) {
+  const isRevisionPlanning = task.autoApprovePlan === true;
+
   if (isStageDisabled('planning')) {
     const planText = buildSyntheticPlan(task);
-    const branch = extractSingleLine(planText, 'BRANCH:') || generateBranchName(task);
+    const branch = extractSingleLine(planText, 'BRANCH:') || task.branch || generateBranchName(task);
     store.savePlan(task.id, planText);
     store.updateTask(task.id, {
       status: 'queued',
       plan: planText,
       branch,
-      review: null,
-      reviewFeedback: null,
-      reviewCycleCount: 0,
+      review: isRevisionPlanning ? task.review : null,
+      reviewFeedback: isRevisionPlanning ? task.reviewFeedback : null,
+      reviewCycleCount: isRevisionPlanning ? task.reviewCycleCount : 0,
+      planFeedback: null,
+      autoApprovePlan: false,
       blockedReason: null,
       assignedTo: null,
     });
@@ -525,6 +546,8 @@ async function startPlanning(task) {
 function onPlanComplete(agentId, taskId) {
   const planner = agentManager.get(agentId);
   if (!planner) return;
+  const task = store.getTask(taskId);
+  if (!task) return;
   const bufStr = planner.getBufferString(100);
   const captured = planner.cli === 'codex' ? readCapturedCodexMessage(bufStr) : null;
   const sourceText = captured || bufStr;
@@ -535,17 +558,20 @@ function onPlanComplete(agentId, taskId) {
 
   // Parse branch name
   const branchMatch = planText.match(/BRANCH:\s*(.+)/);
-  const branch = branchMatch ? branchMatch[1].trim() : generateBranchName(store.getTask(taskId) || { id: taskId, title: 'auto' });
+  const branch = branchMatch ? branchMatch[1].trim() : (task.branch || generateBranchName(task));
+  const isRevisionPlanning = task.autoApprovePlan === true;
 
   // Save plan
   store.savePlan(taskId, planText);
   store.updateTask(taskId, {
-    status: 'awaiting_approval',
+    status: isRevisionPlanning ? 'queued' : 'awaiting_approval',
     plan: planText,
     branch,
-    review: null,
-    reviewFeedback: null,
-    reviewCycleCount: 0,
+    review: isRevisionPlanning ? task.review : null,
+    reviewFeedback: isRevisionPlanning ? task.reviewFeedback : null,
+    reviewCycleCount: isRevisionPlanning ? task.reviewCycleCount : 0,
+    planFeedback: null,
+    autoApprovePlan: false,
     blockedReason: null,
     assignedTo: null,
   });
@@ -568,6 +594,7 @@ function rejectPlan(taskId, feedback) {
   store.updateTask(taskId, {
     status: 'backlog',
     planFeedback: feedback,
+    autoApprovePlan: false,
     blockedReason: null,
     assignedTo: null,
   });
@@ -742,6 +769,7 @@ async function onReviewComplete(agentId, taskId) {
         status: 'blocked',
         reviewFeedback: criticalIssues,
         reviewCycleCount: nextReviewCycleCount,
+        autoApprovePlan: false,
         blockedReason: `Reached maximum review cycles (${MAX_REVIEW_CYCLES}). Human input required.`,
         assignedTo: null,
       });
@@ -750,9 +778,10 @@ async function onReviewComplete(agentId, taskId) {
     }
 
     store.updateTask(taskId, {
-      status: 'queued',
+      status: 'backlog',
       reviewFeedback: criticalIssues,
       reviewCycleCount: nextReviewCycleCount,
+      autoApprovePlan: true,
       blockedReason: null,
       assignedTo: null,
     });
@@ -824,6 +853,7 @@ async function abortTask(taskId) {
     workspacePath: null,
     blockedReason: null,
     reviewFeedback: null,
+    autoApprovePlan: false,
     previousStatus: null,
     reviewCycleCount: 0,
   });
@@ -855,6 +885,7 @@ async function resetTask(taskId) {
     blockedReason: null,
     reviewFeedback: null,
     planFeedback: null,
+    autoApprovePlan: false,
     previousStatus: null,
     reviewCycleCount: 0,
     progress: 0,

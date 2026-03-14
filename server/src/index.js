@@ -19,6 +19,9 @@ app.use(express.json());
 function stageToResumeStatus(task) {
   const settings = loadSettings();
   const planningDisabled = settings.agents?.planners?.max === 0;
+  const planningRetryStatus = task.autoApprovePlan
+    ? (planningDisabled ? 'queued' : 'backlog')
+    : (task.plan ? 'awaiting_approval' : (planningDisabled ? 'queued' : 'backlog'));
   const previousStatus = task.previousStatus;
   if (previousStatus) {
     if (previousStatus === 'blocked') {
@@ -41,7 +44,7 @@ function stageToResumeStatus(task) {
     return 'queued';
   }
   if (task.lastActiveStage === 'planning') {
-    return task.plan ? 'awaiting_approval' : (planningDisabled ? 'queued' : 'backlog');
+    return planningRetryStatus;
   }
   return planningDisabled ? 'queued' : 'backlog';
 }
@@ -49,6 +52,9 @@ function stageToResumeStatus(task) {
 function stageToRetryStatus(task) {
   const settings = loadSettings();
   const planningDisabled = settings.agents?.planners?.max === 0;
+  const planningRetryStatus = task.autoApprovePlan
+    ? (planningDisabled ? 'queued' : 'backlog')
+    : (task.plan ? 'awaiting_approval' : (planningDisabled ? 'queued' : 'backlog'));
   if (task.assignedTo) {
     if (task.assignedTo.startsWith('plan-')) return 'planning';
     if (task.assignedTo.startsWith('imp-')) return 'implementing';
@@ -65,7 +71,7 @@ function stageToRetryStatus(task) {
     return 'queued';
   }
   if (task.lastActiveStage === 'planning') {
-    return task.plan ? 'awaiting_approval' : (planningDisabled ? 'queued' : 'backlog');
+    return planningRetryStatus;
   }
   return planningDisabled ? 'queued' : 'backlog';
 }

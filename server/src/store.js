@@ -60,6 +60,7 @@ class TaskStore {
         this.tasks = JSON.parse(readFileSync(TASKS_FILE, 'utf-8'));
         this.tasks = this.tasks.map(task => {
           const normalized = {
+            autoApprovePlan: false,
             reviewCycleCount: 0,
             lastActiveStage: statusToStage(task.status) || 'backlog',
             previousStatus: null,
@@ -78,6 +79,9 @@ class TaskStore {
           }
           if (typeof normalized.reviewCycleCount !== 'number' || normalized.reviewCycleCount < 0) {
             normalized.reviewCycleCount = 0;
+          }
+          if (typeof normalized.autoApprovePlan !== 'boolean') {
+            normalized.autoApprovePlan = false;
           }
           if (typeof normalized.totalTokens !== 'number' || normalized.totalTokens < 0) {
             normalized.totalTokens = 0;
@@ -123,6 +127,7 @@ class TaskStore {
       assignedTo: null,
       reviewFeedback: null,
       planFeedback: null,
+      autoApprovePlan: false,
       blockedReason: null,
       workspacePath: null,
       reviewCycleCount: 0,
@@ -227,6 +232,10 @@ class TaskStore {
       }
       if (typeof task.reviewCycleCount !== 'number' || task.reviewCycleCount < 0) {
         task.reviewCycleCount = 0;
+        changed = true;
+      }
+      if (typeof task.autoApprovePlan !== 'boolean') {
+        task.autoApprovePlan = false;
         changed = true;
       }
       if (typeof task.totalTokens !== 'number' || task.totalTokens < 0) {
