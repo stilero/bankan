@@ -60,81 +60,57 @@ All in one dashboard.
 
 ---
 
-## Why Developers Star Repos Like This
+## Why Ban Kan Exists
 
-Most AI coding setups break down the same way:
+Most AI coding workflows eventually break down in the same way:
 
-- one giant prompt tries to do planning, implementation, and review at once
-- token usage grows fast as context gets mixed together
-- it is hard to see what each agent is doing
-- quality gates are inconsistent
-- parallel work becomes chaotic
+- one giant prompt tries to do planning, coding, and review
+- context grows and token usage explodes
+- agents overwrite each other’s work
+- there is no clear review stage
+- parallel development becomes chaos
 
-Ban Kan fixes that with a workflow developers already understand: a Kanban board with explicit stages, specialized agents, and local repo control.
+Ban Kan fixes this with a model developers already understand:
 
----
+**a Kanban board with specialized AI agents.**
 
-## What You Can Do Today
-
-- Run planning, implementation, and review agents in parallel
-- Route tasks through a visible board with backlog, planning, implementation, review, and done columns
-- Require human approval before implementation starts
-- Open a live terminal for any running agent and take over when needed
-- Open a task workspace directly in VS Code from the task detail modal when a local workspace exists
-- Track blocked tasks, active tasks, total context usage, and agent activity in real time
-- Point the app at one or more local repositories and a workspace root for per-task working copies
-- Tune prompts and per-role concurrency from the UI
-- Optionally configure GitHub repo and token settings for PR workflows
+Each stage has a clear responsibility, and tasks move forward only when the previous step succeeds.
 
 ---
 
-## How It Works
+## What It Looks Like In Practice
 
-```text
-Developer creates a task in the dashboard
-        |
-        v
-Planner agent analyzes the repository
-        |
-        v
-Human approves or rejects the plan
-        |
-        v
-Implementor agent makes the change
-        |
-        v
-Reviewer agent validates the result
-        |
-        v
+Example task:
+
+Add Stripe payments
+
+Workflow:
+
+Developer creates task in dashboard  
+Planner agent analyzes repository  
+Plan generated and shown for approval  
+Developer approves plan  
+Implementor agent creates feature branch and writes code  
+Reviewer agent validates changes  
 Task moves to Done and can create a PR
-```
 
-Multiple tasks can be in flight at the same time, each with its own agent assignment and lifecycle.
+Multiple tasks can run simultaneously with different agents.
 
 ---
 
 ## Installation
 
-### Requirements
+### Run instantly
 
-- Node.js `>= 18`
-- `git`
-- At least one AI CLI: [`claude`](https://docs.anthropic.com/en/docs/claude-code) or [`codex`](https://github.com/openai/codex)
-- Native build tools for `node-pty`
-  - macOS: Xcode Command Line Tools
-  - Linux: `build-essential`
+```bash
+npx bankan
+```
 
-### Run with npm
+### Install globally
 
 ```bash
 npm install -g bankan
 bankan
-```
-
-### Run without installing
-
-```bash
-npx bankan
 ```
 
 ### Run from source
@@ -142,72 +118,103 @@ npx bankan
 ```bash
 git clone https://github.com/stilero/bankan.git
 cd bankan
+
 npm run install:all
 npm run setup
 npm run dev
 ```
 
-By default, Ban Kan starts a local server, opens your browser automatically, and serves the dashboard from the same process.
+Ban Kan starts a local server, opens your browser automatically, and serves the dashboard from the same process.
 
-If you want to open task workspaces from the dashboard, install Visual Studio Code locally. Ban Kan will try the `code` launcher first and, on macOS, fall back to the standard `open -a "Visual Studio Code"` application launch. If neither is available, the task modal shows a readable error instead of failing silently.
+---
+
+## Requirements
+
+- Node.js >= 18
+- git
+- One AI CLI tool:
+  - claude
+  - codex
+- Native build tools for node-pty
+
+macOS: Xcode Command Line Tools  
+Linux: build-essential
 
 ---
 
 ## Quick Start
 
-1. Launch the app with `bankan` or `npx bankan`.
-2. On first run, complete the setup wizard.
-3. Add one or more local repositories.
-4. Open the dashboard and create a task.
-5. Review the generated plan and approve it.
-6. Watch the task move through implementation and review.
-7. Open the agent terminal if you want to inspect or steer execution.
+1. Launch Ban Kan
 
-If you want PR automation, configure `GITHUB_REPO` and `GITHUB_TOKEN` during setup or in your local settings later.
+```bash
+bankan
+```
 
----
+2. Complete the setup wizard
 
-## First-Run Setup
+3. Add one or more local repositories
 
-On first launch, Ban Kan prompts for:
+4. Create a task in the dashboard
 
-- `REPOS`: comma-separated absolute paths to local git repositories
-- `GITHUB_REPO`: GitHub `owner/repo` for PR creation
-- `GITHUB_TOKEN`: GitHub personal access token
-- `IMPLEMENTOR_1_CLI`: `claude` or `codex`
-- `IMPLEMENTOR_2_CLI`: `claude` or `codex`
+5. Approve the generated plan
 
-The app stores local runtime state outside the global npm install directory:
+6. Watch agents implement and review the change
 
-- macOS: `~/Library/Application Support/bankan`
-- Linux: `~/.local/share/bankan` or `$XDG_DATA_HOME/bankan`
-- Windows: `%AppData%\\bankan`
+7. Optionally create a pull request
 
 ---
 
-## Why Ban Kan Feels Different
+## How It Works
 
-### Local-first by default
+Developer creates task  
+↓  
+Planner agent analyzes repository  
+↓  
+Human reviews and approves plan  
+↓  
+Implementor agent writes code  
+↓  
+Reviewer agent validates changes  
+↓  
+Task moves to Done and optionally creates PR
 
-Your repositories stay on your machine. Agents work against local clones and local workspaces instead of a hosted black box.
+Multiple tasks can run in parallel across different agents.
 
-### Built for parallelism
+---
 
-Planning, implementation, and review can each scale across multiple agents. You are not forced into a single-agent queue.
+## Key Features
 
-### Review is part of the system
+### Parallel AI agents
+Run multiple planning, implementation, and review agents simultaneously.
 
-Review is a first-class stage, not an afterthought. Tasks do not need to jump straight from code generation to completion.
+### Local-first workflow
+Repositories stay on your machine. Agents operate directly on local clones and workspaces.
 
-### Human control stays in the loop
+### Human approval gates
+Developers approve plans before implementation begins.
 
-Plans can be approved or rejected, terminals can be opened live, and blocked tasks remain visible instead of disappearing into logs.
+### Live agent terminals
+Open the terminal of any running agent and take control when needed.
+
+### VS Code workspace support
+Open a task workspace directly from the dashboard.
+
+### PR automation
+Configure GitHub settings to automatically create pull requests.
+
+### Real-time dashboard
+Track:
+
+- active tasks
+- blocked tasks
+- agent activity
+- context usage
 
 ---
 
 ## CLI
 
-Ban Kan is intentionally small at the command line. The CLI launches the local app:
+Ban Kan keeps the CLI intentionally simple.
 
 ```bash
 bankan --port 3005
@@ -215,10 +222,24 @@ bankan --no-open
 bankan --help
 ```
 
-- `--port`: bind to a specific port
-- `--no-open`: start without opening a browser
+Options:
 
-The main workflow happens in the dashboard after launch.
+- `--port` bind to a specific port
+- `--no-open` start without opening a browser
+
+Most workflows happen inside the dashboard after launch.
+
+---
+
+## Architecture
+
+Ban Kan includes:
+
+- Node / Express backend orchestration
+- WebSocket communication for live updates
+- React dashboard built with Vite
+- CLI launcher that starts the local app
+- Configurable planner, implementor, and reviewer agent pools
 
 ---
 
@@ -231,23 +252,10 @@ npm run dev
 
 Useful scripts:
 
-- `npm run build` builds the client bundle used for publishing
-- `npm run dev` runs the server and Vite client together
-- `npm run setup` runs the interactive setup wizard
-- `npm run install:all` installs root, server, and client dependencies
-
-This repository also includes GitHub Actions for CI and npm publishing.
-
----
-
-## Architecture
-
-Ban Kan ships as:
-
-- a Node/Express backend with WebSocket orchestration
-- a React dashboard built with Vite
-- a packaged CLI that launches the local app
-- configurable planner, implementor, and reviewer agent pools
+- `npm run build` – build client bundle
+- `npm run dev` – run server + Vite client
+- `npm run setup` – interactive setup wizard
+- `npm run install:all` – install all dependencies
 
 ---
 
@@ -255,13 +263,13 @@ Ban Kan ships as:
 
 Contributions are welcome.
 
-1. Fork the repository.
-2. Open a GitHub issue before starting:
-   - use the bug report form for reproducible defects
-   - use the feature request form for improvements, workflow changes, or new capabilities
-3. Create a focused branch.
-4. Make the change.
-5. Open a pull request with context and screenshots for UI updates.
+1. Fork the repository
+2. Open an issue before starting work
+3. Create a focused branch
+4. Make your changes
+5. Submit a pull request
+
+Screenshots are appreciated for UI updates.
 
 ---
 
