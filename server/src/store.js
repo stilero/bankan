@@ -203,7 +203,13 @@ class TaskStore {
         updates.activeStartedAt = null;
       }
 
-      if (isActive && (!wasActive || !task.activeStartedAt)) {
+      const isEnteringNewActiveWindow = isActive && (
+        !wasActive
+        || !task.activeStartedAt
+        || task.status !== nextStatus
+      );
+
+      if (isEnteringNewActiveWindow) {
         updates.activeStartedAt = nowIso;
       }
 
