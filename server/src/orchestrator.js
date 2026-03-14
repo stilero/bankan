@@ -182,6 +182,28 @@ function generateBranchName(task) {
 }
 
 function buildSyntheticPlan(task) {
+  if (task.isReviewFixReplan) {
+    const existingBranch = task.branch || generateBranchName(task);
+    const reviewIssues = task.reviewFeedback || '- Re-run review and address the unresolved issues found previously';
+    return `=== PLAN START ===
+SUMMARY: Address the failed review findings and update the existing implementation on ${existingBranch}.
+BRANCH: ${existingBranch}
+FILES_TO_MODIFY:
+- Inspect the files implicated by the failed review and adjust the implementation accordingly
+STEPS:
+1. Reproduce and understand each issue listed in the failed review feedback.
+2. Update the existing implementation on branch ${existingBranch} to resolve those review findings without regressing completed work.
+3. Re-run the most relevant checks for the changed area before handing back to review.
+TESTS_NEEDED:
+- Run the most relevant existing tests or checks that cover the failed review findings
+RISKS:
+- Fixes may regress already-completed work if the review findings are not mapped back to the existing implementation carefully
+- The remediation plan is synthetic because planners are disabled, so implementation must validate scope before editing
+REVIEW_FINDINGS:
+${reviewIssues}
+=== PLAN END ===`;
+  }
+
   return `=== PLAN START ===
 SUMMARY: Planning skipped because planner max is set to 0. Implement the requested task directly.
 BRANCH: ${generateBranchName(task)}
@@ -281,7 +303,18 @@ TITLE: ${task.title}
 DESCRIPTION: ${task.description || 'No additional description provided.'}
 PRIORITY: ${task.priority}`;
 
-  if (task.planFeedback) {
+  if (task.isReviewFixReplan) {
+    prompt += `\n\nThis is an automatic review-fix replanning cycle. Produce a focused remediation plan that updates the existing implementation rather than a fresh feature plan.`;
+    if (task.branch) {
+      prompt += `\nKeep using the existing branch: ${task.branch}`;
+    }
+    if (task.plan) {
+      prompt += `\n\nPREVIOUS APPROVED PLAN:\n${task.plan}`;
+    }
+    if (task.reviewFeedback) {
+      prompt += `\n\nFAILED REVIEW — CRITICAL ISSUES TO FIX:\n${task.reviewFeedback}`;
+    }
+  } else if (task.planFeedback) {
     prompt += `\n\nPrevious plan was rejected. Feedback: ${task.planFeedback}\nPlease revise accordingly.`;
   }
 
@@ -453,15 +486,18 @@ async function cleanupWorkspace(task) {
 async function startPlanning(task) {
   if (isStageDisabled('planning')) {
     const planText = buildSyntheticPlan(task);
-    const branch = extractSingleLine(planText, 'BRANCH:') || generateBranchName(task);
+    const branch = extractSingleLine(planText, 'BRANCH:') || task.branch || generateBranchName(task);
+    const isReviewFixReplan = Boolean(task.isReviewFixReplan);
     store.savePlan(task.id, planText);
     store.updateTask(task.id, {
       status: 'queued',
       plan: planText,
       branch,
       review: null,
-      reviewFeedback: null,
-      reviewCycleCount: 0,
+      reviewFeedback: isReviewFixReplan ? task.reviewFeedback : null,
+      reviewCycleCount: isReviewFixReplan ? (task.reviewCycleCount || 0) : 0,
+      isReviewFixReplan: false,
+      planFeedback: null,
       blockedReason: null,
       assignedTo: null,
     });
@@ -535,18 +571,23 @@ function onPlanComplete(agentId, taskId) {
 
   // Parse branch name
   const branchMatch = planText.match(/BRANCH:\s*(.+)/);
-  const branch = branchMatch ? branchMatch[1].trim() : generateBranchName(store.getTask(taskId) || { id: taskId, title: 'auto' });
+  const task = store.getTask(taskId) || { id: taskId, title: 'auto' };
+  const branch = branchMatch ? branchMatch[1].trim() : (task.branch || generateBranchName(task));
+  const isReviewFixReplan = Boolean(task.isReviewFixReplan);
+  const reviewCycleCount = task.reviewCycleCount || 0;
 
   // Save plan
   store.savePlan(taskId, planText);
   store.updateTask(taskId, {
-    status: 'awaiting_approval',
+    status: isReviewFixReplan ? 'queued' : 'awaiting_approval',
     plan: planText,
     branch,
     review: null,
-    reviewFeedback: null,
-    reviewCycleCount: 0,
+    reviewCycleCount: isReviewFixReplan ? reviewCycleCount : 0,
+    reviewFeedback: isReviewFixReplan ? task.reviewFeedback : null,
     blockedReason: null,
+    planFeedback: null,
+    isReviewFixReplan: false,
     assignedTo: null,
   });
 
@@ -737,6 +778,7 @@ async function onReviewComplete(agentId, taskId) {
         status: 'blocked',
         reviewFeedback: criticalIssues,
         reviewCycleCount: nextReviewCycleCount,
+        isReviewFixReplan: false,
         blockedReason: `Reached maximum review cycles (${MAX_REVIEW_CYCLES}). Human input required.`,
         assignedTo: null,
       });
@@ -744,10 +786,13 @@ async function onReviewComplete(agentId, taskId) {
       return;
     }
 
+    store.removePlan(taskId);
     store.updateTask(taskId, {
-      status: 'queued',
+      status: 'backlog',
+      plan: null,
       reviewFeedback: criticalIssues,
       reviewCycleCount: nextReviewCycleCount,
+      isReviewFixReplan: true,
       blockedReason: null,
       assignedTo: null,
     });
@@ -786,7 +831,12 @@ async function createPR(taskId) {
     bus.emit('pr:created', { taskId, prUrl });
 
     await cleanupWorkspace(store.getTask(taskId));
-    store.updateTask(taskId, { status: 'done', assignedTo: null });
+    store.updateTask(taskId, {
+      status: 'done',
+      assignedTo: null,
+      isReviewFixReplan: false,
+      reviewFeedback: null,
+    });
   } catch (err) {
     console.error(`PR creation error:`, err.message);
     store.updateTask(taskId, {
@@ -815,6 +865,7 @@ async function abortTask(taskId) {
     workspacePath: null,
     blockedReason: null,
     reviewFeedback: null,
+    isReviewFixReplan: false,
     previousStatus: null,
     reviewCycleCount: 0,
   });
@@ -845,6 +896,7 @@ async function resetTask(taskId) {
     prNumber: null,
     blockedReason: null,
     reviewFeedback: null,
+    isReviewFixReplan: false,
     planFeedback: null,
     previousStatus: null,
     reviewCycleCount: 0,
