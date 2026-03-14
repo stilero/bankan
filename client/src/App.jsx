@@ -70,6 +70,7 @@ export default function App() {
     tasks.reduce((sum, task) => sum + (task.totalTokens || 0), 0),
     [tasks]
   );
+  const hasConfiguredRepos = useMemo(() => Array.isArray(repos) && repos.length > 0, [repos]);
   const activeCount = useMemo(() => agents.filter(a => a.status === 'active').length, [agents]);
   const blockedCount = useMemo(() => agents.filter(a => a.status === 'blocked').length, [agents]);
   const inFlight = useMemo(() =>
@@ -158,15 +159,23 @@ export default function App() {
 
         {/* Add Task */}
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={() => {
+            if (!hasConfiguredRepos) return;
+            setShowAddModal(true);
+          }}
+          disabled={!hasConfiguredRepos}
           style={{
             padding: '6px 14px',
-            background: 'var(--amber)',
-            color: '#000',
+            background: hasConfiguredRepos ? 'var(--amber)' : 'var(--bg2)',
+            color: hasConfiguredRepos ? '#000' : 'var(--text3)',
             borderRadius: 4,
             fontWeight: 500,
             fontSize: 12,
+            border: hasConfiguredRepos ? 'none' : '1px solid var(--border)',
+            cursor: hasConfiguredRepos ? 'pointer' : 'not-allowed',
+            opacity: hasConfiguredRepos ? 1 : 0.7,
           }}
+          title={hasConfiguredRepos ? 'Add task' : 'Configure at least one repository in Settings before creating tasks'}
         >
           + ADD TASK
         </button>
@@ -180,6 +189,8 @@ export default function App() {
         onReject={rejectPlan}
         onAgentClick={handleAgentClick}
         onAddTask={() => setShowAddModal(true)}
+        hasConfiguredRepos={hasConfiguredRepos}
+        onOpenSettings={() => setShowSettingsModal(true)}
         onTaskClick={(task) => setSelectedTask(task)}
       />
 
@@ -216,7 +227,7 @@ export default function App() {
       )}
 
       {/* ADD TASK MODAL */}
-      {showAddModal && (
+      {showAddModal && hasConfiguredRepos && (
         <AddTaskModal
           repos={repos}
           settings={settings}
