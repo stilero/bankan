@@ -33,6 +33,28 @@ function formatTokens(tokens = 0) {
   return String(tokens || 0);
 }
 
+function formatTotalTime(startedAt, completedAt) {
+  if (!startedAt || !completedAt) return null;
+
+  const start = new Date(startedAt).getTime();
+  const end = new Date(completedAt).getTime();
+
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return null;
+
+  const totalMinutes = Math.max(1, Math.floor((end - start) / 60000));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) {
+    return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  }
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  return `${minutes}m`;
+}
+
 export default function TaskDetailModal({
   task,
   repos = [],
@@ -65,6 +87,7 @@ export default function TaskDetailModal({
   const canReset = task.status !== 'done';
   const canRetry = task.status === 'blocked';
   const canOpenWorkspace = Boolean(task.workspacePath && onOpenWorkspace);
+  const totalTime = formatTotalTime(task.startedAt, task.completedAt);
 
   const handleSave = () => {
     onEdit(task.id, {
@@ -263,6 +286,15 @@ export default function TaskDetailModal({
                 {task.reviewCycleCount || 0} / 3
               </div>
             </div>
+
+            {totalTime && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={labelStyle}>Total Time</div>
+                <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+                  {totalTime}
+                </div>
+              </div>
+            )}
 
             {task.prUrl && (
               <div style={{ marginBottom: 14 }}>
