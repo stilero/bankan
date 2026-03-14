@@ -19,6 +19,9 @@ app.use(express.json());
 function stageToResumeStatus(task) {
   const settings = loadSettings();
   const planningDisabled = settings.agents?.planners?.max === 0;
+  if (task.isReviewFixReplan) {
+    return 'backlog';
+  }
   const previousStatus = task.previousStatus;
   if (previousStatus) {
     if (previousStatus === 'blocked') {
@@ -49,6 +52,9 @@ function stageToResumeStatus(task) {
 function stageToRetryStatus(task) {
   const settings = loadSettings();
   const planningDisabled = settings.agents?.planners?.max === 0;
+  if (task.isReviewFixReplan) {
+    return 'backlog';
+  }
   if (task.assignedTo) {
     if (task.assignedTo.startsWith('plan-')) return 'planning';
     if (task.assignedTo.startsWith('imp-')) return 'implementing';

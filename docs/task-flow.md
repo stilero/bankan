@@ -10,8 +10,8 @@ This document defines the expected end-to-end task lifecycle for AI Factory.
 4. The user can inspect the plan, approve it, or send feedback to revise/replan it.
 5. After approval, an implementor agent works in the same task workspace and on the planned branch.
 6. After implementation, a reviewer agent reviews the same workspace.
-7. If review fails, the task returns to implementation with reviewer feedback.
-8. Review/implementation retries are capped at 3 failed review cycles. After that, the task is blocked and awaits human input.
+7. If review fails, the task returns to planning in the same workspace, carries forward the reviewer critical issues, generates a focused remediation plan, and then automatically returns to implementation on the same branch.
+8. Review/implementation retries are capped at 3 failed review cycles. After that, the task is blocked and awaits human input instead of looping again.
 9. If review passes, the app creates a pull request from the task workspace, deletes the local task workspace, and then marks the task as done.
 
 ## Control Rules
@@ -21,6 +21,7 @@ This document defines the expected end-to-end task lifecycle for AI Factory.
 - A task can be blocked at any stage and should be clearly shown as awaiting human input.
 - Blocked tasks appear at the top of their owning column.
 - A task can be paused, resumed, retried, or aborted.
+- If a task is paused or blocked while a review-fix replan is pending, resume/retry must return it to planning so the remediation plan is regenerated before implementation continues.
 - Aborting a task stops automation and deletes its task workspace.
 
 ## Status Semantics
