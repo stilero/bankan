@@ -61,6 +61,7 @@ class TaskStore {
         this.tasks = this.tasks.map(task => {
           const normalized = {
             reviewCycleCount: 0,
+            isReviewFixReplan: false,
             lastActiveStage: statusToStage(task.status) || 'backlog',
             previousStatus: null,
             totalTokens: 0,
@@ -73,9 +74,13 @@ class TaskStore {
           if (normalized.status === 'done') {
             normalized.assignedTo = null;
             normalized.workspacePath = null;
+            normalized.isReviewFixReplan = false;
           }
           if (typeof normalized.reviewCycleCount !== 'number' || normalized.reviewCycleCount < 0) {
             normalized.reviewCycleCount = 0;
+          }
+          if (typeof normalized.isReviewFixReplan !== 'boolean') {
+            normalized.isReviewFixReplan = false;
           }
           if (typeof normalized.totalTokens !== 'number' || normalized.totalTokens < 0) {
             normalized.totalTokens = 0;
@@ -118,6 +123,7 @@ class TaskStore {
       blockedReason: null,
       workspacePath: null,
       reviewCycleCount: 0,
+      isReviewFixReplan: false,
       lastActiveStage: 'backlog',
       previousStatus: null,
       totalTokens: 0,
@@ -219,6 +225,10 @@ class TaskStore {
         task.reviewCycleCount = 0;
         changed = true;
       }
+      if (typeof task.isReviewFixReplan !== 'boolean') {
+        task.isReviewFixReplan = false;
+        changed = true;
+      }
       if (typeof task.totalTokens !== 'number' || task.totalTokens < 0) {
         task.totalTokens = 0;
         changed = true;
@@ -227,6 +237,7 @@ class TaskStore {
         task.status = 'done';
         task.assignedTo = null;
         task.workspacePath = null;
+        task.isReviewFixReplan = false;
         task.lastActiveStage = 'done';
         task.updatedAt = new Date().toISOString();
         task.log.push({ ts: new Date().toISOString(), message: 'Restart recovery: normalized awaiting_human_review to done' });
