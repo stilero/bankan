@@ -1,5 +1,5 @@
 {
-  "name": "bankan",
+  "name": "@stilero/bankan",
   "version": "1.0.0",
   "type": "module",
   "description": "Local AI agent orchestration dashboard with a global `bankan` CLI.",

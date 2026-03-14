@@ -187,13 +187,13 @@ Multiple tasks can move through these stages simultaneously with different agent
 ### Run instantly
 
 ```bash
-npx bankan
+npx @stilero/bankan
 ```
 
 ### Install globally
 
 ```bash
-npm install -g bankan
+npm install -g @stilero/bankan
 bankan
 ```
 
