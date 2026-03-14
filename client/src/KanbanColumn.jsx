@@ -11,6 +11,7 @@ export default function KanbanColumn({
   onAgentClick,
   onAddTask,
   onTaskClick,
+  needsSetup = false,
 }) {
   // Get agents for this column's role
   const columnAgents = column.agentPrefix
@@ -133,12 +134,18 @@ export default function KanbanColumn({
             padding: 16,
           }}>
             {column.id === 'backlog' ? (
-              <span
-                onClick={onAddTask}
-                style={{ cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}
-              >
-                No tasks — click + ADD TASK
-              </span>
+              needsSetup ? (
+                <span title="Add a repository in Settings -> General to enable task creation">
+                  Add a repository in Settings to create your first task
+                </span>
+              ) : (
+                <span
+                  onClick={onAddTask}
+                  style={{ cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}
+                >
+                  No tasks — click + ADD TASK
+                </span>
+              )
             ) : column.id === 'done' ? (
               'No completed tasks'
             ) : (

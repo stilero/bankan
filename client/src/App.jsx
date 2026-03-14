@@ -76,6 +76,10 @@ export default function App() {
     tasks.filter(t => !['backlog', 'done', 'aborted'].includes(t.status)),
     [tasks]
   );
+  const needsSetup = useMemo(() => settings !== null && repos.length === 0, [settings, repos]);
+  const addTaskTitle = needsSetup
+    ? 'Add a repository in Settings -> General before creating tasks'
+    : 'Add Task';
 
   const selectedAgentData = useMemo(() =>
     agents.find(a => a.id === selectedAgent),
@@ -85,6 +89,11 @@ export default function App() {
   const handleAgentClick = (agentId) => {
     if (agentId === 'orch') return;
     setSelectedAgent(prev => prev === agentId ? null : agentId);
+  };
+
+  const openAddTaskModal = () => {
+    if (needsSetup) return;
+    setShowAddModal(true);
   };
 
   return (
@@ -158,19 +167,68 @@ export default function App() {
 
         {/* Add Task */}
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={openAddTaskModal}
+          disabled={needsSetup}
           style={{
             padding: '6px 14px',
-            background: 'var(--amber)',
-            color: '#000',
+            background: needsSetup ? 'var(--bg2)' : 'var(--amber)',
+            color: needsSetup ? 'var(--text3)' : '#000',
+            border: needsSetup ? '1px solid var(--border)' : 'none',
             borderRadius: 4,
             fontWeight: 500,
             fontSize: 12,
+            cursor: needsSetup ? 'not-allowed' : 'pointer',
+            opacity: needsSetup ? 0.7 : 1,
           }}
+          title={addTaskTitle}
         >
           + ADD TASK
         </button>
       </div>
+
+      {needsSetup && (
+        <div style={{
+          margin: '16px 16px 0',
+          padding: '18px 20px',
+          background: 'linear-gradient(135deg, rgba(245,166,35,0.12), rgba(140,180,220,0.08))',
+          border: '1px solid rgba(245, 166, 35, 0.25)',
+          borderRadius: 10,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}>
+          <div style={{ minWidth: 260, flex: 1 }}>
+            <div style={{
+              fontFamily: 'var(--font-head)',
+              fontWeight: 700,
+              fontSize: 15,
+              marginBottom: 6,
+            }}>
+              Finish setup before creating your first task
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>
+              Open Settings -&gt; General to add at least one repository, then review the CLI configuration in Settings -&gt; Planning, Implementation, and Review.
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            style={{
+              padding: '9px 14px',
+              background: 'var(--amber)',
+              color: '#000',
+              borderRadius: 6,
+              fontWeight: 600,
+              fontSize: 12,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Open Settings
+          </button>
+        </div>
+      )}
 
       {/* KANBAN BOARD */}
       <KanbanBoard
@@ -179,8 +237,9 @@ export default function App() {
         onApprove={approvePlan}
         onReject={rejectPlan}
         onAgentClick={handleAgentClick}
-        onAddTask={() => setShowAddModal(true)}
+        onAddTask={openAddTaskModal}
         onTaskClick={(task) => setSelectedTask(task)}
+        needsSetup={needsSetup}
       />
 
       {/* TERMINAL DRAWER */}
