@@ -168,17 +168,15 @@ bankan
 
 ```mermaid
 flowchart TD
-    A[Developer creates task in dashboard] --> B[Planner agent analyzes repository]
-    B --> C[Plan generated and shown for approval]
+    A[Developer creates task] --> B[Planner agent analyzes repository]
+    B --> C[Plan generated]
     C --> D{Approve plan?}
-    D -->|Yes| E[Implementor agent writes code]
-    D -->|No| F[Task returns for changes]
-    E --> G[Reviewer agent validates changes]
+    D -->|Yes| E[Implementor writes code]
+    D -->|No| F[Revise plan]
+    E --> G[Reviewer validates changes]
     G --> H{Review passed?}
-    H -->|Yes| I[Task moves to Done]
-    I --> J[Optional pull request creation]
-    H -->|No| K[Task goes back to implementation]
-    K --> E
+    H -->|Yes| I[Done / PR created]
+    H -->|No| E
 ```
 
 Multiple tasks can run in parallel across different agents.
