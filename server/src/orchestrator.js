@@ -7,6 +7,7 @@ import config, { loadSettings, getWorkspacesDir } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
+import { parseReviewResult, reviewShouldPass } from './workflow.js';
 
 const POLL_INTERVAL = 4000;
 const SIGNAL_CHECK_INTERVAL = 2500;
@@ -719,20 +720,21 @@ async function onReviewComplete(agentId, taskId) {
   const sourceText = captured || bufStr;
   const reviewText = getLastStructuredBlock(sourceText, '=== REVIEW START ===', '=== REVIEW END ===');
   if (!reviewText) return;
-  const verdictMatch = reviewText.match(/VERDICT:\s*(PASS|FAIL)/i);
-  const verdict = verdictMatch ? verdictMatch[1].toUpperCase() : 'FAIL';
+  const reviewResult = parseReviewResult(reviewText);
+  const shouldPass = reviewShouldPass(reviewResult);
 
   store.updateTask(taskId, { review: reviewText });
   reviewer.kill();
   if (reviewer.draining) agentManager.removeAgent(agentId);
 
-  if (verdict === 'PASS') {
+  if (shouldPass) {
+    if (reviewResult.verdict !== 'PASS') {
+      store.appendLog(taskId, 'Reviewer returned FAIL without critical issues; normalized to PASS.');
+    }
     bus.emit('review:passed', { taskId });
     await createPR(taskId);
   } else {
-    // Extract critical issues
-    const issuesMatch = reviewText.match(/CRITICAL_ISSUES:\s*([\s\S]*?)(?=MINOR_ISSUES:|SUMMARY:|=== REVIEW END ===)/i);
-    const criticalIssues = issuesMatch ? issuesMatch[1].trim() : 'Critical issues found';
+    const criticalIssues = reviewResult.criticalIssues.join('\n');
 
     const task = store.getTask(taskId);
     const nextReviewCycleCount = (task?.reviewCycleCount || 0) + 1;
