@@ -340,10 +340,8 @@ ${task.plan}
 Instructions:
 - You are already on branch ${task.branch} in ${repoDir}
 ${promptBody}
-- When fully complete, output this exact string on its own line:
-  === IMPLEMENTATION COMPLETE ${task.id} ===
-- If you encounter a blocker you cannot resolve, output:
-  === BLOCKED: {reason} ===
+- When fully complete, output a completion marker on its own line using this exact format: === IMPLEMENTATION COMPLETE <id> === where <id> is replaced with your task ID (${task.id})
+- If you encounter a blocker you cannot resolve, output a marker on its own line: === BLOCKED: <describe the issue> ===
 
 Begin implementation now.`;
 
@@ -953,11 +951,6 @@ function checkSignals() {
   // Check implementors
   for (const agent of agentManager.getAgentsByRole('imp')) {
     if (agent.status === 'active' && agent.currentTask) {
-      // Skip checks during initial startup to avoid matching the completion
-      // marker in the echoed prompt text (interactive mode echoes the prompt)
-      const elapsed = agent.startedAt ? Date.now() - agent.startedAt : 0;
-      if (elapsed < 20000) continue;
-
       const buf = agent.getBufferString(50);
       const implementationState = getImplementationCompletionState(agent, agent.currentTask);
       if (implementationState.complete) {
