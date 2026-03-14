@@ -172,7 +172,7 @@ export default function TerminalDrawer({
         </div>
 
         {/* Right */}
-        {agent.status === 'active' && !agent.bridgeActive && (
+        {agent.status === 'active' && !agent.bridgeActive && !agent.printMode && (
           <button
             onClick={() => openAgentTerminal(agent.id)}
             style={{
@@ -211,42 +211,82 @@ export default function TerminalDrawer({
       </div>
 
       {/* Terminal */}
-      <div
-        ref={containerRef}
-        style={{ flex: 1, overflow: 'hidden', padding: 4 }}
-      />
-
-      {/* Inject bar */}
-      <div style={{ padding: '6px 12px', borderTop: '1px solid var(--border)' }}>
-        <input
-          type="text"
-          value={inputValue}
-          placeholder={agent.bridgeActive ? 'Input moved to Terminal.app while bridged...' : 'Send message to agent...'}
-          disabled={agent.status !== 'active' || agent.bridgeActive}
-          onChange={e => setInputValue(e.target.value)}
-          onKeyDown={handleInject}
-          style={{
-            width: '100%',
-            background: 'var(--bg)',
-            border: '1px solid var(--border)',
-            borderRadius: 4,
-            padding: '5px 10px',
-            fontSize: 12,
-            caretColor: agentColor,
-            opacity: agent.status === 'active' && !agent.bridgeActive ? 1 : 0.55,
-          }}
+      <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+        <div
+          ref={containerRef}
+          style={{ width: '100%', height: '100%', padding: 4 }}
         />
-        {agent.bridgeActive && (
-          <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text3)' }}>
-            Terminal.app currently owns input for this live session. Type `/return` there or use the button above to hand control back.
-          </div>
-        )}
-        {agent.status !== 'active' && !agent.bridgeActive && (
-          <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text3)' }}>
-            Agent input is unavailable because the session is not running. Resolve the blocker, then retry the task.
+        {agent.printMode && agent.status === 'active' && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(3, 5, 7, 0.92)',
+            zIndex: 10,
+          }}>
+            <div style={{
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              background: agent.color || 'var(--green)',
+              animation: 'pulse 1.5s ease-in-out infinite',
+              marginBottom: 14,
+            }} />
+            <div style={{
+              fontSize: 14,
+              fontFamily: 'var(--font-head)',
+              fontWeight: 600,
+              color: 'var(--text1)',
+              marginBottom: 6,
+            }}>
+              Agent is working...
+            </div>
+            <div style={{
+              fontSize: 11,
+              color: 'var(--text3)',
+            }}>
+              Output will appear when complete
+            </div>
           </div>
         )}
       </div>
+
+      {/* Inject bar — hidden in print mode */}
+      {!(agent.printMode && agent.status === 'active') && (
+        <div style={{ padding: '6px 12px', borderTop: '1px solid var(--border)' }}>
+          <input
+            type="text"
+            value={inputValue}
+            placeholder={agent.bridgeActive ? 'Input moved to Terminal.app while bridged...' : 'Send message to agent...'}
+            disabled={agent.status !== 'active' || agent.bridgeActive}
+            onChange={e => setInputValue(e.target.value)}
+            onKeyDown={handleInject}
+            style={{
+              width: '100%',
+              background: 'var(--bg)',
+              border: '1px solid var(--border)',
+              borderRadius: 4,
+              padding: '5px 10px',
+              fontSize: 12,
+              caretColor: agentColor,
+              opacity: agent.status === 'active' && !agent.bridgeActive ? 1 : 0.55,
+            }}
+          />
+          {agent.bridgeActive && (
+            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text3)' }}>
+              Terminal.app currently owns input for this live session. Type `/return` there or use the button above to hand control back.
+            </div>
+          )}
+          {agent.status !== 'active' && !agent.bridgeActive && (
+            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text3)' }}>
+              Agent input is unavailable because the session is not running. Resolve the blocker, then retry the task.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

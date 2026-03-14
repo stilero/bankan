@@ -119,7 +119,7 @@ export default function KanbanCard({
         {assignedAgent && (
           <span
             onClick={(e) => { e.stopPropagation(); onAgentClick(assignedAgent.id); }}
-            title={`Open ${assignedAgent.name} terminal`}
+            title={assignedAgent.printMode ? `Open ${assignedAgent.name} output` : `Open ${assignedAgent.name} terminal`}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 3,
               padding: '2px 6px',

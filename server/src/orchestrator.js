@@ -536,7 +536,7 @@ async function startPlanning(task) {
   const prompt = buildPlannerPrompt({ ...task, workspacePath });
   const cmd = buildAgentCommand(planner.cli, prompt, 'plan');
   const plannerCwd = workspacePath;
-  const ok = planner.spawn(plannerCwd, cmd);
+  const ok = planner.spawn(plannerCwd, cmd, { printMode: true });
   if (!ok) {
     store.updateTask(task.id, {
       status: 'blocked',
@@ -714,7 +714,7 @@ SUMMARY: Review skipped because reviewer max is set to 0.
 
   const prompt = buildReviewerPrompt(task);
   const cmd = buildAgentCommand(reviewer.cli, prompt, 'review');
-  const ok = reviewer.spawn(task.workspacePath, cmd);
+  const ok = reviewer.spawn(task.workspacePath, cmd, { printMode: true });
   if (!ok) {
     store.updateTask(task.id, {
       status: 'blocked',

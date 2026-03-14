@@ -55,6 +55,7 @@ class Agent {
     this.process = null;
     this.terminalBuffer = [];
     this.subscribers = new Set();
+    this.printMode = false;
     this.lastOutputAt = null;
     this.bridge = {
       active: false,
@@ -65,7 +66,7 @@ class Agent {
     };
   }
 
-  spawn(cwd, command) {
+  spawn(cwd, command, options) {
     if (this.process) this.kill();
 
     // Validate cwd is an existing directory
@@ -85,6 +86,7 @@ class Agent {
     }
 
     this.status = 'active';
+    this.printMode = options?.printMode || false;
     this.startedAt = Date.now();
     this.terminalBuffer = [];
     this.tokens = 0;
@@ -231,6 +233,7 @@ class Agent {
       bridgeActive: this.bridge.active,
       bridgeMode: this.bridge.mode,
       bridgeOwner: this.bridge.owner,
+      printMode: this.printMode,
       bridgeOpenedAt: this.bridge.openedAt,
       aggregatedTokens: this.currentTask
         ? Math.max(store.getTask(this.currentTask)?.totalTokens || 0, this.taskTokenBase + this.tokens)
