@@ -8,6 +8,7 @@ const runtimePaths = getRuntimeStatePaths();
 const DATA_DIR = runtimePaths.dataDir;
 const TASKS_FILE = runtimePaths.tasksFile;
 const PLANS_DIR = runtimePaths.plansDir;
+const ACTIVE_WORK_STATUSES = new Set(['workspace_setup', 'planning', 'implementing', 'review']);
 
 function statusToStage(status) {
   if (['workspace_setup', 'planning', 'awaiting_approval'].includes(status)) return 'planning';
@@ -42,6 +43,30 @@ function isLegacyPlannerPathBlocker(task) {
   return false;
 }
 
+function normalizeTimestamp(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const timestamp = new Date(value);
+  return Number.isNaN(timestamp.getTime()) ? null : timestamp.toISOString();
+}
+
+function normalizeDuration(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return 0;
+  return value;
+}
+
+function isActiveWorkStatus(status) {
+  return ACTIVE_WORK_STATUSES.has(status);
+}
+
+function accumulateElapsed(activeDurationMs, activeStartedAt, nowIso) {
+  const duration = normalizeDuration(activeDurationMs);
+  const startedAt = normalizeTimestamp(activeStartedAt);
+  if (!startedAt) return duration;
+  const elapsedMs = new Date(nowIso).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) return duration;
+  return duration + elapsedMs;
+}
+
 class TaskStore {
   constructor() {
     this.tasks = [];
@@ -64,6 +89,9 @@ class TaskStore {
             lastActiveStage: statusToStage(task.status) || 'backlog',
             previousStatus: null,
             totalTokens: 0,
+            activeDurationMs: 0,
+            activeStartedAt: null,
+            completedAt: null,
             ...task,
           };
 
@@ -80,11 +108,23 @@ class TaskStore {
           if (typeof normalized.totalTokens !== 'number' || normalized.totalTokens < 0) {
             normalized.totalTokens = 0;
           }
+          normalized.activeDurationMs = normalizeDuration(normalized.activeDurationMs);
+          normalized.activeStartedAt = normalizeTimestamp(normalized.activeStartedAt);
+          normalized.completedAt = normalizeTimestamp(normalized.completedAt);
           if (!normalized.lastActiveStage) {
             normalized.lastActiveStage = statusToStage(normalized.status) || 'backlog';
           }
           if (normalized.previousStatus === undefined) {
             normalized.previousStatus = null;
+          }
+          if (normalized.status === 'done' && !normalized.completedAt) {
+            normalized.completedAt = normalizeTimestamp(normalized.updatedAt) || normalizeTimestamp(normalized.createdAt);
+          }
+          if (normalized.status !== 'done' && normalized.completedAt) {
+            normalized.completedAt = null;
+          }
+          if (!isActiveWorkStatus(normalized.status)) {
+            normalized.activeStartedAt = null;
           }
 
           return normalized;
@@ -121,6 +161,9 @@ class TaskStore {
       lastActiveStage: 'backlog',
       previousStatus: null,
       totalTokens: 0,
+      activeDurationMs: 0,
+      activeStartedAt: null,
+      completedAt: null,
       progress: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -145,15 +188,43 @@ class TaskStore {
     const task = this.getTask(id);
     if (!task) return null;
     const nextStatus = updates.status;
+    const nowIso = new Date().toISOString();
     if (nextStatus) {
       const nextStage = statusToStage(nextStatus);
       if (nextStage) {
         updates.lastActiveStage = nextStage;
       }
+
+      const wasActive = isActiveWorkStatus(task.status);
+      const isActive = isActiveWorkStatus(nextStatus);
+
+      if (wasActive && task.status !== nextStatus) {
+        updates.activeDurationMs = accumulateElapsed(task.activeDurationMs, task.activeStartedAt, nowIso);
+        updates.activeStartedAt = null;
+      }
+
+      if (isActive && (!wasActive || !task.activeStartedAt)) {
+        updates.activeStartedAt = nowIso;
+      }
+
+      if (nextStatus === 'done') {
+        updates.completedAt = updates.completedAt === null ? null : (normalizeTimestamp(updates.completedAt) || nowIso);
+      } else if (updates.completedAt === undefined && task.completedAt) {
+        updates.completedAt = null;
+      }
     }
-    Object.assign(task, updates, { updatedAt: new Date().toISOString() });
+    if (updates.activeDurationMs !== undefined) {
+      updates.activeDurationMs = normalizeDuration(updates.activeDurationMs);
+    }
+    if (updates.activeStartedAt !== undefined) {
+      updates.activeStartedAt = normalizeTimestamp(updates.activeStartedAt);
+    }
+    if (updates.completedAt !== undefined) {
+      updates.completedAt = normalizeTimestamp(updates.completedAt);
+    }
+    Object.assign(task, updates, { updatedAt: nowIso });
     if (nextStatus) {
-      task.log.push({ ts: new Date().toISOString(), message: `Status changed to ${updates.status}` });
+      task.log.push({ ts: nowIso, message: `Status changed to ${updates.status}` });
     }
     this._save();
     bus.emit('task:updated', task);
@@ -210,6 +281,7 @@ class TaskStore {
       review: 'review',
     };
     let changed = false;
+    const nowIso = new Date().toISOString();
     for (const task of this.tasks) {
       if (!task.lastActiveStage) {
         task.lastActiveStage = statusToStage(task.status) || 'backlog';
@@ -223,21 +295,56 @@ class TaskStore {
         task.totalTokens = 0;
         changed = true;
       }
+      const normalizedDuration = normalizeDuration(task.activeDurationMs);
+      if (task.activeDurationMs !== normalizedDuration) {
+        task.activeDurationMs = normalizedDuration;
+        changed = true;
+      }
+      const normalizedStartedAt = normalizeTimestamp(task.activeStartedAt);
+      if (task.activeStartedAt !== normalizedStartedAt) {
+        task.activeStartedAt = normalizedStartedAt;
+        changed = true;
+      }
+      const normalizedCompletedAt = normalizeTimestamp(task.completedAt);
+      if (task.completedAt !== normalizedCompletedAt) {
+        task.completedAt = normalizedCompletedAt;
+        changed = true;
+      }
+      if (task.activeStartedAt) {
+        task.activeDurationMs = accumulateElapsed(task.activeDurationMs, task.activeStartedAt, nowIso);
+        task.activeStartedAt = null;
+        changed = true;
+      }
       if (task.status === 'awaiting_human_review') {
         task.status = 'done';
         task.assignedTo = null;
         task.workspacePath = null;
         task.lastActiveStage = 'done';
-        task.updatedAt = new Date().toISOString();
-        task.log.push({ ts: new Date().toISOString(), message: 'Restart recovery: normalized awaiting_human_review to done' });
+        if (!task.completedAt) {
+          task.completedAt = normalizeTimestamp(task.updatedAt) || nowIso;
+        }
+        task.updatedAt = nowIso;
+        task.log.push({ ts: nowIso, message: 'Restart recovery: normalized awaiting_human_review to done' });
         changed = true;
         continue;
+      }
+      if (task.status === 'done' && !task.completedAt) {
+        task.completedAt = normalizeTimestamp(task.updatedAt) || normalizeTimestamp(task.createdAt);
+        changed = true;
+      }
+      if (task.status !== 'done' && task.completedAt) {
+        task.completedAt = null;
+        changed = true;
+      }
+      if (!isActiveWorkStatus(task.status) && task.activeStartedAt) {
+        task.activeStartedAt = null;
+        changed = true;
       }
       // Leave paused tasks as paused but clear assignedTo
       if (task.status === 'paused') {
         if (task.assignedTo) {
           task.assignedTo = null;
-          task.updatedAt = new Date().toISOString();
+          task.updatedAt = nowIso;
           changed = true;
         }
         continue;
@@ -247,8 +354,8 @@ class TaskStore {
         task.status = resetTo;
         task.assignedTo = null;
         task.lastActiveStage = statusToStage(resetTo) || task.lastActiveStage;
-        task.updatedAt = new Date().toISOString();
-        task.log.push({ ts: new Date().toISOString(), message: `Restart recovery: reset to ${resetTo}` });
+        task.updatedAt = nowIso;
+        task.log.push({ ts: nowIso, message: `Restart recovery: reset to ${resetTo}` });
         changed = true;
       }
 
@@ -258,9 +365,9 @@ class TaskStore {
         task.blockedReason = null;
         task.lastActiveStage = 'backlog';
         task.previousStatus = null;
-        task.updatedAt = new Date().toISOString();
+        task.updatedAt = nowIso;
         task.log.push({
-          ts: new Date().toISOString(),
+          ts: nowIso,
           message: 'Restart recovery: reset legacy planner path blocker to backlog',
         });
         changed = true;

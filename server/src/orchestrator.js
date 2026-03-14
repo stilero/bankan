@@ -850,6 +850,9 @@ async function resetTask(taskId) {
     reviewCycleCount: 0,
     progress: 0,
     totalTokens: 0,
+    activeDurationMs: 0,
+    activeStartedAt: null,
+    completedAt: null,
   });
   store.appendLog(taskId, 'Task reset to backlog and workspace deleted');
 
