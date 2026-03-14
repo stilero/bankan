@@ -1,0 +1,44 @@
+name: Feature request
+description: Suggest an improvement, request, or other non-bug issue.
+title: '[Request]: '
+labels:
+  - enhancement
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for feature ideas, workflow improvements, and other non-bug requests.
+        Focus on the problem first, then describe the solution you want.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What limitation, workflow gap, or pain point are you trying to address?
+      placeholder: It is hard to see which tasks are blocked without opening each card individually.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed solution
+      description: Describe the change you would like to see.
+      placeholder: Add a blocked-task indicator directly on Kanban cards and in column summaries.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches or workarounds have you considered?
+      placeholder: I currently inspect each task detail modal manually, but that does not scale.
+    validations:
+      required: false
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Share mockups, examples, related tasks, or constraints that would help triage this request.
+      placeholder: Links to similar tools, screenshots, or notes about implementation constraints.
+    validations:
+      required: false

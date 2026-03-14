@@ -1,0 +1,69 @@
+name: Bug report
+description: Report a reproducible problem in Ban Kan.
+title: '[Bug]: '
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for issues where Ban Kan behaves incorrectly.
+        Include enough detail for someone else to reproduce the problem locally.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence describing the bug.
+      placeholder: The task detail modal stops updating after reconnecting
+    validations:
+      required: true
+  - type: textarea
+    id: current_behavior
+    attributes:
+      label: Current behavior
+      description: What is happening now?
+      placeholder: After the server reconnects, task events stop appearing in the modal.
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+      description: What should happen instead?
+      placeholder: The modal should continue showing live task output after reconnecting.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Reproduction steps
+      description: List the exact steps needed to reproduce the issue.
+      placeholder: |
+        1. Start Ban Kan with `npm run dev`
+        2. Open an existing task
+        3. Restart the server
+        4. Observe that task output no longer updates
+      render: bash
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Share the versions and setup you used.
+      placeholder: |
+        OS: macOS 15.3
+        Node.js: 22.14.0
+        Ban Kan version or commit: main@abcdef1
+        AI CLI: codex
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Add relevant console output, stack traces, or screenshots if available.
+      placeholder: Paste logs or drag screenshots here.
+      render: shell
+    validations:
+      required: false

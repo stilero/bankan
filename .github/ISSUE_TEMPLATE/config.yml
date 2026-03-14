@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contribution guide
+    url: https://github.com/stilero/bankan#contributing
+    about: Read the repository contribution workflow before opening implementation work.
+  - name: Project overview
+    url: https://github.com/stilero/bankan#readme
+    about: Review the README for setup, development flow, and project context.
