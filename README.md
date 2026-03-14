@@ -78,6 +78,33 @@ Each stage has a clear responsibility, and tasks move forward only when the prev
 
 ---
 
+## Built for Agile Development
+
+Ban Kan fits naturally into Agile workflows where work is organized as stories.
+
+Each story moves through a structured lifecycle that mirrors how real development teams operate:
+
+```mermaid
+flowchart LR
+    A[Story / Task Created] --> B[Planning Agent]
+    B --> C[Implementation Agent]
+    C --> D[Review Agent]
+    D --> E[Done / Pull Request]
+```
+
+This structure makes Ban Kan especially useful when working with:
+
+- Agile user stories
+- sprint backlogs
+- feature tasks
+- incremental development
+
+Instead of one AI trying to solve everything in a single prompt, each stage has a clear responsibility — just like in a real Agile team.
+
+Developers plan the story, agents implement the work, reviewers validate the result, and the change moves forward when it meets quality gates.
+
+---
+
 ## What It Looks Like In Practice
 
 Example task:
