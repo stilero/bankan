@@ -191,6 +191,10 @@ export default function useFactory() {
     send('INJECT_RAW', { agentId, data });
   }, [send]);
 
+  const resizeTerminal = useCallback((agentId, cols, rows) => {
+    send('RESIZE_TERMINAL', { agentId, cols, rows });
+  }, [send]);
+
   const pauseAgent = useCallback((agentId) => {
     send('PAUSE_AGENT', { agentId });
   }, [send]);
@@ -273,6 +277,7 @@ export default function useFactory() {
     openTaskWorkspace,
     injectMessage,
     sendRaw,
+    resizeTerminal,
     pauseAgent,
     resumeAgent,
     updateSettings,

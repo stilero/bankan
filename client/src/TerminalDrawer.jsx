@@ -23,6 +23,7 @@ export default function TerminalDrawer({
   subscribeTerminal,
   injectMessage,
   sendRaw,
+  resizeTerminal,
   openAgentTerminal,
   returnAgentTerminal,
   onClose,
@@ -32,6 +33,9 @@ export default function TerminalDrawer({
   const [height, setHeight] = useState(420);
   const [inputValue, setInputValue] = useState('');
   const isDragging = useRef(false);
+  const resizeTimerRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   const onDragStart = (e) => {
     const startY = e.clientY;
@@ -75,15 +79,23 @@ export default function TerminalDrawer({
     term.loadAddon(webLinksAddon);
     term.open(containerRef.current);
 
+    termRef.current = term;
+
+    const syncSize = () => {
+      if (!termRef.current) return;
+      try { fitAddon.fit(); } catch { return; }
+      if (term.cols > 0 && term.rows > 0) {
+        resizeTerminal(agent.id, term.cols, term.rows);
+      }
+    };
+
     requestAnimationFrame(() => {
-      try { fitAddon.fit(); } catch { /* ignore */ }
+      syncSize();
       const tag = document.activeElement?.tagName;
       if (!tag || tag === 'BODY' || tag === 'DIV') {
         term.focus();
       }
     });
-
-    termRef.current = term;
 
     term.onData((data) => {
       sendRaw(agent.id, data);
@@ -94,23 +106,30 @@ export default function TerminalDrawer({
     });
 
     const resizeObserver = new ResizeObserver(() => {
-      try { fitAddon.fit(); } catch { /* ignore */ }
+      if (resizeTimerRef.current) {
+        window.clearTimeout(resizeTimerRef.current);
+      }
+      resizeTimerRef.current = window.setTimeout(syncSize, 50);
     });
     resizeObserver.observe(containerRef.current);
 
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       resizeObserver.disconnect();
+      if (resizeTimerRef.current) {
+        window.clearTimeout(resizeTimerRef.current);
+        resizeTimerRef.current = null;
+      }
       unsub();
       term.dispose();
       termRef.current = null;
     };
-  }, [agent?.id]);
+  }, [agent?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleInject = (e) => {
     if (e.key === 'Enter' && inputValue.trim() && !agent.bridgeActive) {

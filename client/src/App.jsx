@@ -52,7 +52,7 @@ export default function App() {
     connected, isInitialized, agents, tasks, repos, settings, notifications,
     addTask, approvePlan, rejectPlan,
     pauseTask, resumeTask, editTask, abortTask, resetTask, retryTask, deleteTask, openTaskWorkspace,
-    injectMessage, sendRaw, pauseAgent, resumeAgent,
+    injectMessage, sendRaw, resizeTerminal, pauseAgent, resumeAgent,
     updateSettings, subscribeTerminal, openAgentTerminal, returnAgentTerminal,
   } = useFactory();
 
@@ -261,6 +261,7 @@ export default function App() {
           subscribeTerminal={subscribeTerminal}
           injectMessage={injectMessage}
           sendRaw={sendRaw}
+          resizeTerminal={resizeTerminal}
           openAgentTerminal={openAgentTerminal}
           returnAgentTerminal={returnAgentTerminal}
           onClose={() => setSelectedAgent(null)}
