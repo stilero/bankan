@@ -297,7 +297,7 @@ class AgentManager {
   }
 
   reconfigure(settings) {
-    for (const [settingsKey, { meta, prefix }] of Object.entries(ROLE_MAP)) {
+    for (const [settingsKey, { prefix }] of Object.entries(ROLE_MAP)) {
       const cfg = settings.agents[settingsKey];
       this._maxSettings[settingsKey] = cfg.max;
       this._cliSettings[settingsKey] = cfg.cli;

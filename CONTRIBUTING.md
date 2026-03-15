@@ -24,6 +24,7 @@ Avoid low-value tests that only mirror implementation details or styling structu
 ## Commands
 
 ```bash
+npm run lint
 npm test
 npm run test:server
 npm run test:client
@@ -31,7 +32,7 @@ npm run coverage
 npm run build
 ```
 
-`npm run coverage` enforces the same combined 80% coverage gate used in CI and publish workflows.
+Run `npm run lint` after code changes and before the test suite. `npm run coverage` enforces the same combined 80% coverage gate used in CI and publish workflows.
 
 ## Pull Requests
 

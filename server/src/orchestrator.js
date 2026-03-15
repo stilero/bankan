@@ -3,7 +3,7 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { simpleGit } from 'simple-git';
-import config, { loadSettings, getWorkspacesDir } from './config.js';
+import { loadSettings, getWorkspacesDir } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
@@ -23,8 +23,10 @@ let signalTimer = null;
 
 function stripAnsi(text) {
   if (typeof text !== 'string') return text;
+  // Matches ANSI control sequences emitted by CLI tools.
   return text.replace(
-    /[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]|\x1b\].*?(?:\x07|\x1b\\)|\r/g,
+    // eslint-disable-next-line no-control-regex
+    /[\x1b\x9b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]|\x1b\].*?(?:\x07|\x1b\\)|\r/g,
     ''
   );
 }
@@ -668,7 +670,7 @@ async function onImplementationComplete(agentId) {
       const git = simpleGit(task.workspacePath);
       await git.push('origin', task.branch);
     } catch (err) {
-      console.error(`Git push failed:`, err.message);
+      console.error('Git push failed:', err.message);
       store.updateTask(taskId, {
         status: 'blocked',
         blockedReason: `Branch push failed: ${err.message}`,
@@ -821,7 +823,7 @@ async function createPR(taskId) {
     await cleanupWorkspace(store.getTask(taskId));
     store.updateTask(taskId, { status: 'done', assignedTo: null });
   } catch (err) {
-    console.error(`PR creation error:`, err.message);
+    console.error('PR creation error:', err.message);
     store.updateTask(taskId, {
       status: 'blocked',
       blockedReason: summarizeProcessError('PR finalization failed', err),

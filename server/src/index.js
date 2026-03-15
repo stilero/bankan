@@ -94,7 +94,7 @@ app.get('/api/browse-dir', (req, res) => {
       parent: parent !== absPath ? parent : null,
       dirs,
     });
-  } catch (err) {
+  } catch {
     res.status(403).json({ error: 'Permission denied' });
   }
 });
@@ -186,7 +186,7 @@ function sendToClient(ws, type, payload) {
 }
 
 function shellQuote(value) {
-  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+  return `'${String(value).replace(/'/g, '\'\\\'\'')}'`;
 }
 
 function ensureBridgeFiles() {
