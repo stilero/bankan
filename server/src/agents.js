@@ -102,8 +102,8 @@ class Agent {
     delete env.CLAUDECODE;
     this.process = pty.spawn('bash', ['-l', '-c', command], {
       name: 'xterm-256color',
-      cols: 220,
-      rows: 50,
+      cols: 80,
+      rows: 24,
       cwd,
       env,
     });
@@ -165,6 +165,12 @@ class Agent {
     if (!this.currentTask || this.tokens <= 0) return;
     store.updateTaskTokens(this.currentTask, this.taskTokenBase + this.tokens);
     bus.emit('agent:updated', this.getStatus());
+  }
+
+  resize(cols, rows) {
+    if (this.process) {
+      try { this.process.resize(cols, rows); } catch { /* ignore */ }
+    }
   }
 
   write(data) {

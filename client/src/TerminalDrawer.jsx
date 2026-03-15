@@ -21,6 +21,7 @@ function formatUptime(seconds) {
 export default function TerminalDrawer({
   agent,
   subscribeTerminal,
+  resizeTerminal,
   injectMessage,
   sendRaw,
   openAgentTerminal,
@@ -76,7 +77,10 @@ export default function TerminalDrawer({
     term.open(containerRef.current);
 
     requestAnimationFrame(() => {
-      try { fitAddon.fit(); } catch { /* ignore */ }
+      try {
+        fitAddon.fit();
+        resizeTerminal(agent.id, term.cols, term.rows);
+      } catch { /* ignore */ }
       const tag = document.activeElement?.tagName;
       if (!tag || tag === 'BODY' || tag === 'DIV') {
         term.focus();
@@ -94,7 +98,10 @@ export default function TerminalDrawer({
     });
 
     const resizeObserver = new ResizeObserver(() => {
-      try { fitAddon.fit(); } catch { /* ignore */ }
+      try {
+        fitAddon.fit();
+        resizeTerminal(agent.id, term.cols, term.rows);
+      } catch { /* ignore */ }
     });
     resizeObserver.observe(containerRef.current);
 

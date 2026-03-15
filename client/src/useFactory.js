@@ -243,6 +243,10 @@ export default function useFactory() {
     send('RETURN_AGENT_TERMINAL', { agentId });
   }, [send]);
 
+  const resizeTerminal = useCallback((agentId, cols, rows) => {
+    send('TERMINAL_RESIZE', { agentId, cols, rows });
+  }, [send]);
+
   const subscribeTerminal = useCallback((agentId, callback) => {
     termSubsRef.current.set(agentId, callback);
     send('SUBSCRIBE_TERMINAL', { agentId });
@@ -277,6 +281,7 @@ export default function useFactory() {
     resumeAgent,
     updateSettings,
     subscribeTerminal,
+    resizeTerminal,
     openAgentTerminal,
     returnAgentTerminal,
   };

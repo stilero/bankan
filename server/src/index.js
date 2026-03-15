@@ -607,6 +607,14 @@ wss.on('connection', (ws) => {
         }
         break;
       }
+      case 'TERMINAL_RESIZE': {
+        const { agentId, cols, rows } = msg.payload || {};
+        const agent = agentManager.get(agentId);
+        if (agent && cols > 0 && rows > 0) {
+          agent.resize(cols, rows);
+        }
+        break;
+      }
       case 'OPEN_TASK_WORKSPACE': {
         const { taskId } = msg.payload || {};
         const result = openTaskWorkspace(taskId);

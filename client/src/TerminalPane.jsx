@@ -4,7 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 
-export default function TerminalPane({ agent, subscribeTerminal, injectMessage, sendRaw, onClose }) {
+export default function TerminalPane({ agent, subscribeTerminal, resizeTerminal, injectMessage, sendRaw, onClose }) {
   const termRef = useRef(null);
   const containerRef = useRef(null);
   const inputRef = useRef(null);
@@ -38,7 +38,10 @@ export default function TerminalPane({ agent, subscribeTerminal, injectMessage, 
 
     // Fit after a short delay to ensure container is sized
     requestAnimationFrame(() => {
-      try { fitAddon.fit(); } catch { /* ignore */ }
+      try {
+        fitAddon.fit();
+        resizeTerminal(agent.id, term.cols, term.rows);
+      } catch { /* ignore */ }
       const tag = document.activeElement?.tagName;
       if (!tag || tag === 'BODY' || tag === 'DIV') {
         term.focus();
@@ -58,7 +61,10 @@ export default function TerminalPane({ agent, subscribeTerminal, injectMessage, 
 
     // Resize observer
     const resizeObserver = new ResizeObserver(() => {
-      try { fitAddon.fit(); } catch { /* ignore */ }
+      try {
+        fitAddon.fit();
+        resizeTerminal(agent.id, term.cols, term.rows);
+      } catch { /* ignore */ }
     });
     resizeObserver.observe(containerRef.current);
 

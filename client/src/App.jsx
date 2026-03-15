@@ -53,7 +53,7 @@ export default function App() {
     addTask, approvePlan, rejectPlan,
     pauseTask, resumeTask, editTask, abortTask, resetTask, retryTask, deleteTask, openTaskWorkspace,
     injectMessage, sendRaw, pauseAgent, resumeAgent,
-    updateSettings, subscribeTerminal, openAgentTerminal, returnAgentTerminal,
+    updateSettings, subscribeTerminal, resizeTerminal, openAgentTerminal, returnAgentTerminal,
   } = useFactory();
 
   const [selectedAgent, setSelectedAgent] = useState(null);
@@ -259,6 +259,7 @@ export default function App() {
         <TerminalDrawer
           agent={selectedAgentData}
           subscribeTerminal={subscribeTerminal}
+          resizeTerminal={resizeTerminal}
           injectMessage={injectMessage}
           sendRaw={sendRaw}
           openAgentTerminal={openAgentTerminal}
