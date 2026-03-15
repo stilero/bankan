@@ -86,6 +86,32 @@ function getAllStructuredBlocks(text, startMarker, endMarker) {
   return blocks;
 }
 
+// Terminal UI noise patterns left behind after ANSI stripping.
+// Matches entire lines that are purely artifacts.
+const TERMINAL_ARTIFACT_LINE_RE = /^(?:.*(?:⏵⏵bypass|bypasspermission|shift\+tab\s*to\s*cycle)|.*Opus\s*4\.\d.*(?:│|context)|.*Claude(?:Code|Max)|.*▐▛|.*▝▜|.*[░▓█]{3,}|[─━═]{10,}|^\s*[❯›]\s*$|.*\.data\/workspaces\/T-)/i;
+
+// Inline artifacts that can appear at the end of or within content lines.
+// These are stripped from each line individually.
+const TRAILING_ARTIFACT_RE = /\s*[❯›]\s*[─━═]{4,}.*$/;
+const INLINE_ARTIFACT_RE = /[─━═]{10,}/g;
+
+export function cleanTerminalArtifacts(text) {
+  if (typeof text !== 'string') return text;
+  const lines = text.split('\n');
+  const cleaned = lines
+    .map(line => {
+      // Trim trailing box-drawing and prompt artifacts from content lines
+      let result = line.replace(TRAILING_ARTIFACT_RE, '');
+      result = result.replace(INLINE_ARTIFACT_RE, '');
+      return result.trimEnd();
+    })
+    .filter(line => {
+      if (!line) return true; // keep blank lines
+      return !TERMINAL_ARTIFACT_LINE_RE.test(line);
+    });
+  return cleaned.join('\n');
+}
+
 function getCodexLastMessagePath(buffer) {
   if (typeof buffer !== 'string' || !buffer) return null;
   const matches = [...buffer.matchAll(/=== CODEX_LAST_MESSAGE_FILE:(.+?) ===/g)];
@@ -626,10 +652,12 @@ async function startPlanning(task) {
 function onPlanComplete(agentId, taskId) {
   const planner = agentManager.get(agentId);
   if (!planner) return;
-  const planText = extractPlannerPlanText(planner, { removeCaptured: true });
+  const rawPlanText = extractPlannerPlanText(planner, { removeCaptured: true });
 
-  if (!planText) return;
-  if (isPlanPlaceholder(planText)) return;
+  if (!rawPlanText) return;
+  if (isPlanPlaceholder(rawPlanText)) return;
+
+  const planText = cleanTerminalArtifacts(rawPlanText);
 
   // Parse branch name
   const branchMatch = planText.match(/BRANCH:\s*(.+)/);
@@ -1007,7 +1035,7 @@ function checkSignals() {
         if (!cleanBuf.includes('=== PLAN END ===') && cleanBuf.includes('=== PLAN START ===')) {
           const partial = cleanBuf.slice(cleanBuf.indexOf('=== PLAN START ==='));
           if (!isPlanPlaceholder(partial)) {
-            bus.emit('plan:partial', { taskId: agent.currentTask, plan: partial });
+            bus.emit('plan:partial', { taskId: agent.currentTask, plan: cleanTerminalArtifacts(partial) });
           }
         }
         if (agent.startedAt && Date.now() - agent.startedAt > PLANNER_TIMEOUT) {

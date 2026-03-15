@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 
 import {
+  cleanTerminalArtifacts,
   extractPlannerPlanText,
   extractReviewerReviewText,
 } from './orchestrator.js';
@@ -150,5 +151,73 @@ SUMMARY: Stable review capture prevents timeout.
     expect(extractReviewerReviewText(agent, { readCapturedCodexMessage: readCaptured })).toContain(
       'Stable review capture prevents timeout.'
     );
+  });
+});
+
+describe('cleanTerminalArtifacts', () => {
+  test('removes CLI status bar, permission toggle, box drawings, and header lines', () => {
+    const dirty = `=== PLAN START ===
+Opus4.6(1Mcontext) │T-91EADD ░░░░░░░░░░6%
+⏵⏵bypasspermissionson (shift+tabtocycle)
+SUMMARY: Add a Reports modal with per-repo task counts.
+⏵⏵bypasspermissionson (shift+tabtocycle)
+BRANCH: feature/t-91eadd-reports-dashboard
+────────────────────────────────────────────────────────
+Opus4.6(1Mcontext) │T-91EADD ░░░░░░░░░░6%
+⏵⏵bypasspermissionson (shift+tabtocycle)
+FILES_TO_MODIFY:
+- client/src/ReportsModal.jsx (new modal component)
+ ▐▛███▜▌ClaudeCodev2.1.76
+▝▜█████▛▘Opus4.6(1Mcontext)·ClaudeMax
+ ~/Developer/stilero/bankan/.data/workspaces/T-91EADD
+STEPS:
+1. Create the ReportsModal component.
+❯
+TESTS_NEEDED:
+- Run npm run test
+RISKS:
+- none
+=== PLAN END ===`;
+
+    const cleaned = cleanTerminalArtifacts(dirty);
+    expect(cleaned).toContain('SUMMARY: Add a Reports modal');
+    expect(cleaned).toContain('BRANCH: feature/t-91eadd-reports-dashboard');
+    expect(cleaned).toContain('- client/src/ReportsModal.jsx');
+    expect(cleaned).toContain('1. Create the ReportsModal component.');
+    expect(cleaned).not.toContain('Opus4.6');
+    expect(cleaned).not.toContain('bypasspermission');
+    expect(cleaned).not.toContain('────');
+    expect(cleaned).not.toContain('▐▛███');
+    expect(cleaned).not.toContain('ClaudeCode');
+    expect(cleaned).not.toContain('ClaudeMax');
+    expect(cleaned).not.toContain('.data/workspaces');
+    expect(cleaned).not.toContain('❯');
+  });
+
+  test('strips trailing artifacts from content lines', () => {
+    // The terminal can put artifacts on the same line as real content
+    const dirty = '=== PLAN START ===                     ❯  ──────────────────────────────────\nSUMMARY: Real plan.\n=== PLAN END ===';
+    const cleaned = cleanTerminalArtifacts(dirty);
+    expect(cleaned).toContain('=== PLAN START ===');
+    expect(cleaned).toContain('SUMMARY: Real plan.');
+    expect(cleaned).not.toContain('❯');
+    expect(cleaned).not.toContain('────');
+  });
+
+  test('preserves clean plan text unchanged', () => {
+    const clean = `=== PLAN START ===
+SUMMARY: Add automated tests.
+BRANCH: feature/add-tests
+FILES_TO_MODIFY:
+- server/src/workflow.test.js (expand coverage)
+STEPS:
+1. Add tests for retry status edge cases.
+TESTS_NEEDED:
+- Run npm run test:server
+RISKS:
+- none
+=== PLAN END ===`;
+
+    expect(cleanTerminalArtifacts(clean)).toBe(clean);
   });
 });
