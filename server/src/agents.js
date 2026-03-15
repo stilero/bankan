@@ -73,6 +73,7 @@ class Agent {
     this.icon = def.icon;
     this.color = def.color;
     this.cli = def.cli || 'claude';
+    this.model = def.model || '';
     this.draining = false;
     this.status = 'idle';
     this.currentTask = null;
@@ -355,6 +356,7 @@ class AgentManager {
     this.agents = new Map();
     this._maxSettings = {};  // { planners: 4, implementors: 8, reviewers: 4 }
     this._cliSettings = {};  // { planners: 'claude', implementors: 'claude', reviewers: 'claude' }
+    this._modelSettings = {}; // { planners: '', implementors: 'opus', reviewers: 'haiku' }
     this._sessionCounters = { plan: 0, imp: 0, rev: 0 };
 
     // Orchestrator is always present
@@ -378,6 +380,7 @@ class AgentManager {
       const cfg = settings.agents[settingsKey];
       this._maxSettings[settingsKey] = cfg.max;
       this._cliSettings[settingsKey] = cfg.cli;
+      this._modelSettings[settingsKey] = cfg.model || '';
 
       // Scale down if current count exceeds new max
       const currentAgents = this.getAgentsByRole(prefix);
@@ -393,10 +396,11 @@ class AgentManager {
         }
       }
 
-      // Update CLI on all existing non-draining agents for this role
+      // Update CLI and model on all existing non-draining agents for this role
       for (const agent of this.getAgentsByRole(prefix)) {
         if (!agent.draining) {
           agent.cli = cfg.cli;
+          agent.model = cfg.model || '';
         }
       }
     }
@@ -407,6 +411,7 @@ class AgentManager {
     const { meta, prefix } = ROLE_MAP[settingsKey];
     const max = this._maxSettings[settingsKey] ?? 1;
     const cli = this._cliSettings[settingsKey] || 'claude';
+    const model = this._modelSettings[settingsKey] || '';
     const current = this.getAgentsByRole(prefix);
 
     if (current.length >= max) return null;
@@ -422,6 +427,7 @@ class AgentManager {
       icon: meta.icon,
       color,
       cli,
+      model,
     });
     this.agents.set(agent.id, agent);
     bus.emit('agent:updated', agent.getStatus());

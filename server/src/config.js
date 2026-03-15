@@ -107,9 +107,9 @@ export function getDefaults() {
     defaultRepoPath: config.REPOS[0] || '',
     workspaceRoot: DEFAULT_WORKSPACES_DIR,
     agents: {
-      planners:     { max: 4, cli: 'claude' },
-      implementors: { max: 8, cli: getLegacyImplementorCli() },
-      reviewers:    { max: 4, cli: 'claude' },
+      planners:     { max: 4, cli: 'claude', model: '' },
+      implementors: { max: 8, cli: getLegacyImplementorCli(), model: '' },
+      reviewers:    { max: 4, cli: 'claude', model: '' },
     },
     prompts: { ...DEFAULT_PROMPTS },
   };
@@ -139,6 +139,9 @@ function normalizeSettingsShape(data) {
       data.agents[role] = defaults.agents[role];
     } else {
       delete data.agents[role].count;
+      if (typeof data.agents[role].model !== 'string') {
+        data.agents[role].model = '';
+      }
     }
   }
 
@@ -203,6 +206,9 @@ export function validateSettings(settings) {
     }
     if (!validClis.includes(cfg.cli)) {
       errors.push(`${role}.cli must be one of: ${validClis.join(', ')}`);
+    }
+    if (cfg.model !== undefined && typeof cfg.model !== 'string') {
+      errors.push(`${role}.model must be a string`);
     }
   }
 

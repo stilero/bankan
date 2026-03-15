@@ -463,6 +463,13 @@ function AddTaskModal({ repos, settings, onClose, onSubmit }) {
   );
 }
 
+const MODEL_OPTIONS = [
+  { value: '', label: 'Default (CLI default)' },
+  { value: 'sonnet', label: 'Sonnet (balanced)' },
+  { value: 'opus', label: 'Opus (highest capability)' },
+  { value: 'haiku', label: 'Haiku (fastest, cheapest)' },
+];
+
 // --- Settings Modal ---
 function SettingsModal({ settings, onClose, onApply }) {
   const [local, setLocal] = useState(() => JSON.parse(JSON.stringify(settings)));
@@ -601,6 +608,23 @@ function SettingsModal({ settings, onClose, onApply }) {
             >
               <option value="claude">claude</option>
               <option value="codex">codex</option>
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--text2)', width: 45 }}>Model:</span>
+            <select
+              value={cfg.model || ''}
+              onChange={e => updateRole(cfgMeta.roleKey, 'model', e.target.value)}
+              style={{
+                padding: '4px 8px', fontSize: 12,
+                background: 'var(--bg)', border: '1px solid var(--border)',
+                borderRadius: 4,
+              }}
+            >
+              {MODEL_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
           </div>
 

@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 
 import {
+  buildAgentCommand,
   cleanTerminalArtifacts,
   extractPlannerPlanText,
   extractReviewerReviewText,
@@ -151,6 +152,41 @@ SUMMARY: Stable review capture prevents timeout.
     expect(extractReviewerReviewText(agent, { readCapturedCodexMessage: readCaptured })).toContain(
       'Stable review capture prevents timeout.'
     );
+  });
+});
+
+describe('buildAgentCommand model flag', () => {
+  test('claude CLI includes --model flag when model is non-empty', () => {
+    const cmd = buildAgentCommand('claude', 'do stuff', 'plan', 'haiku');
+    expect(cmd).toContain('--model haiku');
+    expect(cmd).toContain('--dangerously-skip-permissions');
+  });
+
+  test('claude CLI omits --model flag when model is empty', () => {
+    const cmd = buildAgentCommand('claude', 'do stuff', 'plan', '');
+    expect(cmd).not.toContain('--model');
+  });
+
+  test('claude CLI omits --model flag when model is not provided', () => {
+    const cmd = buildAgentCommand('claude', 'do stuff', 'plan');
+    expect(cmd).not.toContain('--model');
+  });
+
+  test('codex CLI includes -m flag when model is non-empty', () => {
+    const cmd = buildAgentCommand('codex', 'do stuff', 'plan', 'opus');
+    expect(cmd).toContain('-m opus');
+    expect(cmd).toContain('codex exec');
+  });
+
+  test('codex CLI omits -m flag when model is empty', () => {
+    const cmd = buildAgentCommand('codex', 'do stuff', 'interactive', '');
+    expect(cmd).not.toContain('-m ');
+  });
+
+  test('claude print mode includes --model flag', () => {
+    const cmd = buildAgentCommand('claude', 'do stuff', 'print', 'sonnet');
+    expect(cmd).toContain('--model sonnet');
+    expect(cmd).toContain('--print');
   });
 });
 

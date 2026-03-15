@@ -35,31 +35,34 @@ function escapePrompt(text) {
   return text.replace(/'/g, "'\\''");
 }
 
-function buildCodexExecCommand(prompt, { captureLastMessage = false, sandbox = 'read-only' } = {}) {
+function buildCodexExecCommand(prompt, { captureLastMessage = false, sandbox = 'read-only', model = '' } = {}) {
   const escapedPrompt = escapePrompt(prompt);
+  const modelFlag = model ? `-m ${model} ` : '';
   if (!captureLastMessage) {
-    return `codex exec --sandbox ${sandbox} '${escapedPrompt}'`;
+    return `codex exec ${modelFlag}--sandbox ${sandbox} '${escapedPrompt}'`;
   }
 
-  return `tmpfile=$(mktemp); codex exec --sandbox ${sandbox} -o "$tmpfile" '${escapedPrompt}'; status=$?; printf '\\n=== CODEX_LAST_MESSAGE_FILE:%s ===\\n' "$tmpfile"; exit $status`;
+  return `tmpfile=$(mktemp); codex exec ${modelFlag}--sandbox ${sandbox} -o "$tmpfile" '${escapedPrompt}'; status=$?; printf '\\n=== CODEX_LAST_MESSAGE_FILE:%s ===\\n' "$tmpfile"; exit $status`;
 }
 
-function buildAgentCommand(cliTool, prompt, mode = 'interactive') {
+export function buildAgentCommand(cliTool, prompt, mode = 'interactive', model = '') {
   if (cliTool === 'codex') {
     if (mode === 'plan' || mode === 'review') {
-      return buildCodexExecCommand(prompt, { captureLastMessage: true, sandbox: 'read-only' });
+      return buildCodexExecCommand(prompt, { captureLastMessage: true, sandbox: 'read-only', model });
     }
     if (mode === 'interactive') {
-      return buildCodexExecCommand(prompt, { captureLastMessage: true, sandbox: 'danger-full-access' });
+      return buildCodexExecCommand(prompt, { captureLastMessage: true, sandbox: 'danger-full-access', model });
     }
-    return buildCodexExecCommand(prompt, { captureLastMessage: false, sandbox: 'read-only' });
+    return buildCodexExecCommand(prompt, { captureLastMessage: false, sandbox: 'read-only', model });
   }
+
+  const modelFlag = model ? `--model ${model} ` : '';
 
   if (mode === 'print') {
-    return `claude --print '${escapePrompt(prompt)}'`;
+    return `claude ${modelFlag}--print '${escapePrompt(prompt)}'`;
   }
 
-  return `claude --dangerously-skip-permissions '${escapePrompt(prompt)}'`;
+  return `claude ${modelFlag}--dangerously-skip-permissions '${escapePrompt(prompt)}'`;
 }
 
 function getLastStructuredBlock(text, startMarker, endMarker) {
@@ -633,7 +636,7 @@ async function startPlanning(task) {
   planner.taskLabel = `Planning: ${task.title}`;
 
   const prompt = buildPlannerPrompt({ ...task, workspacePath });
-  const cmd = buildAgentCommand(planner.cli, prompt, 'plan');
+  const cmd = buildAgentCommand(planner.cli, prompt, 'plan', planner.model);
   const plannerCwd = workspacePath;
   const ok = planner.spawn(plannerCwd, cmd);
   if (!ok) {
@@ -734,7 +737,7 @@ async function startImplementation(task) {
 
   const cliTool = agent.cli;
   const prompt = buildImplementorPrompt(task, workspacePath);
-  const cmd = buildAgentCommand(cliTool, prompt, 'interactive');
+  const cmd = buildAgentCommand(cliTool, prompt, 'interactive', agent.model);
 
   const ok = agent.spawn(workspacePath, cmd);
   if (!ok) {
@@ -810,7 +813,7 @@ SUMMARY: Review skipped because reviewer max is set to 0.
   reviewer.status = 'active';
 
   const prompt = buildReviewerPrompt(task);
-  const cmd = buildAgentCommand(reviewer.cli, prompt, 'review');
+  const cmd = buildAgentCommand(reviewer.cli, prompt, 'review', reviewer.model);
   const ok = reviewer.spawn(task.workspacePath, cmd);
   if (!ok) {
     store.updateTask(task.id, {

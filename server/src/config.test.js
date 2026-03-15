@@ -94,6 +94,62 @@ describe('config settings lifecycle', () => {
     expect(configModule.getDefaults().agents.implementors.cli).toBe('codex');
   });
 
+  test('defaults include model field for all agent roles', async () => {
+    harness = createRuntimeHarness();
+    const { getDefaults } = await harness.importModule('./src/config.js');
+    const defaults = getDefaults();
+    for (const role of ['planners', 'implementors', 'reviewers']) {
+      expect(defaults.agents[role].model).toBe('');
+    }
+  });
+
+  test('normalizeSettingsShape backfills missing model field', async () => {
+    harness = createRuntimeHarness();
+    const configModule = await harness.importModule('./src/config.js');
+
+    configModule.saveSettings({
+      repos: ['/repo-a'],
+      defaultRepoPath: '/repo-a',
+      workspaceRoot: '/tmp/ws',
+      agents: {
+        planners: { max: 2, cli: 'claude' },
+        implementors: { max: 4, cli: 'claude' },
+        reviewers: { max: 2, cli: 'claude' },
+      },
+      prompts: {
+        planning: 'p', implementation: 'i', review: 'r',
+      },
+    });
+
+    const loaded = configModule.loadSettings();
+    expect(loaded.agents.planners.model).toBe('');
+    expect(loaded.agents.implementors.model).toBe('');
+    expect(loaded.agents.reviewers.model).toBe('');
+  });
+
+  test('validateSettings accepts valid model strings and rejects non-strings', async () => {
+    harness = createRuntimeHarness();
+    const { validateSettings } = await harness.importModule('./src/config.js');
+
+    const base = {
+      repos: ['/repo'],
+      defaultRepoPath: '/repo',
+      workspaceRoot: '/tmp/ws',
+      agents: {
+        planners: { max: 1, cli: 'claude', model: 'haiku' },
+        implementors: { max: 1, cli: 'claude', model: 'opus' },
+        reviewers: { max: 1, cli: 'claude', model: '' },
+      },
+      prompts: { planning: 'p', implementation: 'i', review: 'r' },
+    };
+    expect(validateSettings(base)).toEqual([]);
+
+    const bad = JSON.parse(JSON.stringify(base));
+    bad.agents.planners.model = 42;
+    const errors = validateSettings(bad);
+    expect(errors).toContain('planners.model must be a string');
+  });
+
   test('returns early when agents are missing and validates repo types', async () => {
     harness = createRuntimeHarness();
     const { validateSettings } = await harness.importModule('./src/config.js');
