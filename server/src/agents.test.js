@@ -164,6 +164,86 @@ describe('Agent behavior through managed instances', () => {
     expect(agent.getStatus().aggregatedTokens).toBe(1225);
   });
 
+  test('captures a completed plan block even after the terminal tail loses the start marker', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+    ]);
+    agentManager._maxSettings = { ...originalMaxSettings, planners: 1 };
+    agentManager._cliSettings = { ...originalCliSettings, planners: 'claude' };
+    agentManager._sessionCounters = { ...originalSessionCounters, plan: 0 };
+
+    const agent = agentManager.scaleUp('planners');
+    const filler = '0123456789'.repeat(30);
+
+    agent._captureStructuredOutput('=== PLAN START ===\n');
+    agent._captureStructuredOutput('SUMMARY: Keep completion detection stable.\n');
+    agent._captureStructuredOutput('BRANCH: feature/test-plan-capture\n');
+    agent._captureStructuredOutput('FILES_TO_MODIFY:\n- server/src/agents.js (store structured block state)\n');
+    agent._captureStructuredOutput('STEPS:\n1. Capture the block outside the PTY tail.\n');
+
+    for (let i = 0; i < 130; i += 1) {
+      agent.terminalBuffer.push(`noise-${i}-${filler}`);
+    }
+
+    agent._captureStructuredOutput('TESTS_NEEDED:\n- Run npm run test:server\n');
+    agent._captureStructuredOutput('RISKS:\n- none\n');
+    agent._captureStructuredOutput('=== PLAN END ===');
+
+    expect(agent.getStructuredBlock('plan')).toContain('SUMMARY: Keep completion detection stable.');
+    expect(agent.getStructuredBlock('plan')).toContain('=== PLAN END ===');
+    expect(agent.getBufferString(100)).not.toContain('=== PLAN START ===');
+  });
+
+  test('captures review blocks when markers are split across chunks', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+    ]);
+    agentManager._maxSettings = { ...originalMaxSettings, reviewers: 1 };
+    agentManager._cliSettings = { ...originalCliSettings, reviewers: 'claude' };
+    agentManager._sessionCounters = { ...originalSessionCounters, rev: 0 };
+
+    const agent = agentManager.scaleUp('reviewers');
+
+    agent._captureStructuredOutput('=== REVIEW STA');
+    agent._captureStructuredOutput('RT ===\nVERDICT: PASS\nCRITICAL_ISSUES:\n- none\n');
+    agent._captureStructuredOutput('MINOR_ISSUES:\n- none\nSUMMARY: Completed from split markers.\n=== REVIEW ');
+    agent._captureStructuredOutput('END ===');
+
+    expect(agent.getStructuredBlock('review')).toContain('SUMMARY: Completed from split markers.');
+    expect(agent.getStructuredBlock('review')).toContain('=== REVIEW END ===');
+  });
+
+  test('structured capture resets when the agent is killed', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+    ]);
+    agentManager._maxSettings = { ...originalMaxSettings, planners: 1 };
+    agentManager._cliSettings = { ...originalCliSettings, planners: 'claude' };
+    agentManager._sessionCounters = { ...originalSessionCounters, plan: 0 };
+
+    const agent = agentManager.scaleUp('planners');
+
+    agent._captureStructuredOutput(`=== PLAN START ===
+SUMMARY: Temporary plan.
+BRANCH: feature/tmp
+FILES_TO_MODIFY:
+- server/src/agents.js (temporary)
+STEPS:
+1. Demonstrate reset.
+TESTS_NEEDED:
+- none
+RISKS:
+- none
+=== PLAN END ===`);
+
+    expect(agent.getStructuredBlock('plan')).toContain('Temporary plan.');
+
+    agent.kill();
+
+    expect(agent.getStructuredBlock('plan')).toBeNull();
+    expect(agent.getStructuredBlock('review')).toBeNull();
+  });
+
   test('reconfigure removes extra idle agents and marks active overflow agents as draining', () => {
     agentManager.agents = new Map([
       ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],

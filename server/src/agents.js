@@ -36,6 +36,35 @@ const TOKEN_PATTERNS = [
   /(\d[\d, ]*)\s+(?:input\s+)?tokens\b/i,
 ];
 
+const STRUCTURED_BLOCK_MARKERS = {
+  plan: {
+    start: '=== PLAN START ===',
+    end: '=== PLAN END ===',
+  },
+  review: {
+    start: '=== REVIEW START ===',
+    end: '=== REVIEW END ===',
+  },
+};
+
+function stripAnsi(text) {
+  if (typeof text !== 'string') return text;
+  return text.replace(
+    // eslint-disable-next-line no-control-regex
+    /[\x1b\x9b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]|\x1b\].*?(?:\x07|\x1b\\)|\r/g,
+    ''
+  );
+}
+
+function getLastStructuredBlock(text, startMarker, endMarker) {
+  if (typeof text !== 'string' || !text) return null;
+  const endIdx = text.lastIndexOf(endMarker);
+  if (endIdx === -1) return null;
+  const startIdx = text.lastIndexOf(startMarker, endIdx);
+  if (startIdx === -1) return null;
+  return text.slice(startIdx, endIdx + endMarker.length);
+}
+
 class Agent {
   constructor(def) {
     this.id = def.id;
@@ -63,10 +92,22 @@ class Agent {
       openedAt: null,
       outputPath: null,
     };
+    this.structuredOutput = this._createStructuredOutputState();
     this.terminalSize = {
       cols: 220,
       rows: 50,
     };
+  }
+
+  _createStructuredOutputState() {
+    return {
+      plan: { pending: '', completed: null },
+      review: { pending: '', completed: null },
+    };
+  }
+
+  _resetStructuredOutput() {
+    this.structuredOutput = this._createStructuredOutputState();
   }
 
   spawn(cwd, command) {
@@ -101,6 +142,7 @@ class Agent {
       openedAt: null,
       outputPath: null,
     };
+    this._resetStructuredOutput();
 
     const env = { ...process.env, TERM: 'xterm-256color' };
     delete env.CLAUDECODE;
@@ -119,6 +161,7 @@ class Agent {
       }
       this.lastOutputAt = Date.now();
       this._parseTokens(data);
+      this._captureStructuredOutput(data);
       this._syncTaskTokens();
       if (this.bridge.active && this.bridge.outputPath) {
         try { appendFileSync(this.bridge.outputPath, data); } catch { /* ignore */ }
@@ -163,6 +206,33 @@ class Agent {
         }
       }
     }
+  }
+
+  _captureStructuredOutput(data) {
+    const chunk = stripAnsi(data);
+    if (!chunk) return;
+
+    for (const [kind, markers] of Object.entries(STRUCTURED_BLOCK_MARKERS)) {
+      const state = this.structuredOutput[kind];
+      const combined = `${state.pending}${chunk}`;
+      const completed = getLastStructuredBlock(combined, markers.start, markers.end);
+      if (completed) {
+        state.completed = completed;
+      }
+
+      const lastStartIdx = combined.lastIndexOf(markers.start);
+      const lastEndIdx = combined.lastIndexOf(markers.end);
+      if (lastStartIdx !== -1 && lastStartIdx > lastEndIdx) {
+        state.pending = combined.slice(lastStartIdx);
+      } else {
+        const tailLength = Math.max(markers.start.length, markers.end.length) * 2;
+        state.pending = combined.slice(-tailLength);
+      }
+    }
+  }
+
+  getStructuredBlock(kind) {
+    return this.structuredOutput[kind]?.completed || null;
   }
 
   _syncTaskTokens() {
@@ -235,6 +305,7 @@ class Agent {
       openedAt: null,
       outputPath: null,
     };
+    this._resetStructuredOutput();
     bus.emit('agent:updated', this.getStatus());
   }
 
