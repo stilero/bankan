@@ -83,6 +83,14 @@ Linux: build-essential
 
 ---
 
+### Big heads up
+Ban Kan is in early development.
+
+The core workflow works, but bugs and rough edges are expected.
+Feedback is extremely valuable at this stage.
+
+---
+
 ## Quick Start
 
 1. Launch Ban Kan
@@ -364,11 +372,3 @@ Screenshots are appreciated for UI updates.
 ## License
 
 MIT
-
----
-
-## Big heads up
-Ban Kan is in early development.
-
-The core workflow works, but bugs and rough edges are expected.
-Feedback is extremely valuable at this stage.
