@@ -90,6 +90,18 @@ RISKS:
 === PLAN END ===`)).toBe(true);
   });
 
+  test('review prompt template is detected as placeholder', () => {
+    const templateText = `=== REVIEW START ===
+VERDICT: PASS or FAIL
+CRITICAL_ISSUES:
+- concrete issue, or none
+MINOR_ISSUES:
+- concrete issue, or none
+SUMMARY: 2-3 concrete sentences summarising the review, including changed files and strengths
+=== REVIEW END ===`;
+    expect(isReviewResultPlaceholder(templateText)).toBe(true);
+  });
+
   test('blank and summary-free reviews are treated as placeholders', () => {
     expect(isReviewResultPlaceholder('')).toBe(true);
     expect(isReviewResultPlaceholder(`=== REVIEW START ===

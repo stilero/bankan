@@ -175,6 +175,39 @@ RISKS:
     expect(result).not.toContain('(one sentence describing what will be built)');
   });
 
+  test('review extraction finds real review via getAllCapturedBlocks when template overwrites capture', () => {
+    const readCaptured = vi.fn(() => null);
+    const realReview = `=== REVIEW START ===
+VERDICT: PASS
+CRITICAL_ISSUES:
+- none
+MINOR_ISSUES:
+- Minor typo in variable name
+SUMMARY: All changes look good. Tests pass and code follows conventions.
+=== REVIEW END ===`;
+    const templateBlock = `=== REVIEW START ===
+VERDICT: PASS or FAIL
+CRITICAL_ISSUES:
+- concrete issue, or none
+MINOR_ISSUES:
+- concrete issue, or none
+SUMMARY: 2-3 concrete sentences summarising the review, including changed files and strengths
+=== REVIEW END ===`;
+    const agent = {
+      cli: 'claude',
+      // Buffer exhausted — no review markers
+      getBufferString: vi.fn(() => 'noise without markers'),
+      // Structured capture has the placeholder (overwritten real review)
+      getStructuredBlock: vi.fn(() => templateBlock),
+      // But getAllCapturedBlocks has the full history
+      getAllCapturedBlocks: vi.fn(() => [templateBlock, realReview, templateBlock]),
+    };
+
+    const result = extractReviewerReviewText(agent, { readCapturedCodexMessage: readCaptured });
+    expect(result).toContain('All changes look good.');
+    expect(result).not.toContain('2-3 concrete sentences');
+  });
+
   test('review extraction falls back to agent structured capture when the live tail only contains the end marker', () => {
     const readCaptured = vi.fn(() => null);
     const agent = {

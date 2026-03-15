@@ -249,12 +249,35 @@ export function extractPlannerPlanText(agent, options = {}) {
 }
 
 export function extractReviewerReviewText(agent, options = {}) {
-  return extractStructuredStageText(agent, {
-    startMarker: '=== REVIEW START ===',
-    endMarker: '=== REVIEW END ===',
+  const startMarker = '=== REVIEW START ===';
+  const endMarker = '=== REVIEW END ===';
+  const result = extractStructuredStageText(agent, {
+    startMarker,
+    endMarker,
     kind: 'review',
     ...options,
   });
+
+  // Same fallback as extractPlannerPlanText: if the captured block is a
+  // placeholder (echoed prompt template), search all captured blocks and
+  // the full buffer for the real review output.
+  const reviewResult = result ? parseReviewResult(result) : null;
+  if (result && isReviewResultPlaceholder(result, reviewResult)) {
+    const capturedBlocks = agent.getAllCapturedBlocks?.('review') || [];
+    for (let i = capturedBlocks.length - 1; i >= 0; i--) {
+      const parsed = parseReviewResult(capturedBlocks[i]);
+      if (!isReviewResultPlaceholder(capturedBlocks[i], parsed)) return capturedBlocks[i];
+    }
+
+    const cleanBuf = stripAnsi(agent.getBufferString(500));
+    const blocks = getAllStructuredBlocks(cleanBuf, startMarker, endMarker);
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const parsed = parseReviewResult(blocks[i]);
+      if (!isReviewResultPlaceholder(blocks[i], parsed)) return blocks[i];
+    }
+  }
+
+  return result;
 }
 
 function getImplementationCompletionState(agent, taskId) {
@@ -891,8 +914,9 @@ SUMMARY: Review skipped because reviewer max is set to 0.
 async function onReviewComplete(agentId, taskId) {
   const reviewer = agentManager.get(agentId);
   if (!reviewer) return;
-  const reviewText = extractReviewerReviewText(reviewer, { removeCaptured: true });
-  if (!reviewText) return;
+  const rawReviewText = extractReviewerReviewText(reviewer, { removeCaptured: true });
+  if (!rawReviewText) return;
+  const reviewText = cleanTerminalArtifacts(rawReviewText);
   const reviewResult = parseReviewResult(reviewText);
   if (isReviewResultPlaceholder(reviewText, reviewResult)) return;
   const shouldPass = reviewShouldPass(reviewResult);

@@ -48,10 +48,11 @@ export function isReviewResultPlaceholder(reviewText, reviewResult = parseReview
   const normalized = reviewText.replace(/\s+/g, ' ').trim().toLowerCase();
   if (normalized.includes("(issue description, or 'none')")) return true;
   if (normalized.includes('(2-3 sentences summarising the review)')) return true;
+  if (normalized.includes('concrete issue, or none')) return true;
 
   const summary = (reviewResult.summary || '').replace(/\s+/g, ' ').trim().toLowerCase();
   if (!summary) return true;
-  if (summary.includes('2-3 sentences summarising the review')) return true;
+  if (summary.includes('sentences summarising the review')) return true;
 
   return false;
 }
