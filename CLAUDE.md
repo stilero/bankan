@@ -15,6 +15,10 @@ npm run dev                # Run server + Vite client concurrently (alias: npm s
 npm run dev --prefix client   # Client only (Vite dev server on :5173)
 npm run dev --prefix server   # Server only (node --watch on :3001)
 npm run build              # Build client bundle (vite build)
+npm test                   # Run server + client automated tests
+npm run test:server        # Run server Vitest suite
+npm run test:client        # Run client Vitest suite
+npm run coverage           # Run both coverage suites and enforce the combined 80% gate
 ```
 
 Dev mode: client runs at `http://localhost:5173` with API proxy to `:3001`.
@@ -68,9 +72,14 @@ Dev mode: client runs at `http://localhost:5173` with API proxy to `:3001`.
 - React components use inline styles (no CSS modules or styled-components)
 - No linter or formatter configured — match existing patterns
 
+## Testing Expectations
+
+- Claude-driven code changes should follow TDD: create or update the failing automated test first, implement the change second, then rerun the relevant suite.
+- `npm run coverage` is the CI gate.
+- Contributor-facing testing standards, coverage expectations, and pull request guidance live in `CONTRIBUTING.md`.
+
 ## Caveats
 
-- No test suite exists. Verify UI changes at `localhost:5173`, backend changes via manual REST/WS testing.
 - `node-pty` may need native build tools if it compiles from source during install (Xcode CLI on macOS, build-essential on Linux).
 - The orchestrator runs agents with `--dangerously-skip-permissions` for Claude CLI.
 - PR creation requires `gh` CLI to be installed and authenticated.

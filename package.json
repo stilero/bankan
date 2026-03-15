@@ -45,6 +45,11 @@
   "scripts": {
     "setup": "node scripts/setup.js",
     "build": "npm run build --prefix client",
+    "test": "npm run test --prefix server && npm run test --prefix client",
+    "test:server": "npm run test --prefix server",
+    "test:client": "npm run test --prefix client",
+    "coverage": "npm run coverage --prefix server && npm run coverage --prefix client && node scripts/check-coverage.js",
+    "coverage:check": "node scripts/check-coverage.js",
     "dev": "concurrently -n server,client -c cyan,magenta \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
     "start": "npm run dev",
     "install:all": "npm install && npm install --prefix server && npm install --prefix client",

@@ -66,6 +66,8 @@ npm run dev
 
 Ban Kan starts a local server, opens your browser automatically, and serves the dashboard from the same process.
 
+Contributor workflow, TDD expectations, pull request testing guidance, and verification commands live in [CONTRIBUTING.md](./CONTRIBUTING.md).
+
 ---
 
 ## Requirements

@@ -28,8 +28,16 @@ Describe the checks you ran. Manual verification is fine if that is the relevant
 
 Examples:
 - `npm run build`
+- `npm test`
+- `npm run coverage`
 - Started the app with `npm run dev` and verified the new flow manually
 - No automated tests were added for this change
+
+## Test Coverage Notes
+
+Call out any intentional coverage gaps, why they remain, and what risk is still accepted.
+
+If none, say `None`.
 
 ## Screenshots
 
@@ -41,5 +49,7 @@ If not applicable, say `N/A`.
 
 - [ ] I linked the related issue or task ID
 - [ ] I documented the verification I performed
+- [ ] I added or updated automated tests for the changed behavior, or documented why not
+- [ ] I documented any intentional coverage gaps
 - [ ] I updated docs or config notes if this change requires it
 - [ ] I added screenshots if this PR changes the UI

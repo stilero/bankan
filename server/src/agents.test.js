@@ -1,91 +1,208 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import agentManager from './agents.js';
+import store from './store.js';
 
-test('planner with stale task binding is not treated as available', () => {
-  const originalAgents = agentManager.agents;
+let originalAgents;
+let originalMaxSettings;
+let originalCliSettings;
+let originalSessionCounters;
 
-  agentManager.agents = new Map([
-    ['orch', { id: 'orch' }],
-    ['plan-1', {
-      id: 'plan-1',
-      status: 'idle',
-      draining: false,
-      currentTask: 'T-123',
-      process: null,
-    }],
-    ['plan-2', {
-      id: 'plan-2',
-      status: 'idle',
-      draining: false,
-      currentTask: null,
-      process: null,
-    }],
-  ]);
-
-  try {
-    const planner = agentManager.getAvailablePlanner();
-    assert.equal(planner?.id, 'plan-2');
-  } finally {
-    agentManager.agents = originalAgents;
-  }
+beforeEach(() => {
+  originalAgents = agentManager.agents;
+  originalMaxSettings = { ...agentManager._maxSettings };
+  originalCliSettings = { ...agentManager._cliSettings };
+  originalSessionCounters = { ...agentManager._sessionCounters };
 });
 
-test('planner with a live process is not treated as available', () => {
-  const originalAgents = agentManager.agents;
-
-  agentManager.agents = new Map([
-    ['orch', { id: 'orch' }],
-    ['plan-1', {
-      id: 'plan-1',
-      status: 'idle',
-      draining: false,
-      currentTask: null,
-      process: { pid: 42 },
-    }],
-    ['plan-2', {
-      id: 'plan-2',
-      status: 'idle',
-      draining: false,
-      currentTask: null,
-      process: null,
-    }],
-  ]);
-
-  try {
-    const planner = agentManager.getAvailablePlanner();
-    assert.equal(planner?.id, 'plan-2');
-  } finally {
-    agentManager.agents = originalAgents;
-  }
+afterEach(() => {
+  agentManager.agents = originalAgents;
+  agentManager._maxSettings = originalMaxSettings;
+  agentManager._cliSettings = originalCliSettings;
+  agentManager._sessionCounters = originalSessionCounters;
+  vi.restoreAllMocks();
 });
 
-test('planner sessions get fresh ids after removal', () => {
-  const originalAgents = agentManager.agents;
-  const originalMaxSettings = { ...agentManager._maxSettings };
-  const originalCliSettings = { ...agentManager._cliSettings };
-  const originalSessionCounters = { ...agentManager._sessionCounters };
+describe('AgentManager availability', () => {
+  test('planner with stale task binding is not treated as available', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch' }],
+      ['plan-1', {
+        id: 'plan-1',
+        status: 'idle',
+        draining: false,
+        currentTask: 'T-123',
+        process: null,
+      }],
+      ['plan-2', {
+        id: 'plan-2',
+        status: 'idle',
+        draining: false,
+        currentTask: null,
+        process: null,
+      }],
+    ]);
 
-  agentManager.agents = new Map([
-    ['orch', { id: 'orch' }],
-  ]);
-  agentManager._maxSettings = { ...originalMaxSettings, planners: 2 };
-  agentManager._cliSettings = { ...originalCliSettings, planners: 'claude' };
-  agentManager._sessionCounters = { ...originalSessionCounters, plan: 0 };
+    const planner = agentManager.getAvailablePlanner();
+    expect(planner?.id).toBe('plan-2');
+  });
 
-  try {
+  test('planner with a live process is not treated as available', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch' }],
+      ['plan-1', {
+        id: 'plan-1',
+        status: 'idle',
+        draining: false,
+        currentTask: null,
+        process: { pid: 42 },
+      }],
+      ['plan-2', {
+        id: 'plan-2',
+        status: 'idle',
+        draining: false,
+        currentTask: null,
+        process: null,
+      }],
+    ]);
+
+    const planner = agentManager.getAvailablePlanner();
+    expect(planner?.id).toBe('plan-2');
+  });
+
+  test('planner sessions get fresh ids after removal', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+    ]);
+    agentManager._maxSettings = { ...originalMaxSettings, planners: 2 };
+    agentManager._cliSettings = { ...originalCliSettings, planners: 'claude' };
+    agentManager._sessionCounters = { ...originalSessionCounters, plan: 0 };
+
     const first = agentManager.scaleUp('planners');
-    assert.equal(first?.id, 'plan-1');
+    expect(first?.id).toBe('plan-1');
 
     agentManager.removeAgent('plan-1');
 
     const second = agentManager.scaleUp('planners');
-    assert.equal(second?.id, 'plan-2');
-  } finally {
-    agentManager.agents = originalAgents;
-    agentManager._maxSettings = originalMaxSettings;
-    agentManager._cliSettings = originalCliSettings;
-    agentManager._sessionCounters = originalSessionCounters;
-  }
+    expect(second?.id).toBe('plan-2');
+  });
+});
+
+describe('Agent behavior through managed instances', () => {
+  test('spawn rejects invalid working directory and writes an error to subscribers', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+    ]);
+    agentManager._maxSettings = { ...originalMaxSettings, implementors: 1 };
+    agentManager._cliSettings = { ...originalCliSettings, implementors: 'claude' };
+    agentManager._sessionCounters = { ...originalSessionCounters, imp: 0 };
+
+    const agent = agentManager.scaleUp('implementors');
+    const ws = { send: vi.fn() };
+    agent.subscribers.add(ws);
+
+    expect(agent.spawn('/definitely/missing', 'echo test')).toBe(false);
+    expect(agent.getBufferString()).toContain('Invalid working directory');
+    expect(ws.send).toHaveBeenCalledOnce();
+  });
+
+  test('write returns a helpful error when the agent is not running', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+    ]);
+    agentManager._maxSettings = { ...originalMaxSettings, reviewers: 1 };
+    agentManager._cliSettings = { ...originalCliSettings, reviewers: 'claude' };
+    agentManager._sessionCounters = { ...originalSessionCounters, rev: 0 };
+
+    const agent = agentManager.scaleUp('reviewers');
+
+    expect(agent.write('hello')).toBe(false);
+    expect(agent.getBufferString()).toContain('Agent is not running');
+  });
+
+  test('resize normalizes invalid values and keeps the terminal size usable', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+    ]);
+    agentManager._maxSettings = { ...originalMaxSettings, planners: 1 };
+    agentManager._cliSettings = { ...originalCliSettings, planners: 'claude' };
+    agentManager._sessionCounters = { ...originalSessionCounters, plan: 0 };
+
+    const agent = agentManager.scaleUp('planners');
+
+    expect(agent.resize(1, 1)).toBe(true);
+    expect(agent.terminalSize).toEqual({ cols: 20, rows: 5 });
+  });
+
+  test('token parsing keeps the highest observed count and aggregates task totals', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+    ]);
+    agentManager._maxSettings = { ...originalMaxSettings, implementors: 1 };
+    agentManager._cliSettings = { ...originalCliSettings, implementors: 'claude' };
+    agentManager._sessionCounters = { ...originalSessionCounters, imp: 0 };
+
+    const agent = agentManager.scaleUp('implementors');
+    const taskId = 'T-123';
+    const updateTokens = vi.spyOn(store, 'updateTaskTokens').mockImplementation(() => ({
+      id: taskId,
+      totalTokens: 1225,
+    }));
+    const getTask = vi.spyOn(store, 'getTask').mockImplementation((id) => (
+      id === taskId ? { id: taskId, totalTokens: 1225 } : null
+    ));
+
+    agent.currentTask = taskId;
+    agent.taskTokenBase = 25;
+    agent._parseTokens('context: 1,200');
+    agent._parseTokens('total tokens: 900');
+    agent._syncTaskTokens();
+
+    expect(agent.tokens).toBe(1200);
+    expect(updateTokens).toHaveBeenCalledWith(taskId, 1225);
+    expect(getTask).toHaveBeenCalledWith(taskId);
+    expect(agent.getStatus().aggregatedTokens).toBe(1225);
+  });
+
+  test('reconfigure removes extra idle agents and marks active overflow agents as draining', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+      ['imp-1', {
+        id: 'imp-1',
+        status: 'idle',
+        draining: false,
+        currentTask: null,
+        process: null,
+        cli: 'claude',
+        subscribers: new Set(),
+        getStatus() {
+          return { id: this.id, draining: this.draining, cli: this.cli };
+        },
+      }],
+      ['imp-2', {
+        id: 'imp-2',
+        status: 'active',
+        draining: false,
+        currentTask: 'T-1',
+        process: { pid: 1 },
+        cli: 'claude',
+        subscribers: new Set(),
+        getStatus() {
+          return { id: this.id, draining: this.draining, cli: this.cli };
+        },
+      }],
+    ]);
+
+    agentManager.reconfigure({
+      agents: {
+        planners: { max: 4, cli: 'claude' },
+        implementors: { max: 1, cli: 'codex' },
+        reviewers: { max: 4, cli: 'claude' },
+      },
+    });
+
+    expect(agentManager.get('imp-1').cli).toBe('codex');
+    expect(agentManager.get('imp-2').draining).toBe(true);
+    expect(agentManager.get('imp-2').cli).toBe('claude');
+  });
 });

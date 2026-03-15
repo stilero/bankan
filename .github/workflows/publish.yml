@@ -37,6 +37,12 @@ jobs:
       - name: Install client dependencies
         run: npm ci --prefix client
 
+      - name: Run test suite
+        run: npm test
+
+      - name: Enforce coverage gate
+        run: npm run coverage
+
       - name: Build client bundle
         run: npm run build
 
