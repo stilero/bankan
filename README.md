@@ -5,7 +5,7 @@
 # Ban Kan
 
 <p align="center">
-<strong>Run AI coding agents like a Kanban board.</strong>
+<strong>Handle 10+ AI coding agents without losing control.</strong>
 </p>
 
 <p align="center">
@@ -82,6 +82,14 @@ Native build tools may be needed only if `node-pty` has to compile during instal
 
 macOS: Xcode Command Line Tools  
 Linux: build-essential
+
+---
+
+### Big heads up
+Ban Kan is in early development.
+
+The core workflow works, but bugs and rough edges are expected.
+Feedback is extremely valuable at this stage.
 
 ---
 
