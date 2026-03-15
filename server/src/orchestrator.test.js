@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   buildAgentCommand,
   cleanTerminalArtifacts,
+  extractImplementationResult,
   extractPlannerPlanText,
   extractReviewerReviewText,
   sanitizeBranchName,
@@ -227,6 +228,60 @@ SUMMARY: Stable review capture prevents timeout.
     expect(extractReviewerReviewText(agent, { readCapturedCodexMessage: readCaptured })).toContain(
       'Stable review capture prevents timeout.'
     );
+  });
+
+  test('implementation extraction returns real completion block via structured capture', () => {
+    const readCaptured = vi.fn(() => null);
+    const realBlock = `=== IMPLEMENTATION RESULT START ===
+  === IMPLEMENTATION COMPLETE T-ABC123 ===
+  === IMPLEMENTATION RESULT END ===`;
+    const agent = {
+      cli: 'claude',
+      getBufferString: vi.fn(() => 'noise'),
+      getStructuredBlock: vi.fn(() => realBlock),
+    };
+
+    const result = extractImplementationResult(agent, { readCapturedCodexMessage: readCaptured });
+    expect(result).toContain('IMPLEMENTATION COMPLETE T-ABC123');
+  });
+
+  test('implementation extraction rejects echoed prompt template and finds real block in history', () => {
+    const readCaptured = vi.fn(() => null);
+    const templateBlock = `=== IMPLEMENTATION RESULT START ===
+  === IMPLEMENTATION COMPLETE {task.id} ===
+  === IMPLEMENTATION RESULT END ===`;
+    const realBlock = `=== IMPLEMENTATION RESULT START ===
+  === IMPLEMENTATION COMPLETE T-ABC123 ===
+  === IMPLEMENTATION RESULT END ===`;
+    const agent = {
+      cli: 'claude',
+      getBufferString: vi.fn(() => 'noise'),
+      getStructuredBlock: vi.fn(() => templateBlock),
+      getAllCapturedBlocks: vi.fn(() => [templateBlock, realBlock, templateBlock]),
+    };
+
+    const result = extractImplementationResult(agent, { readCapturedCodexMessage: readCaptured });
+    expect(result).toContain('IMPLEMENTATION COMPLETE T-ABC123');
+    expect(result).not.toContain('{task.id}');
+  });
+
+  test('implementation extraction falls back to buffer scan when structured capture is placeholder', () => {
+    const readCaptured = vi.fn(() => null);
+    const templateBlock = `=== IMPLEMENTATION RESULT START ===
+  === BLOCKED: {describe the blocker here} ===
+  === IMPLEMENTATION RESULT END ===`;
+    const realBlock = `=== IMPLEMENTATION RESULT START ===
+  === BLOCKED: npm install failed with EACCES ===
+  === IMPLEMENTATION RESULT END ===`;
+    const agent = {
+      cli: 'claude',
+      getBufferString: vi.fn(() => `noise\n${realBlock}\nmore noise\n${templateBlock}`),
+      getStructuredBlock: vi.fn(() => templateBlock),
+      getAllCapturedBlocks: vi.fn(() => [templateBlock]),
+    };
+
+    const result = extractImplementationResult(agent, { readCapturedCodexMessage: readCaptured });
+    expect(result).toContain('npm install failed with EACCES');
   });
 });
 
