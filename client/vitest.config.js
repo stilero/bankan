@@ -20,7 +20,6 @@ export default defineConfig({
         'src/KanbanCard.jsx',
         'src/KanbanColumn.jsx',
         'src/TaskDetailModal.jsx',
-        'src/TerminalDrawer.jsx',
         'src/TerminalPane.jsx',
       ],
     },

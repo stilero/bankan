@@ -3,4 +3,5 @@ node_modules/
 .env.local
 dist/
 coverage/
+client/coverage/
 .DS_Store
