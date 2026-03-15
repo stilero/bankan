@@ -63,6 +63,10 @@ class Agent {
       openedAt: null,
       outputPath: null,
     };
+    this.terminalSize = {
+      cols: 220,
+      rows: 50,
+    };
   }
 
   spawn(cwd, command) {
@@ -102,8 +106,8 @@ class Agent {
     delete env.CLAUDECODE;
     this.process = pty.spawn('bash', ['-l', '-c', command], {
       name: 'xterm-256color',
-      cols: 220,
-      rows: 50,
+      cols: this.terminalSize.cols,
+      rows: this.terminalSize.rows,
       cwd,
       env,
     });
@@ -192,6 +196,29 @@ class Agent {
     return false;
   }
 
+  resize(cols, rows) {
+    const nextCols = Math.max(20, Math.floor(Number(cols) || 0));
+    const nextRows = Math.max(5, Math.floor(Number(rows) || 0));
+
+    if (!Number.isFinite(nextCols) || !Number.isFinite(nextRows)) {
+      return false;
+    }
+
+    this.terminalSize = {
+      cols: nextCols,
+      rows: nextRows,
+    };
+
+    if (!this.process) return true;
+
+    try {
+      this.process.resize(nextCols, nextRows);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   kill() {
     if (this.process) {
       try { this.process.kill(); } catch { /* ignore */ }
@@ -232,6 +259,7 @@ class Agent {
       bridgeMode: this.bridge.mode,
       bridgeOwner: this.bridge.owner,
       bridgeOpenedAt: this.bridge.openedAt,
+      terminalSize: this.terminalSize,
       aggregatedTokens: this.currentTask
         ? Math.max(store.getTask(this.currentTask)?.totalTokens || 0, this.taskTokenBase + this.tokens)
         : 0,

@@ -4,11 +4,14 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 
-export default function TerminalPane({ agent, subscribeTerminal, injectMessage, sendRaw, onClose }) {
+export default function TerminalPane({ agent, subscribeTerminal, injectMessage, sendRaw, resizeTerminal, onClose }) {
   const termRef = useRef(null);
   const containerRef = useRef(null);
   const inputRef = useRef(null);
   const [inputValue, setInputValue] = useState('');
+  const resizeTimerRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!containerRef.current || !agent) return;
@@ -36,16 +39,23 @@ export default function TerminalPane({ agent, subscribeTerminal, injectMessage, 
     term.loadAddon(webLinksAddon);
     term.open(containerRef.current);
 
-    // Fit after a short delay to ensure container is sized
+    termRef.current = term;
+
+    const syncSize = () => {
+      if (!termRef.current) return;
+      try { fitAddon.fit(); } catch { return; }
+      if (term.cols > 0 && term.rows > 0) {
+        resizeTerminal(agent.id, term.cols, term.rows);
+      }
+    };
+
     requestAnimationFrame(() => {
-      try { fitAddon.fit(); } catch { /* ignore */ }
+      syncSize();
       const tag = document.activeElement?.tagName;
       if (!tag || tag === 'BODY' || tag === 'DIV') {
         term.focus();
       }
     });
-
-    termRef.current = term;
 
     term.onData((data) => {
       sendRaw(agent.id, data);
@@ -58,24 +68,31 @@ export default function TerminalPane({ agent, subscribeTerminal, injectMessage, 
 
     // Resize observer
     const resizeObserver = new ResizeObserver(() => {
-      try { fitAddon.fit(); } catch { /* ignore */ }
+      if (resizeTimerRef.current) {
+        window.clearTimeout(resizeTimerRef.current);
+      }
+      resizeTimerRef.current = window.setTimeout(syncSize, 50);
     });
     resizeObserver.observe(containerRef.current);
 
     // Keyboard shortcut
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       resizeObserver.disconnect();
+      if (resizeTimerRef.current) {
+        window.clearTimeout(resizeTimerRef.current);
+        resizeTimerRef.current = null;
+      }
       unsub();
       term.dispose();
       termRef.current = null;
     };
-  }, [agent?.id]);
+  }, [agent?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleInject = (e) => {
     if (e.key === 'Enter' && inputValue.trim()) {
