@@ -52,7 +52,7 @@ export default function App() {
     connected, isInitialized, agents, tasks, repos, settings, notifications,
     addTask, approvePlan, rejectPlan,
     pauseTask, resumeTask, editTask, abortTask, resetTask, retryTask, deleteTask, openTaskWorkspace,
-    injectMessage, sendRaw, resizeTerminal, pauseAgent, resumeAgent,
+    injectMessage, sendRaw, resizeTerminal,
     updateSettings, subscribeTerminal, openAgentTerminal, returnAgentTerminal,
   } = useFactory();
 

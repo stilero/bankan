@@ -1,0 +1,114 @@
+import { afterEach, describe, expect, test } from 'vitest';
+
+import { createRuntimeHarness } from '../test-utils.js';
+
+let harness = null;
+
+afterEach(() => {
+  harness?.cleanup();
+  harness = null;
+});
+
+describe('config settings lifecycle', () => {
+  test('loadSettings falls back to defaults and normalizes repo selection', async () => {
+    harness = createRuntimeHarness();
+    const configModule = await harness.importModule('./src/config.js');
+
+    const defaults = configModule.getDefaults();
+    expect(defaults.agents.planners.max).toBe(4);
+    expect(configModule.loadSettings().defaultRepoPath).toBe(defaults.defaultRepoPath);
+    expect(configModule.getWorkspacesDir()).toContain(harness.runtimeDir);
+  });
+
+  test('saveSettings persists normalized settings shape', async () => {
+    harness = createRuntimeHarness();
+    const configModule = await harness.importModule('./src/config.js');
+
+    configModule.saveSettings({
+      repos: ['/repo-a', '/repo-b'],
+      defaultRepoPath: '/missing',
+      reposDir: '/legacy-root',
+      workspaceRoot: '',
+      agents: {
+        planners: { max: 0, cli: 'claude', count: 1 },
+        implementors: { max: 2, cli: 'codex', count: 8 },
+        reviewers: { max: 1, cli: 'claude', count: 3 },
+      },
+      prompts: {
+        implementation: 'Custom implementation prompt',
+      },
+    });
+
+    const loaded = configModule.loadSettings();
+    expect(loaded.defaultRepoPath).toBe('/repo-a');
+    expect(loaded.workspaceRoot).toBe('/legacy-root');
+    expect(loaded.agents.planners.count).toBeUndefined();
+    expect(loaded.prompts.planning).toContain('Plan Mode Instructions');
+    expect(loaded.prompts.implementation).toBe('Custom implementation prompt');
+  });
+
+  test('validateSettings reports invalid values across roles and prompts', async () => {
+    harness = createRuntimeHarness();
+    const { validateSettings } = await harness.importModule('./src/config.js');
+
+    const errors = validateSettings({
+      repos: ['/repo-a'],
+      defaultRepoPath: '/repo-b',
+      workspaceRoot: '',
+      agents: {
+        planners: { max: -1, cli: 'bad-cli' },
+        implementors: { max: 0, cli: 'codex' },
+        reviewers: { max: 11, cli: 'claude' },
+      },
+      prompts: {
+        planning: 'ok',
+        implementation: 12,
+      },
+    });
+
+    expect(errors).toContain('workspaceRoot is required');
+    expect(errors).toContain('defaultRepoPath must match one of the configured repos');
+    expect(errors).toContain('planners.max must be between 0 and 10');
+    expect(errors).toContain('planners.cli must be one of: claude, codex');
+    expect(errors).toContain('implementors.max must be between 1 and 10');
+    expect(errors).toContain('reviewers.max must be between 0 and 10');
+    expect(errors).toContain('prompts.implementation must be a string');
+    expect(errors).toContain('prompts.review must be a string');
+  });
+
+  test('reads env defaults for repos, port, and legacy implementor cli', async () => {
+    harness = createRuntimeHarness();
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(`${harness.runtimeDir}/.env.local`, [
+      'PORT=4010',
+      'REPOS=/repo-a,/repo-b',
+      'IMPLEMENTOR_1_CLI=codex',
+      '# comment',
+      'MALFORMED',
+    ].join('\n'));
+
+    const configModule = await harness.importModule('./src/config.js');
+
+    expect(configModule.default.PORT).toBe(4010);
+    expect(configModule.default.REPOS).toEqual(['/repo-a', '/repo-b']);
+    expect(configModule.getDefaults().agents.implementors.cli).toBe('codex');
+  });
+
+  test('returns early when agents are missing and validates repo types', async () => {
+    harness = createRuntimeHarness();
+    const { validateSettings } = await harness.importModule('./src/config.js');
+
+    expect(validateSettings({})).toEqual(['Missing agents configuration']);
+    expect(validateSettings({
+      agents: {
+        planners: { max: 0, cli: 'claude' },
+        implementors: { max: 1, cli: 'codex' },
+        reviewers: { max: 0, cli: 'claude' },
+      },
+      workspaceRoot: '/tmp/workspaces',
+      repos: 'not-an-array',
+      defaultRepoPath: 123,
+      prompts: {},
+    })).toContain('repos must be an array');
+  });
+});

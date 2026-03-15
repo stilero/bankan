@@ -1,16 +1,18 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, expect, test } from 'vitest';
 
 import {
   getLiveTaskAgent,
+  getAgentStage,
   isReviewResultPlaceholder,
+  isPlanPlaceholder,
   parseReviewResult,
   reviewShouldPass,
   stageToRetryStatus,
 } from './workflow.js';
 
-test('minor-only review output is normalized to pass', () => {
-  const reviewText = `=== REVIEW START ===
+describe('review parsing', () => {
+  test('minor-only review output is normalized to pass', () => {
+    const reviewText = `=== REVIEW START ===
 VERDICT: FAIL
 CRITICAL_ISSUES:
 - none
@@ -19,16 +21,16 @@ MINOR_ISSUES:
 SUMMARY: Only minor issues were found.
 === REVIEW END ===`;
 
-  const result = parseReviewResult(reviewText);
+    const result = parseReviewResult(reviewText);
 
-  assert.equal(result.verdict, 'FAIL');
-  assert.deepEqual(result.criticalIssues, []);
-  assert.equal(result.minorIssues.length, 1);
-  assert.equal(reviewShouldPass(result), true);
-});
+    expect(result.verdict).toBe('FAIL');
+    expect(result.criticalIssues).toEqual([]);
+    expect(result.minorIssues).toHaveLength(1);
+    expect(reviewShouldPass(result)).toBe(true);
+  });
 
-test('review with critical issues still fails', () => {
-  const reviewText = `=== REVIEW START ===
+  test('review with critical issues still fails', () => {
+    const reviewText = `=== REVIEW START ===
 VERDICT: FAIL
 CRITICAL_ISSUES:
 - server/src/orchestrator.js: review failures can loop indefinitely
@@ -37,14 +39,14 @@ MINOR_ISSUES:
 SUMMARY: A must-fix issue remains.
 === REVIEW END ===`;
 
-  const result = parseReviewResult(reviewText);
+    const result = parseReviewResult(reviewText);
 
-  assert.equal(result.hasCriticalIssues, true);
-  assert.equal(reviewShouldPass(result), false);
-});
+    expect(result.hasCriticalIssues).toBe(true);
+    expect(reviewShouldPass(result)).toBe(false);
+  });
 
-test('placeholder review template is rejected', () => {
-  const reviewText = `=== REVIEW START ===
+  test('placeholder review template is rejected', () => {
+    const reviewText = `=== REVIEW START ===
 VERDICT: PASS
 CRITICAL_ISSUES:
 - none
@@ -53,13 +55,13 @@ MINOR_ISSUES:
 SUMMARY: (2-3 sentences summarising the review)
 === REVIEW END ===`;
 
-  const result = parseReviewResult(reviewText);
+    const result = parseReviewResult(reviewText);
 
-  assert.equal(isReviewResultPlaceholder(reviewText, result), true);
-});
+    expect(isReviewResultPlaceholder(reviewText, result)).toBe(true);
+  });
 
-test('concrete review output is not treated as placeholder', () => {
-  const reviewText = `=== REVIEW START ===
+  test('concrete review output is not treated as placeholder', () => {
+    const reviewText = `=== REVIEW START ===
 VERDICT: PASS
 CRITICAL_ISSUES:
 - none
@@ -68,57 +70,165 @@ MINOR_ISSUES:
 SUMMARY: Changed files: server/src/orchestrator.js, server/src/workflow.js. The review completion gate now rejects placeholder output and the branch otherwise looks consistent with existing task flow. Strengths: the change is narrowly scoped and adds regression coverage.
 === REVIEW END ===`;
 
-  const result = parseReviewResult(reviewText);
+    const result = parseReviewResult(reviewText);
 
-  assert.equal(isReviewResultPlaceholder(reviewText, result), false);
+    expect(isReviewResultPlaceholder(reviewText, result)).toBe(false);
+  });
+
+  test('plan placeholders are detected from default prompt scaffolding', () => {
+    expect(isPlanPlaceholder(`=== PLAN START ===
+SUMMARY: (one sentence describing what will be built)
+BRANCH: feature/example
+FILES_TO_MODIFY:
+- path/to/file.ts (reason for modification)
+STEPS:
+1. (detailed, actionable step)
+TESTS_NEEDED:
+- (test description, or 'none')
+RISKS:
+- (potential issue or edge case, or 'none')
+=== PLAN END ===`)).toBe(true);
+  });
+
+  test('blank and summary-free reviews are treated as placeholders', () => {
+    expect(isReviewResultPlaceholder('')).toBe(true);
+    expect(isReviewResultPlaceholder(`=== REVIEW START ===
+VERDICT: PASS
+CRITICAL_ISSUES:
+- none
+MINOR_ISSUES:
+- none
+SUMMARY:
+=== REVIEW END ===`)).toBe(true);
+  });
+
+  test('concrete plans are not treated as placeholders', () => {
+    expect(isPlanPlaceholder(`=== PLAN START ===
+SUMMARY: Add automated tests for the workflow helpers.
+BRANCH: feature/add-workflow-tests
+FILES_TO_MODIFY:
+- server/src/workflow.test.js (expand retry and placeholder coverage)
+STEPS:
+1. Add tests for retry status edge cases.
+TESTS_NEEDED:
+- Run npm run test --prefix server
+RISKS:
+- none
+=== PLAN END ===`)).toBe(false);
+  });
 });
 
-test('retry ignores stale assigned agent process from another task', () => {
-  const task = {
-    id: 'T-123',
-    assignedTo: 'imp-1',
-    blockedReason: 'Agent is awaiting user input',
-    lastActiveStage: 'implementation',
-  };
-  const agentManager = {
-    get(id) {
-      assert.equal(id, 'imp-1');
-      return {
-        id: 'imp-1',
-        process: { pid: 1234 },
-        currentTask: 'T-999',
-      };
-    },
-  };
+describe('retry status resolution', () => {
+  test('retry ignores stale assigned agent process from another task', () => {
+    const task = {
+      id: 'T-123',
+      assignedTo: 'imp-1',
+      blockedReason: 'Agent is awaiting user input',
+      lastActiveStage: 'implementation',
+    };
+    const agentManager = {
+      get(id) {
+        expect(id).toBe('imp-1');
+        return {
+          id: 'imp-1',
+          process: { pid: 1234 },
+          currentTask: 'T-999',
+        };
+      },
+    };
 
-  const liveAgent = getLiveTaskAgent(task, agentManager);
-  const retryStatus = stageToRetryStatus(task, { liveAgent, planningDisabled: false });
+    const liveAgent = getLiveTaskAgent(task, agentManager);
+    const retryStatus = stageToRetryStatus(task, { liveAgent, planningDisabled: false });
 
-  assert.equal(liveAgent, null);
-  assert.equal(retryStatus, 'queued');
+    expect(liveAgent).toBeNull();
+    expect(retryStatus).toBe('queued');
+  });
+
+  test('retry reuses live agent only when it still owns the task', () => {
+    const task = {
+      id: 'T-123',
+      assignedTo: 'imp-1',
+      blockedReason: 'Agent is awaiting user input',
+      lastActiveStage: 'implementation',
+    };
+    const liveAgentDef = {
+      id: 'imp-1',
+      process: { pid: 1234 },
+      currentTask: 'T-123',
+    };
+    const agentManager = {
+      get() {
+        return liveAgentDef;
+      },
+    };
+
+    const liveAgent = getLiveTaskAgent(task, agentManager);
+    const retryStatus = stageToRetryStatus(task, { liveAgent, planningDisabled: false });
+
+    expect(liveAgent).toBe(liveAgentDef);
+    expect(retryStatus).toBe('implementing');
+  });
+
+  test('planning tasks return to approval when a plan already exists', () => {
+    expect(stageToRetryStatus({
+      lastActiveStage: 'planning',
+      plan: 'ready',
+      blockedReason: '',
+    }, { planningDisabled: false })).toBe('awaiting_approval');
+  });
+
+  test('maximum review cycle blockers return to queue', () => {
+    expect(stageToRetryStatus({
+      lastActiveStage: 'review',
+      blockedReason: 'Reached maximum review cycles for this task',
+    }, { planningDisabled: false })).toBe('queued');
+  });
+
+  test('live planner and reviewer agents preserve their active stage', () => {
+    expect(stageToRetryStatus({
+      lastActiveStage: 'implementation',
+      blockedReason: '',
+    }, { liveAgent: { id: 'plan-1' }, planningDisabled: false })).toBe('planning');
+
+    expect(stageToRetryStatus({
+      lastActiveStage: 'implementation',
+      blockedReason: '',
+    }, { liveAgent: { id: 'rev-1' }, planningDisabled: false })).toBe('review');
+  });
+
+  test('planning-disabled tasks skip back to queue and backlog defaults respect planner availability', () => {
+    expect(stageToRetryStatus({
+      lastActiveStage: 'planning',
+      plan: null,
+      blockedReason: '',
+    }, { planningDisabled: true })).toBe('queued');
+
+    expect(stageToRetryStatus({
+      lastActiveStage: null,
+      blockedReason: '',
+    }, { planningDisabled: false })).toBe('backlog');
+
+    expect(stageToRetryStatus({
+      lastActiveStage: null,
+      blockedReason: '',
+    }, { planningDisabled: true })).toBe('queued');
+  });
 });
 
-test('retry reuses live agent only when it still owns the task', () => {
-  const task = {
-    id: 'T-123',
-    assignedTo: 'imp-1',
-    blockedReason: 'Agent is awaiting user input',
-    lastActiveStage: 'implementation',
-  };
-  const liveAgentDef = {
-    id: 'imp-1',
-    process: { pid: 1234 },
-    currentTask: 'T-123',
-  };
-  const agentManager = {
-    get() {
-      return liveAgentDef;
-    },
-  };
+describe('live agent lookup', () => {
+  test('returns null when task has no assigned agent or no live process', () => {
+    expect(getLiveTaskAgent({ assignedTo: null }, { get: () => null })).toBeNull();
+    expect(getLiveTaskAgent({ assignedTo: 'imp-1', id: 'T-1' }, {
+      get: () => ({ id: 'imp-1', process: null, currentTask: 'T-1' }),
+    })).toBeNull();
+  });
+});
 
-  const liveAgent = getLiveTaskAgent(task, agentManager);
-  const retryStatus = stageToRetryStatus(task, { liveAgent, planningDisabled: false });
-
-  assert.equal(liveAgent, liveAgentDef);
-  assert.equal(retryStatus, 'implementing');
+describe('agent stage helper', () => {
+  test('maps known agent prefixes to stages', () => {
+    expect(getAgentStage('plan-2')).toBe('planning');
+    expect(getAgentStage('imp-2')).toBe('implementation');
+    expect(getAgentStage('rev-2')).toBe('review');
+    expect(getAgentStage('orch')).toBeNull();
+  });
 });

@@ -2,10 +2,13 @@
   "name": "bankan-client",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",
@@ -16,6 +19,11 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.1.7"
+    "@vitest/coverage-v8": "^2.1.8",
+    "@testing-library/react": "^16.2.0",
+    "@testing-library/user-event": "^14.6.1",
+    "jsdom": "^25.0.1",
+    "vite": "^5.1.7",
+    "vitest": "^2.1.8"
   }
 }

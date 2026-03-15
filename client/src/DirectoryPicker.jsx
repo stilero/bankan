@@ -35,7 +35,7 @@ export default function DirectoryPicker({ initialPath, onSelect, onClose }) {
 
   useEffect(() => {
     fetchDir(initialPath || '');
-  }, []);
+  }, [initialPath]);
 
   const navigateTo = (dirName) => {
     fetchDir(currentPath + '/' + dirName);

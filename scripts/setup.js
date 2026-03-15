@@ -15,10 +15,6 @@ const ENV_FILE = runtimePaths.envFile;
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 
-function ask(question) {
-  return new Promise((resolve) => rl.question(question, resolve));
-}
-
 function dim(text) { return `\x1b[2m${text}\x1b[0m`; }
 function green(text) { return `\x1b[32m${text}\x1b[0m`; }
 function yellow(text) { return `\x1b[33m${text}\x1b[0m`; }
@@ -172,7 +168,7 @@ async function main() {
     try {
       execSync(step.cmd, { cwd: ROOT, stdio: 'inherit' });
       console.log(`  ${green('✓')} ${step.label}\n`);
-    } catch (err) {
+    } catch {
       console.log(`  ${red('✗')} ${step.label} install failed. Try running manually: ${step.cmd}\n`);
     }
   }

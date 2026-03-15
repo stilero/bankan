@@ -45,6 +45,13 @@
   "scripts": {
     "setup": "node scripts/setup.js",
     "build": "npm run build --prefix client",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "npm run test --prefix server && npm run test --prefix client",
+    "test:server": "npm run test --prefix server",
+    "test:client": "npm run test --prefix client",
+    "coverage": "npm run coverage --prefix server && npm run coverage --prefix client && node scripts/check-coverage.js",
+    "coverage:check": "node scripts/check-coverage.js",
     "dev": "concurrently -n server,client -c cyan,magenta \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
     "start": "npm run dev",
     "install:all": "npm install && npm install --prefix server && npm install --prefix client",
@@ -60,6 +67,11 @@
     "ws": "^8.16.0"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "@eslint/js": "^9.39.4",
+    "concurrently": "^8.2.2",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^16.5.0"
   }
 }

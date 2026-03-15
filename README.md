@@ -66,6 +66,8 @@ npm run dev
 
 Ban Kan starts a local server, opens your browser automatically, and serves the dashboard from the same process.
 
+Contributor workflow, TDD expectations, pull request testing guidance, and verification commands live in [CONTRIBUTING.md](./CONTRIBUTING.md).
+
 ---
 
 ## Requirements
@@ -350,6 +352,8 @@ Useful scripts:
 
 - `npm run build` – build client bundle
 - `npm run dev` – run server + Vite client
+- `npm run lint` – run ESLint across the repo
+- `npm run lint:fix` – apply safe ESLint autofixes
 - `npm run setup` – interactive setup wizard for local runtime config
 - `npm run install:all` – install all dependencies
 

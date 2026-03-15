@@ -2,4 +2,7 @@ node_modules/
 .data/
 .env.local
 dist/
+coverage/
+client/coverage/
+.claude/settings.local.json
 .DS_Store

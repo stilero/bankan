@@ -42,7 +42,7 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  process.stdout.write(`Ban Kan\n\nUsage:\n  bankan [--port <number>] [--no-open]\n`);
+  process.stdout.write('Ban Kan\n\nUsage:\n  bankan [--port <number>] [--no-open]\n');
 }
 
 function isPortAvailable(port, host) {
