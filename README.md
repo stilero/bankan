@@ -21,6 +21,10 @@ Bring order to parallel AI development without leaving your local workflow.
 </p>
 
 <p align="center">
+  <img src="https://raw.githubusercontent.com/stilero/bankan/HEAD/docs/images/workflow/taskflow_animated.gif" alt="Ban Kan workflow showing planning, implementation, and review progressing across the board" width="1200" />
+</p>
+
+<p align="center">
   <img src="https://raw.githubusercontent.com/stilero/bankan/HEAD/docs/images/bankan_screenshot.png" alt="Ban Kan dashboard showing backlog, planning, implementation, review, and done columns" width="1200" />
 </p>
 
