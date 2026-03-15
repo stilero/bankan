@@ -5,6 +5,7 @@ import {
   cleanTerminalArtifacts,
   extractPlannerPlanText,
   extractReviewerReviewText,
+  sanitizeBranchName,
 } from './orchestrator.js';
 
 describe('structured output extraction', () => {
@@ -226,6 +227,33 @@ SUMMARY: Stable review capture prevents timeout.
     expect(extractReviewerReviewText(agent, { readCapturedCodexMessage: readCaptured })).toContain(
       'Stable review capture prevents timeout.'
     );
+  });
+});
+
+describe('sanitizeBranchName', () => {
+  test('strips garbage text appended by ANSI cursor collapse', () => {
+    expect(sanitizeBranchName('feature/t-a811ca-reporting FILES_TO_MODIFY:'))
+      .toBe('feature/t-a811ca-reporting');
+  });
+
+  test('strips trailing prompt characters and whitespace', () => {
+    expect(sanitizeBranchName('feature/t-b60f78-repo-reports  ❯'))
+      .toBe('feature/t-b60f78-repo-reports');
+  });
+
+  test('preserves clean branch names unchanged', () => {
+    expect(sanitizeBranchName('feature/t-91eadd-reports-dashboard'))
+      .toBe('feature/t-91eadd-reports-dashboard');
+  });
+
+  test('handles branch names with dots and underscores', () => {
+    expect(sanitizeBranchName('fix/v2.1_hotfix'))
+      .toBe('fix/v2.1_hotfix');
+  });
+
+  test('strips trailing dots from branch names', () => {
+    expect(sanitizeBranchName('feature/test.'))
+      .toBe('feature/test');
   });
 });
 

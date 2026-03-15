@@ -376,6 +376,18 @@ function generateBranchName(task) {
   return `feature/${task.id.toLowerCase()}-${slugifyTitle(task.title)}`;
 }
 
+// Strip garbage from branch names caused by ANSI cursor positioning collapse
+// (e.g. "feature/t-a811ca-reporting FILES_TO_MODIFY:" → "feature/t-a811ca-reporting").
+// Stops at the first character that's invalid in a git branch name.
+export function sanitizeBranchName(raw) {
+  if (typeof raw !== 'string') return raw;
+  // Trim leading/trailing whitespace, then keep only valid branch chars.
+  // Git branch names allow: alphanumeric, -, _, /, .
+  // Stop at first space or other invalid char (catches appended field headers).
+  const match = raw.trim().match(/^[a-zA-Z0-9/_.-]+/);
+  return match ? match[0].replace(/\.+$/, '') : raw.trim();
+}
+
 function buildSyntheticPlan(task) {
   return `=== PLAN START ===
 SUMMARY: Planning skipped because planner max is set to 0. Implement the requested task directly.
@@ -748,7 +760,9 @@ function onPlanComplete(agentId, taskId) {
 
   // Parse branch name
   const branchMatch = planText.match(/BRANCH:\s*(.+)/);
-  const branch = branchMatch ? branchMatch[1].trim() : generateBranchName(store.getTask(taskId) || { id: taskId, title: 'auto' });
+  const branch = branchMatch
+    ? sanitizeBranchName(branchMatch[1])
+    : generateBranchName(store.getTask(taskId) || { id: taskId, title: 'auto' });
 
   // Save plan
   store.savePlan(taskId, planText);
