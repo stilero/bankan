@@ -5,7 +5,7 @@
 # Ban Kan
 
 <p align="center">
-<strong>Run AI coding agents like a Kanban board.</strong>
+<strong>Handle 10+ AI coding agents without losing control.</strong>
 </p>
 
 <p align="center">
