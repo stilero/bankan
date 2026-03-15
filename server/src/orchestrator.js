@@ -536,7 +536,8 @@ ${task.plan}
 Instructions:
 - You are already on branch ${task.branch} in ${repoDir}
 ${promptBody}
-- When fully complete, output this exact string on its own line:
+- Before signaling completion, ensure ALL changes are committed to git on branch ${task.branch}
+- When fully complete and all changes are committed, output this exact string on its own line:
   === IMPLEMENTATION COMPLETE ${task.id} ===
 - If you encounter a blocker you cannot resolve, output:
   === BLOCKED: {reason} ===

@@ -71,7 +71,8 @@ Key rules:
   implementation: `Follow the plan step by step
 - If required tools or dependencies are missing in the workspace, install them before continuing
 - Commit after each logical unit of work with descriptive commit messages
-- Run existing tests after implementation to verify nothing broke`,
+- Run existing tests after implementation to verify nothing broke
+- After all work is done, make a final commit if there are any uncommitted changes`,
   review: `You are an expert code reviewer.
 
 Step 1 — Gather the diff
