@@ -287,8 +287,13 @@ class Agent {
 
     if (!this.process) return true;
 
+    // Keep PTY at least 200 cols wide so the CLI renders structured
+    // output without cursor repositioning that corrupts text extraction.
+    // The browser terminal (xterm.js) handles wrapping on its own.
+    const ptyCols = Math.max(nextCols, 200);
+
     try {
-      this.process.resize(nextCols, nextRows);
+      this.process.resize(ptyCols, nextRows);
       return true;
     } catch {
       return false;
