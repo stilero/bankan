@@ -141,19 +141,16 @@ All in one dashboard.
 
 ## Why Ban Kan Exists
 
-Most AI coding workflows eventually break down in the same way:
+When developers levels up running multiple AI coding agents they often end up juggling multiple terminals:
 
-- one giant prompt tries to do planning, coding, and review
-- context grows and token usage explodes
-- agents overwrite each other’s work
-- there is no clear review stage
-- parallel development becomes chaos
+- Agent 1 planning a feature
+- Agent 2 implementing code
+- Agent 3 reviewing changes
+- Agent 4 generating tests
 
-Ban Kan fixes this with a model developers already understand:
+Keeping track of everything quickly becomes overwhelming.
 
-**a Kanban board with specialized AI agents.**
-
-Each stage has a clear responsibility, and tasks move forward only when the previous step succeeds.
+In practice most developers struggle to manage more than 3–4 agents at once.
 
 <table>
   <tr>
@@ -173,6 +170,12 @@ Each stage has a clear responsibility, and tasks move forward only when the prev
     </td>
   </tr>
 </table>
+
+Ban Kan provides a control center that lets you coordinate 10+ agents simultaneously with full visibility of tasks, stages and activity.
+
+**a Kanban board with specialized AI agents.**
+
+Each stage has a clear responsibility, and tasks move forward only when the previous step succeeds.
 
 ---
 
