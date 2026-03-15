@@ -59,6 +59,33 @@ SUMMARY: Agent fallback should not be used here.
     expect(readCaptured).toHaveBeenCalledOnce();
   });
 
+  test('planner extraction falls back to buffer scan when getStructuredBlock returns null', () => {
+    const readCaptured = vi.fn(() => null);
+    const planBlock = `=== PLAN START ===
+SUMMARY: Buffer scan fallback works.
+BRANCH: feature/buffer-fallback
+FILES_TO_MODIFY:
+- server/src/orchestrator.js (add fallback)
+STEPS:
+1. Try structured capture first, then scan buffer.
+TESTS_NEEDED:
+- Run npm run test:server
+RISKS:
+- none
+=== PLAN END ===`;
+    const agent = {
+      cli: 'claude',
+      getBufferString: vi.fn(() => `some noise\n${planBlock}\nmore noise`),
+      getStructuredBlock: vi.fn(() => null),
+    };
+
+    const result = extractPlannerPlanText(agent, { readCapturedCodexMessage: readCaptured });
+    expect(result).toContain('Buffer scan fallback works.');
+    expect(result).toContain('=== PLAN START ===');
+    expect(result).toContain('=== PLAN END ===');
+    expect(agent.getStructuredBlock).toHaveBeenCalledWith('plan');
+  });
+
   test('review extraction falls back to agent structured capture when the live tail only contains the end marker', () => {
     const readCaptured = vi.fn(() => null);
     const agent = {

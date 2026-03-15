@@ -109,7 +109,13 @@ function extractStructuredStageText(agent, {
     }
   }
 
-  return agent.getStructuredBlock?.(kind) || null;
+  const structured = agent.getStructuredBlock?.(kind) || null;
+  if (structured) return structured;
+
+  // Fallback: scan terminal buffer directly (handles edge cases
+  // where structured capture missed the block)
+  const cleanBuf = stripAnsi(agent.getBufferString(100));
+  return getLastStructuredBlock(cleanBuf, startMarker, endMarker);
 }
 
 export function extractPlannerPlanText(agent, options = {}) {

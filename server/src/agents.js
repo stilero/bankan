@@ -92,6 +92,7 @@ class Agent {
       openedAt: null,
       outputPath: null,
     };
+    this._lastTokenSync = null;
     this.structuredOutput = this._createStructuredOutputState();
     this.terminalSize = {
       cols: 220,
@@ -135,6 +136,7 @@ class Agent {
     this.tokens = 0;
     this.taskTokenBase = this.currentTask ? (store.getTask(this.currentTask)?.totalTokens || 0) : 0;
     this.lastOutputAt = Date.now();
+    this._lastTokenSync = null;
     this.bridge = {
       active: false,
       mode: null,
@@ -209,12 +211,12 @@ class Agent {
   }
 
   _captureStructuredOutput(data) {
-    const chunk = stripAnsi(data);
-    if (!chunk) return;
-
     for (const [kind, markers] of Object.entries(STRUCTURED_BLOCK_MARKERS)) {
       const state = this.structuredOutput[kind];
-      const combined = `${state.pending}${chunk}`;
+      // Accumulate raw data so ANSI sequences split across chunks
+      // are stripped correctly when we process the combined text.
+      const rawCombined = `${state.pending}${data}`;
+      const combined = stripAnsi(rawCombined);
       const completed = getLastStructuredBlock(combined, markers.start, markers.end);
       if (completed) {
         state.completed = completed;
@@ -223,10 +225,11 @@ class Agent {
       const lastStartIdx = combined.lastIndexOf(markers.start);
       const lastEndIdx = combined.lastIndexOf(markers.end);
       if (lastStartIdx !== -1 && lastStartIdx > lastEndIdx) {
-        state.pending = combined.slice(lastStartIdx);
+        // Inside an open block — keep raw data for re-stripping next time
+        state.pending = rawCombined;
       } else {
-        const tailLength = Math.max(markers.start.length, markers.end.length) * 2;
-        state.pending = combined.slice(-tailLength);
+        const tailLength = Math.max(markers.start.length, markers.end.length) * 4;
+        state.pending = rawCombined.slice(-tailLength);
       }
     }
   }
@@ -237,6 +240,9 @@ class Agent {
 
   _syncTaskTokens() {
     if (!this.currentTask || this.tokens <= 0) return;
+    const now = Date.now();
+    if (this._lastTokenSync && now - this._lastTokenSync < 2000) return;
+    this._lastTokenSync = now;
     store.updateTaskTokens(this.currentTask, this.taskTokenBase + this.tokens);
     bus.emit('agent:updated', this.getStatus());
   }

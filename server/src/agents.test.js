@@ -194,6 +194,69 @@ describe('Agent behavior through managed instances', () => {
     expect(agent.getBufferString(100)).not.toContain('=== PLAN START ===');
   });
 
+  test('detects markers when ANSI escape is split mid-marker across chunks', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+    ]);
+    agentManager._maxSettings = { ...originalMaxSettings, planners: 1 };
+    agentManager._cliSettings = { ...originalCliSettings, planners: 'claude' };
+    agentManager._sessionCounters = { ...originalSessionCounters, plan: 0 };
+
+    const agent = agentManager.scaleUp('planners');
+
+    // The plan content arrives cleanly
+    agent._captureStructuredOutput('=== PLAN START ===\n');
+    agent._captureStructuredOutput('SUMMARY: ANSI split within end marker.\n');
+    agent._captureStructuredOutput('BRANCH: feature/ansi-fix\n');
+    agent._captureStructuredOutput('FILES_TO_MODIFY:\n- agents.js (fix capture)\n');
+    agent._captureStructuredOutput('STEPS:\n1. Fix the bug.\n');
+    agent._captureStructuredOutput('TESTS_NEEDED:\n- none\n');
+    agent._captureStructuredOutput('RISKS:\n- none\n');
+    // End marker has an ANSI reset code split RIGHT in the middle:
+    // chunk ends with "=== PLAN END =\x1b" and next chunk starts with "[0m=="
+    // Per-chunk stripping leaves residual \x1b and [0m, corrupting the marker
+    agent._captureStructuredOutput('=== PLAN END =\x1b');
+    agent._captureStructuredOutput('[0m==');
+
+    const block = agent.getStructuredBlock('plan');
+    expect(block).not.toBeNull();
+    expect(block).toContain('SUMMARY: ANSI split within end marker.');
+    expect(block).toContain('=== PLAN END ===');
+    // eslint-disable-next-line no-control-regex
+    expect(block).not.toMatch(/\x1b/);
+  });
+
+  test('captured plan text contains no ANSI residue from split sequences', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+    ]);
+    agentManager._maxSettings = { ...originalMaxSettings, planners: 1 };
+    agentManager._cliSettings = { ...originalCliSettings, planners: 'claude' };
+    agentManager._sessionCounters = { ...originalSessionCounters, plan: 0 };
+
+    const agent = agentManager.scaleUp('planners');
+
+    // ANSI bold applied to SUMMARY line, split across chunks
+    agent._captureStructuredOutput('=== PLAN START ===\n');
+    agent._captureStructuredOutput('SUMMARY: \x1b[1mBold summ\x1b');
+    agent._captureStructuredOutput('[0mary text.\n');
+    agent._captureStructuredOutput('BRANCH: feature/clean-text\n');
+    agent._captureStructuredOutput('FILES_TO_MODIFY:\n- file.js (test)\n');
+    agent._captureStructuredOutput('STEPS:\n1. Step one.\n');
+    agent._captureStructuredOutput('TESTS_NEEDED:\n- none\n');
+    agent._captureStructuredOutput('RISKS:\n- none\n');
+    agent._captureStructuredOutput('=== PLAN END ===');
+
+    const block = agent.getStructuredBlock('plan');
+    expect(block).not.toBeNull();
+    // The captured text should be free of ANSI artifacts
+    // eslint-disable-next-line no-control-regex
+    expect(block).not.toMatch(/\x1b/);
+    expect(block).not.toContain('[0m');
+    expect(block).not.toContain('[1m');
+    expect(block).toContain('SUMMARY: Bold summary text.');
+  });
+
   test('captures review blocks when markers are split across chunks', () => {
     agentManager.agents = new Map([
       ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
@@ -242,6 +305,44 @@ RISKS:
 
     expect(agent.getStructuredBlock('plan')).toBeNull();
     expect(agent.getStructuredBlock('review')).toBeNull();
+  });
+
+  test('_syncTaskTokens throttles updates to avoid rapid-fire broadcasts', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+    ]);
+    agentManager._maxSettings = { ...originalMaxSettings, implementors: 1 };
+    agentManager._cliSettings = { ...originalCliSettings, implementors: 'claude' };
+    agentManager._sessionCounters = { ...originalSessionCounters, imp: 0 };
+
+    const agent = agentManager.scaleUp('implementors');
+    const taskId = 'T-THROTTLE';
+    const updateTokens = vi.spyOn(store, 'updateTaskTokens').mockImplementation(() => ({
+      id: taskId,
+      totalTokens: 100,
+    }));
+    vi.spyOn(store, 'getTask').mockImplementation((id) => (
+      id === taskId ? { id: taskId, totalTokens: 100 } : null
+    ));
+
+    agent.currentTask = taskId;
+    agent.taskTokenBase = 0;
+    agent.tokens = 100;
+
+    // First call should go through
+    agent._syncTaskTokens();
+    expect(updateTokens).toHaveBeenCalledTimes(1);
+
+    // Immediate second call should be throttled
+    agent.tokens = 200;
+    agent._syncTaskTokens();
+    expect(updateTokens).toHaveBeenCalledTimes(1);
+
+    // Simulate 2+ seconds elapsed
+    agent._lastTokenSync = Date.now() - 2100;
+    agent.tokens = 300;
+    agent._syncTaskTokens();
+    expect(updateTokens).toHaveBeenCalledTimes(2);
   });
 
   test('reconfigure removes extra idle agents and marks active overflow agents as draining', () => {
