@@ -144,6 +144,24 @@ afterEach(() => {
 });
 
 describe('TerminalDrawer', () => {
+  test('renders nothing when no agent is selected', () => {
+    const { container } = render(
+      <TerminalDrawer
+        agent={null}
+        subscribeTerminal={vi.fn()}
+        injectMessage={vi.fn()}
+        sendRaw={vi.fn()}
+        resizeTerminal={vi.fn()}
+        openAgentTerminal={vi.fn()}
+        returnAgentTerminal={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(container.firstChild).toBeNull();
+    expect(terminalInstances).toHaveLength(0);
+  });
+
   test('subscribes to terminal data, writes output, resizes on mount, and cleans up on unmount', () => {
     const unsubscribe = vi.fn();
     const subscribeTerminal = vi.fn((agentId, callback) => {
@@ -239,6 +257,26 @@ describe('TerminalDrawer', () => {
     expect(resizeTerminal).not.toHaveBeenCalled();
   });
 
+  test('skips resize reporting when fit throws and clears a pending timer on unmount', () => {
+    const { resizeTerminal, unmount } = renderDrawer();
+
+    resizeTerminal.mockClear();
+    fitAddonInstances[0].fit.mockImplementation(() => {
+      throw new Error('fit failed');
+    });
+
+    resizeObserverInstances[0].callback();
+    vi.advanceTimersByTime(50);
+
+    expect(resizeTerminal).not.toHaveBeenCalled();
+
+    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
+    resizeObserverInstances[0].callback();
+    unmount();
+
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+  });
+
   test('closes from escape key and both close buttons', () => {
     const { onClose } = renderDrawer();
 
@@ -258,6 +296,19 @@ describe('TerminalDrawer', () => {
 
     expect(injectMessage).toHaveBeenCalledWith('imp-1', 'investigate output');
     expect(input.value).toBe('');
+  });
+
+  test('ignores non-enter and blank enter injections', () => {
+    const { injectMessage } = renderDrawer();
+    const input = screen.getByPlaceholderText('Send message to agent...');
+
+    fireEvent.change(input, { target: { value: '  keep draft  ' } });
+    fireEvent.keyDown(input, { key: 'Tab' });
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(injectMessage).not.toHaveBeenCalled();
+    expect(input.value).toBe('   ');
   });
 
   test('disables input and shows bridge controls while bridged', () => {
@@ -306,5 +357,46 @@ describe('TerminalDrawer', () => {
     expect(screen.getByText(/Tokens: 1\.5k \/ 200k/i)).toBeTruthy();
     expect(screen.getByText(/Total: 3\.2k/i)).toBeTruthy();
     expect(screen.getByText(/Uptime: 1h 1m/i)).toBeTruthy();
+  });
+
+  test('renders fallback stats for missing task, low token counts, and zero uptime', () => {
+    renderDrawer({
+      agent: {
+        currentTask: '',
+        tokens: 42,
+        aggregatedTokens: 999,
+        uptime: 0,
+      },
+    });
+
+    expect(screen.getByText(/Tokens:\s*42\s*\/\s*200k/i)).toBeTruthy();
+    expect(screen.getByText(/Total: 999/i)).toBeTruthy();
+    expect(screen.getByText(/Uptime: 0s/i)).toBeTruthy();
+    expect(screen.getByText('—')).toBeTruthy();
+  });
+
+  test('allows resizing the drawer with drag constraints', () => {
+    renderDrawer();
+    const root = screen.getByRole('button', { name: 'ESC' }).closest('div').parentElement;
+    const dragHandle = root.firstChild;
+
+    expect(root.style.height).toBe('420px');
+
+    fireEvent.mouseDown(dragHandle, { clientY: 200 });
+    fireEvent.mouseMove(window, { clientY: 100 });
+    expect(root.style.height).toBe('520px');
+
+    fireEvent.mouseMove(window, { clientY: -1000 });
+    expect(root.style.height).toBe('614.4000000000001px');
+
+    fireEvent.mouseMove(window, { clientY: 400 });
+    expect(root.style.height).toBe('220px');
+
+    fireEvent.mouseMove(window, { clientY: 1000 });
+    expect(root.style.height).toBe('180px');
+
+    fireEvent.mouseUp(window);
+    fireEvent.mouseMove(window, { clientY: 0 });
+    expect(root.style.height).toBe('180px');
   });
 });
