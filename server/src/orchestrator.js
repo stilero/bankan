@@ -71,6 +71,21 @@ function getLastStructuredBlock(text, startMarker, endMarker) {
   return text.slice(startIdx, endIdx + endMarker.length);
 }
 
+function getAllStructuredBlocks(text, startMarker, endMarker) {
+  if (typeof text !== 'string' || !text) return [];
+  const blocks = [];
+  let searchFrom = 0;
+  while (true) {
+    const startIdx = text.indexOf(startMarker, searchFrom);
+    if (startIdx === -1) break;
+    const endIdx = text.indexOf(endMarker, startIdx + startMarker.length);
+    if (endIdx === -1) break;
+    blocks.push(text.slice(startIdx, endIdx + endMarker.length));
+    searchFrom = endIdx + endMarker.length;
+  }
+  return blocks;
+}
+
 function getCodexLastMessagePath(buffer) {
   if (typeof buffer !== 'string' || !buffer) return null;
   const matches = [...buffer.matchAll(/=== CODEX_LAST_MESSAGE_FILE:(.+?) ===/g)];
@@ -119,12 +134,28 @@ function extractStructuredStageText(agent, {
 }
 
 export function extractPlannerPlanText(agent, options = {}) {
-  return extractStructuredStageText(agent, {
-    startMarker: '=== PLAN START ===',
-    endMarker: '=== PLAN END ===',
+  const startMarker = '=== PLAN START ===';
+  const endMarker = '=== PLAN END ===';
+  const result = extractStructuredStageText(agent, {
+    startMarker,
+    endMarker,
     kind: 'plan',
     ...options,
   });
+
+  // If the extracted block is a placeholder (echoed prompt template),
+  // scan the full buffer for all plan blocks and return the last real one.
+  // The CLI can re-render the prompt template after the real plan, causing
+  // getLastStructuredBlock to return the template instead of the real plan.
+  if (result && isPlanPlaceholder(result)) {
+    const cleanBuf = stripAnsi(agent.getBufferString(100));
+    const blocks = getAllStructuredBlocks(cleanBuf, startMarker, endMarker);
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (!isPlanPlaceholder(blocks[i])) return blocks[i];
+    }
+  }
+
+  return result;
 }
 
 export function extractReviewerReviewText(agent, options = {}) {

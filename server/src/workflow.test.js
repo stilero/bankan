@@ -116,6 +116,29 @@ RISKS:
 - none
 === PLAN END ===`)).toBe(false);
   });
+
+  test('real plan contaminated with echoed prompt template is not a placeholder', () => {
+    // When Claude CLI echoes the prompt, terminal artifacts mix template
+    // placeholder text into the real plan block after ANSI stripping.
+    const contaminated = `=== PLAN START ===
+after the delimiters: === PLAN START === SUMMARY: (one sentence describing what will be built) BRANCH: (feature/t-91eadd-short-descriptive-slug) FILES_TO_MODIFY: - path/to/file.ts (reason for modification) STEPS: 1. (detailed, actionable step) 2. (detailed, actionable step) TESTS_NEEDED: - (test description, or 'none') RISKS: - (potential issue or edge case, or 'none') === PLAN END ===
+SUMMARY: Add a Reports modal accessible from the top bar that shows per-repo task counts, total time spent, and total tokens spent with visually stunning charts.
+BRANCH: feature/t-91eadd-reports-dashboard
+FILES_TO_MODIFY:
+- client/src/ReportsModal.jsx (new reporting modal component)
+- client/src/App.jsx (add reports button and modal state)
+- server/src/index.js (add REST endpoint for aggregated task stats)
+STEPS:
+1. Create the ReportsModal component with per-repo breakdown.
+2. Wire up the top-bar button in App.jsx.
+3. Add GET /api/reports endpoint in index.js.
+TESTS_NEEDED:
+- Run npm run test to verify no regressions
+RISKS:
+- none
+=== PLAN END ===`;
+    expect(isPlanPlaceholder(contaminated)).toBe(false);
+  });
 });
 
 describe('retry status resolution', () => {

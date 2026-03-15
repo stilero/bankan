@@ -86,6 +86,52 @@ RISKS:
     expect(agent.getStructuredBlock).toHaveBeenCalledWith('plan');
   });
 
+  test('planner extraction skips placeholder blocks to find real plan in buffer', () => {
+    // The CLI echoes the prompt template (1st block), agent outputs real plan (2nd),
+    // then CLI re-renders the template in the status area (3rd). The last block is a
+    // placeholder, but the 2nd block has real content.
+    const templateBlock = `=== PLAN START ===
+SUMMARY: (one sentence describing what will be built)
+BRANCH: (feature/t-xxx-short-descriptive-slug)
+FILES_TO_MODIFY:
+- path/to/file.ts (reason for modification)
+STEPS:
+1. (detailed, actionable step)
+TESTS_NEEDED:
+- (test description, or 'none')
+RISKS:
+- (potential issue or edge case, or 'none')
+=== PLAN END ===`;
+
+    const realBlock = `=== PLAN START ===
+SUMMARY: Add a Reports modal accessible from the top bar with per-repo task counts and token stats.
+BRANCH: feature/t-91eadd-reports-dashboard
+FILES_TO_MODIFY:
+- client/src/ReportsModal.jsx (new reporting modal)
+- server/src/index.js (add reports endpoint)
+STEPS:
+1. Create ReportsModal component.
+2. Wire up the top-bar button.
+TESTS_NEEDED:
+- Run npm run test
+RISKS:
+- none
+=== PLAN END ===`;
+
+    const readCaptured = vi.fn(() => null);
+    const bufferContent = `noise\n${templateBlock}\nmore noise\n${realBlock}\neven more\n${templateBlock}\ntrailing`;
+    const agent = {
+      cli: 'claude',
+      getBufferString: vi.fn(() => bufferContent),
+      // Structured capture got the template (last completed block)
+      getStructuredBlock: vi.fn(() => templateBlock),
+    };
+
+    const result = extractPlannerPlanText(agent, { readCapturedCodexMessage: readCaptured });
+    expect(result).toContain('Reports modal accessible from the top bar');
+    expect(result).not.toContain('(one sentence describing what will be built)');
+  });
+
   test('review extraction falls back to agent structured capture when the live tail only contains the end marker', () => {
     const readCaptured = vi.fn(() => null);
     const agent = {
