@@ -103,8 +103,8 @@ class Agent {
 
   _createStructuredOutputState() {
     return {
-      plan: { pending: '', completed: null },
-      review: { pending: '', completed: null },
+      plan: { pending: '', completed: null, allCompleted: [] },
+      review: { pending: '', completed: null, allCompleted: [] },
     };
   }
 
@@ -221,6 +221,7 @@ class Agent {
       const completed = getLastStructuredBlock(combined, markers.start, markers.end);
       if (completed) {
         state.completed = completed;
+        state.allCompleted.push(completed);
       }
 
       const lastStartIdx = combined.lastIndexOf(markers.start);
@@ -237,6 +238,10 @@ class Agent {
 
   getStructuredBlock(kind) {
     return this.structuredOutput[kind]?.completed || null;
+  }
+
+  getAllCapturedBlocks(kind) {
+    return this.structuredOutput[kind]?.allCompleted || [];
   }
 
   _syncTaskTokens() {

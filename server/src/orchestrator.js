@@ -173,11 +173,18 @@ export function extractPlannerPlanText(agent, options = {}) {
   });
 
   // If the extracted block is a placeholder (echoed prompt template),
-  // scan the full buffer for all plan blocks and return the last real one.
+  // search all captured blocks first, then fall back to the full buffer.
   // The CLI can re-render the prompt template after the real plan, causing
   // getLastStructuredBlock to return the template instead of the real plan.
   if (result && isPlanPlaceholder(result)) {
-    const cleanBuf = stripAnsi(agent.getBufferString(100));
+    // Check all blocks captured by the agent's streaming parser
+    const capturedBlocks = agent.getAllCapturedBlocks?.('plan') || [];
+    for (let i = capturedBlocks.length - 1; i >= 0; i--) {
+      if (!isPlanPlaceholder(capturedBlocks[i])) return capturedBlocks[i];
+    }
+
+    // Final fallback: scan the full terminal buffer
+    const cleanBuf = stripAnsi(agent.getBufferString(500));
     const blocks = getAllStructuredBlocks(cleanBuf, startMarker, endMarker);
     for (let i = blocks.length - 1; i >= 0; i--) {
       if (!isPlanPlaceholder(blocks[i])) return blocks[i];

@@ -61,6 +61,47 @@ SUMMARY: Agent fallback should not be used here.
     expect(readCaptured).toHaveBeenCalledOnce();
   });
 
+  test('planner extraction finds real plan via getAllCapturedBlocks when buffer is exhausted', () => {
+    const readCaptured = vi.fn(() => null);
+    const realPlan = `=== PLAN START ===
+SUMMARY: Real plan found via captured blocks.
+BRANCH: feature/test-captured
+FILES_TO_MODIFY:
+- server/src/agents.js (fix capture)
+STEPS:
+1. Store all captured blocks.
+TESTS_NEEDED:
+- Run npm run test:server
+RISKS:
+- none
+=== PLAN END ===`;
+    const templateBlock = `=== PLAN START ===
+SUMMARY: (one sentence describing what will be built)
+BRANCH: (feature/t-xxx-short-descriptive-slug)
+FILES_TO_MODIFY:
+- path/to/file.ts (reason for modification)
+STEPS:
+1. (detailed, actionable step)
+TESTS_NEEDED:
+- (test description, or 'none')
+RISKS:
+- (potential issue or edge case, or 'none')
+=== PLAN END ===`;
+    const agent = {
+      cli: 'claude',
+      // Buffer exhausted — only noise, no plan markers
+      getBufferString: vi.fn(() => 'lots of noise without any plan markers'),
+      // Structured capture has the placeholder (overwritten real plan)
+      getStructuredBlock: vi.fn(() => templateBlock),
+      // But getAllCapturedBlocks has the full history
+      getAllCapturedBlocks: vi.fn(() => [templateBlock, realPlan, templateBlock]),
+    };
+
+    const result = extractPlannerPlanText(agent, { readCapturedCodexMessage: readCaptured });
+    expect(result).toContain('Real plan found via captured blocks.');
+    expect(result).not.toContain('(one sentence describing');
+  });
+
   test('planner extraction falls back to buffer scan when getStructuredBlock returns null', () => {
     const readCaptured = vi.fn(() => null);
     const planBlock = `=== PLAN START ===

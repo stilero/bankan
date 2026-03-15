@@ -276,6 +276,67 @@ describe('Agent behavior through managed instances', () => {
     expect(agent.getStructuredBlock('review')).toContain('=== REVIEW END ===');
   });
 
+  test('getAllCapturedBlocks returns all completed blocks including overwritten ones', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+    ]);
+    agentManager._maxSettings = { ...originalMaxSettings, planners: 1 };
+    agentManager._cliSettings = { ...originalCliSettings, planners: 'claude' };
+    agentManager._sessionCounters = { ...originalSessionCounters, plan: 0 };
+
+    const agent = agentManager.scaleUp('planners');
+
+    // First block: prompt template (placeholder)
+    agent._captureStructuredOutput(`=== PLAN START ===
+SUMMARY: (one sentence describing what will be built)
+BRANCH: (feature/t-xxx-short-descriptive-slug)
+FILES_TO_MODIFY:
+- path/to/file.ts (reason for modification)
+STEPS:
+1. (detailed, actionable step)
+TESTS_NEEDED:
+- (test description, or 'none')
+RISKS:
+- (potential issue or edge case, or 'none')
+=== PLAN END ===`);
+
+    // Second block: real plan
+    agent._captureStructuredOutput(`=== PLAN START ===
+SUMMARY: Add model selection dropdown to settings.
+BRANCH: feature/t-abc123-model-selection
+FILES_TO_MODIFY:
+- server/src/config.js (add model field)
+STEPS:
+1. Add model to defaults
+TESTS_NEEDED:
+- Run npm run test:server
+RISKS:
+- none
+=== PLAN END ===`);
+
+    // Third block: CLI re-renders template (overwrites real plan)
+    agent._captureStructuredOutput(`=== PLAN START ===
+SUMMARY: (one sentence describing what will be built)
+BRANCH: (feature/t-xxx-short-descriptive-slug)
+FILES_TO_MODIFY:
+- path/to/file.ts (reason for modification)
+STEPS:
+1. (detailed, actionable step)
+TESTS_NEEDED:
+- (test description, or 'none')
+RISKS:
+- (potential issue or edge case, or 'none')
+=== PLAN END ===`);
+
+    // getStructuredBlock returns the LAST block (placeholder)
+    expect(agent.getStructuredBlock('plan')).toContain('(one sentence describing');
+
+    // getAllCapturedBlocks returns ALL blocks including the real plan
+    const allBlocks = agent.getAllCapturedBlocks('plan');
+    expect(allBlocks).toHaveLength(3);
+    expect(allBlocks[1]).toContain('Add model selection dropdown to settings.');
+  });
+
   test('structured capture resets when the agent is killed', () => {
     agentManager.agents = new Map([
       ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
@@ -305,6 +366,8 @@ RISKS:
 
     expect(agent.getStructuredBlock('plan')).toBeNull();
     expect(agent.getStructuredBlock('review')).toBeNull();
+    expect(agent.getAllCapturedBlocks('plan')).toEqual([]);
+    expect(agent.getAllCapturedBlocks('review')).toEqual([]);
   });
 
   test('_syncTaskTokens throttles updates to avoid rapid-fire broadcasts', () => {
