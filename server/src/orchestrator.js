@@ -23,8 +23,11 @@ let signalTimer = null;
 
 function stripAnsi(text) {
   if (typeof text !== 'string') return text;
-  // Matches ANSI control sequences emitted by CLI tools.
-  return text.replace(
+  // Replace cursor forward codes (\x1b[nC) with a space to preserve word boundaries.
+  // eslint-disable-next-line no-control-regex
+  let result = text.replace(/\x1b\[\d*C/g, ' ');
+  // Strip remaining ANSI control sequences.
+  return result.replace(
     // eslint-disable-next-line no-control-regex
     /[\x1b\x9b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]|\x1b\].*?(?:\x07|\x1b\\)|\r/g,
     ''
@@ -93,6 +96,10 @@ function getAllStructuredBlocks(text, startMarker, endMarker) {
 // Matches entire lines that are purely artifacts.
 const TERMINAL_ARTIFACT_LINE_RE = /^(?:.*(?:⏵⏵bypass|bypasspermission|shift\+tab\s*to\s*cycle)|.*Opus\s*4\.\d.*(?:│|context)|.*Claude(?:Code|Max)|.*▐▛|.*▝▜|.*[░▓█]{3,}|[─━═]{10,}|^\s*[❯›]\s*$|.*\.data\/workspaces\/T-)/i;
 
+// Prompt echo lines: CLI echoes the full prompt and org messages into the terminal.
+// These lines are noise when captured as part of the plan/review text.
+const PROMPT_ECHO_LINE_RE = /^(?:❯\s+\S|.*\bOrganization:|\s*(?:Repository|Workspace):\s|.*(?:TASK\s+ID|PRIORITY):\s|.*Plan\s+Mode\s+Instructions|.*Core\s+constraints:|.*Output\s+ONLY\s+in\s+this\s+exact\s+format|.*Do\s+not\s+edit\s+files.*change\s+system\s+state|.*Treat\s+this\s+stage\s+as\s+planning\s+only)/i;
+
 // Inline artifacts that can appear at the end of or within content lines.
 // These are stripped from each line individually.
 const TRAILING_ARTIFACT_RE = /\s*[❯›]\s*[─━═]{4,}.*$/;
@@ -100,19 +107,66 @@ const INLINE_ARTIFACT_RE = /[─━═]{10,}/g;
 
 export function cleanTerminalArtifacts(text) {
   if (typeof text !== 'string') return text;
-  const lines = text.split('\n');
+
+  // If the text contains a second === PLAN START === or === REVIEW START ===,
+  // truncate at that point — everything after is echoed prompt/template noise.
+  // Also strip noise lines between the real plan content and the truncation point.
+  let truncated = text;
+  for (const marker of ['=== PLAN START ===', '=== REVIEW START ===']) {
+    const firstIdx = truncated.indexOf(marker);
+    if (firstIdx !== -1) {
+      const secondIdx = truncated.indexOf(marker, firstIdx + marker.length);
+      if (secondIdx !== -1) {
+        truncated = truncated.slice(0, secondIdx).trimEnd();
+        // Find where real plan content ends by locating the last structured
+        // section header and its items, then strip everything after.
+        const contentLines = truncated.split('\n');
+        const planHeaderRe = /^(?:SUMMARY:|BRANCH:|FILES_TO_MODIFY:|STEPS:|TESTS_NEEDED:|RISKS:|VERDICT:|CRITICAL_ISSUES:|MINOR_ISSUES:|CHANGED_FILES:)/;
+        let lastFieldLine = contentLines.length - 1;
+        let sectionIdx = -1;
+        for (let i = 0; i < contentLines.length; i++) {
+          if (planHeaderRe.test(contentLines[i].trim())) sectionIdx = i;
+        }
+        if (sectionIdx !== -1) {
+          lastFieldLine = sectionIdx;
+          for (let i = sectionIdx + 1; i < contentLines.length; i++) {
+            const trimmed = contentLines[i].trim();
+            if (!trimmed) break;
+            if (trimmed.startsWith('- ') || /^\d+\.\s/.test(trimmed)) {
+              lastFieldLine = i;
+            } else {
+              break;
+            }
+          }
+        }
+        truncated = contentLines.slice(0, lastFieldLine + 1).join('\n');
+        // Re-add the end marker if it was lost
+        const endMarker = marker.replace('START', 'END');
+        if (!truncated.includes(endMarker)) {
+          truncated += '\n' + endMarker;
+        }
+      }
+    }
+  }
+
+  const lines = truncated.split('\n');
   const cleaned = lines
     .map(line => {
       // Trim trailing box-drawing and prompt artifacts from content lines
       let result = line.replace(TRAILING_ARTIFACT_RE, '');
       result = result.replace(INLINE_ARTIFACT_RE, '');
+      // Strip trailing prompt characters (❯/›) from content lines
+      result = result.replace(/\s*[❯›]\s*$/, '');
       return result.trimEnd();
     })
     .filter(line => {
       if (!line) return true; // keep blank lines
-      return !TERMINAL_ARTIFACT_LINE_RE.test(line);
+      if (TERMINAL_ARTIFACT_LINE_RE.test(line)) return false;
+      if (PROMPT_ECHO_LINE_RE.test(line)) return false;
+      return true;
     });
-  return cleaned.join('\n');
+  // Collapse runs of 3+ blank lines down to a single blank line
+  return cleaned.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 function getCodexLastMessagePath(buffer) {

@@ -49,7 +49,10 @@ const STRUCTURED_BLOCK_MARKERS = {
 
 function stripAnsi(text) {
   if (typeof text !== 'string') return text;
-  return text.replace(
+  // Replace cursor forward codes (\x1b[nC) with a space to preserve word boundaries.
+  // eslint-disable-next-line no-control-regex
+  let result = text.replace(/\x1b\[\d*C/g, ' ');
+  return result.replace(
     // eslint-disable-next-line no-control-regex
     /[\x1b\x9b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]|\x1b\].*?(?:\x07|\x1b\\)|\r/g,
     ''

@@ -257,6 +257,31 @@ describe('Agent behavior through managed instances', () => {
     expect(block).toContain('SUMMARY: Bold summary text.');
   });
 
+  test('captures plan text with spaces preserved when CLI uses cursor forward codes', () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+    ]);
+    agentManager._maxSettings = { ...originalMaxSettings, planners: 1 };
+    agentManager._cliSettings = { ...originalCliSettings, planners: 'claude' };
+    agentManager._sessionCounters = { ...originalSessionCounters, plan: 0 };
+
+    const agent = agentManager.scaleUp('planners');
+
+    // CLI uses cursor forward (\x1b[nC) instead of spaces
+    agent._captureStructuredOutput('=== PLAN START ===\n');
+    agent._captureStructuredOutput('SUMMARY:\x1b[1C' + 'Add\x1b[1C' + 'a\x1b[1C' + 'feature.\n');
+    agent._captureStructuredOutput('BRANCH: feature/test\n');
+    agent._captureStructuredOutput('FILES_TO_MODIFY:\n- file.js (test)\n');
+    agent._captureStructuredOutput('STEPS:\n1. Do it.\n');
+    agent._captureStructuredOutput('TESTS_NEEDED:\n- none\n');
+    agent._captureStructuredOutput('RISKS:\n- none\n');
+    agent._captureStructuredOutput('=== PLAN END ===');
+
+    const block = agent.getStructuredBlock('plan');
+    expect(block).toContain('SUMMARY: Add a feature.');
+    expect(block).not.toContain('Adda');
+  });
+
   test('captures review blocks when markers are split across chunks', () => {
     agentManager.agents = new Map([
       ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],

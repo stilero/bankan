@@ -297,4 +297,74 @@ RISKS:
 
     expect(cleanTerminalArtifacts(clean)).toBe(clean);
   });
+
+  test('removes embedded prompt echo and template block from captured plan', () => {
+    // When the real plan's END marker is lost in ANSI rendering, the extraction
+    // grabs from the first START to the template's END, including echoed prompt text.
+    const dirty = `=== PLAN START ===
+SUMMARY: Add a Reports modal from the top bar.
+BRANCH: feature/t-b60f78-repo-reports
+FILES_TO_MODIFY:
+- client/src/App.jsx (add Reports button)
+STEPS:
+1. Create ReportsModal component
+TESTS_NEEDED:
+- Run npm run test
+RISKS:
+- none
+
+Message from org:
+Make sure to update CLAUDE.md
+
+❯ You are a senior software architect. A task has been assigned to you.
+Repository: https://github.com/stilero/bankan
+TASK ID: T-B60F78
+TITLE: Reports
+
+Plan Mode Instructions
+- Do not edit files
+Output ONLY in this exact format:
+
+=== PLAN START ===
+SUMMARY: (one sentence describing what will be built)
+BRANCH: (feature/t-b60f78-short-descriptive-slug)
+FILES_TO_MODIFY:
+- path/to/file.ts (reason for modification)
+STEPS:
+1. (detailed, actionable step)
+TESTS_NEEDED:
+- (test description, or 'none')
+RISKS:
+- (potential issue or edge case, or 'none')
+=== PLAN END ===`;
+
+    const cleaned = cleanTerminalArtifacts(dirty);
+    expect(cleaned).toContain('SUMMARY: Add a Reports modal');
+    expect(cleaned).toContain('BRANCH: feature/t-b60f78-repo-reports');
+    expect(cleaned).toContain('client/src/App.jsx');
+    // Should NOT contain the echoed prompt template
+    expect(cleaned).not.toContain('(one sentence describing');
+    expect(cleaned).not.toContain('You are a senior software architect');
+    expect(cleaned).not.toContain('Plan Mode Instructions');
+    expect(cleaned).not.toContain('Message from org');
+  });
+
+  test('removes inline prompt character from content lines', () => {
+    const dirty = `=== PLAN START ===
+SUMMARY: Fix the bug.
+BRANCH: feature/fix  ❯
+FILES_TO_MODIFY:
+- file.js (fix)
+STEPS:
+1. Fix it
+TESTS_NEEDED:
+- none
+RISKS:
+- none
+=== PLAN END ===`;
+
+    const cleaned = cleanTerminalArtifacts(dirty);
+    expect(cleaned).toContain('BRANCH: feature/fix');
+    expect(cleaned).not.toContain('❯');
+  });
 });
