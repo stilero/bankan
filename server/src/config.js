@@ -71,7 +71,8 @@ Key rules:
   implementation: `Follow the plan step by step
 - If required tools or dependencies are missing in the workspace, install them before continuing
 - Commit after each logical unit of work with descriptive commit messages
-- Run existing tests after implementation to verify nothing broke`,
+- Run existing tests after implementation to verify nothing broke
+- After all work is done, make a final commit if there are any uncommitted changes`,
   review: `You are an expert code reviewer.
 
 Step 1 — Gather the diff
@@ -107,9 +108,9 @@ export function getDefaults() {
     defaultRepoPath: config.REPOS[0] || '',
     workspaceRoot: DEFAULT_WORKSPACES_DIR,
     agents: {
-      planners:     { max: 4, cli: 'claude' },
-      implementors: { max: 8, cli: getLegacyImplementorCli() },
-      reviewers:    { max: 4, cli: 'claude' },
+      planners:     { max: 4, cli: 'claude', model: '' },
+      implementors: { max: 8, cli: getLegacyImplementorCli(), model: '' },
+      reviewers:    { max: 4, cli: 'claude', model: '' },
     },
     prompts: { ...DEFAULT_PROMPTS },
   };
@@ -139,6 +140,9 @@ function normalizeSettingsShape(data) {
       data.agents[role] = defaults.agents[role];
     } else {
       delete data.agents[role].count;
+      if (typeof data.agents[role].model !== 'string') {
+        data.agents[role].model = '';
+      }
     }
   }
 
@@ -203,6 +207,9 @@ export function validateSettings(settings) {
     }
     if (!validClis.includes(cfg.cli)) {
       errors.push(`${role}.cli must be one of: ${validClis.join(', ')}`);
+    }
+    if (cfg.model !== undefined && typeof cfg.model !== 'string') {
+      errors.push(`${role}.model must be a string`);
     }
   }
 

@@ -1,5 +1,17 @@
 import React, { useState } from 'react';
 
+// Strip terminal UI noise that leaks through ANSI stripping of CLI output
+const TERMINAL_ARTIFACT_LINE_RE = /^(?:.*(?:⏵⏵bypass|bypasspermission|shift\+tab\s*to\s*cycle)|.*Opus\s*4\.\d.*(?:│|context)|.*Claude(?:Code|Max)|.*▐▛|.*▝▜|.*[░▓█]{3,}|[─━═]{10,}|^\s*[❯›]\s*$|.*\.data\/workspaces\/T-)/i;
+const TRAILING_ARTIFACT_RE = /\s*[❯›]\s*[─━═]{4,}.*$/;
+const INLINE_ARTIFACT_RE = /[─━═]{10,}/g;
+function cleanTerminalArtifacts(text) {
+  if (typeof text !== 'string') return text;
+  return text.split('\n')
+    .map(line => line.replace(TRAILING_ARTIFACT_RE, '').replace(INLINE_ARTIFACT_RE, '').trimEnd())
+    .filter(line => !line || !TERMINAL_ARTIFACT_LINE_RE.test(line))
+    .join('\n');
+}
+
 const PRIORITY_COLORS = {
   critical: 'var(--red)',
   high: 'var(--amber)',
@@ -348,7 +360,7 @@ export default function TaskDetailModal({
                     maxHeight: 200, overflowY: 'auto',
                     border: '1px solid var(--border)',
                   }}>
-                    {task.plan}
+                    {cleanTerminalArtifacts(task.plan)}
                   </pre>
                 )}
               </div>
@@ -374,7 +386,7 @@ export default function TaskDetailModal({
                     maxHeight: 200, overflowY: 'auto',
                     border: '1px solid var(--border)',
                   }}>
-                    {task.review}
+                    {cleanTerminalArtifacts(task.review)}
                   </pre>
                 )}
               </div>

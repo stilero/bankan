@@ -36,6 +36,38 @@ const TOKEN_PATTERNS = [
   /(\d[\d, ]*)\s+(?:input\s+)?tokens\b/i,
 ];
 
+const STRUCTURED_BLOCK_MARKERS = {
+  plan: {
+    start: '=== PLAN START ===',
+    end: '=== PLAN END ===',
+  },
+  review: {
+    start: '=== REVIEW START ===',
+    end: '=== REVIEW END ===',
+  },
+};
+
+function stripAnsi(text) {
+  if (typeof text !== 'string') return text;
+  // Replace cursor forward codes (\x1b[nC) with a space to preserve word boundaries.
+  // eslint-disable-next-line no-control-regex
+  let result = text.replace(/\x1b\[\d*C/g, ' ');
+  return result.replace(
+    // eslint-disable-next-line no-control-regex
+    /[\x1b\x9b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]|\x1b\].*?(?:\x07|\x1b\\)|\r/g,
+    ''
+  );
+}
+
+function getLastStructuredBlock(text, startMarker, endMarker) {
+  if (typeof text !== 'string' || !text) return null;
+  const endIdx = text.lastIndexOf(endMarker);
+  if (endIdx === -1) return null;
+  const startIdx = text.lastIndexOf(startMarker, endIdx);
+  if (startIdx === -1) return null;
+  return text.slice(startIdx, endIdx + endMarker.length);
+}
+
 class Agent {
   constructor(def) {
     this.id = def.id;
@@ -44,6 +76,7 @@ class Agent {
     this.icon = def.icon;
     this.color = def.color;
     this.cli = def.cli || 'claude';
+    this.model = def.model || '';
     this.draining = false;
     this.status = 'idle';
     this.currentTask = null;
@@ -63,10 +96,23 @@ class Agent {
       openedAt: null,
       outputPath: null,
     };
+    this._lastTokenSync = null;
+    this.structuredOutput = this._createStructuredOutputState();
     this.terminalSize = {
       cols: 220,
       rows: 50,
     };
+  }
+
+  _createStructuredOutputState() {
+    return {
+      plan: { pending: '', completed: null, allCompleted: [] },
+      review: { pending: '', completed: null, allCompleted: [] },
+    };
+  }
+
+  _resetStructuredOutput() {
+    this.structuredOutput = this._createStructuredOutputState();
   }
 
   spawn(cwd, command) {
@@ -94,6 +140,7 @@ class Agent {
     this.tokens = 0;
     this.taskTokenBase = this.currentTask ? (store.getTask(this.currentTask)?.totalTokens || 0) : 0;
     this.lastOutputAt = Date.now();
+    this._lastTokenSync = null;
     this.bridge = {
       active: false,
       mode: null,
@@ -101,6 +148,7 @@ class Agent {
       openedAt: null,
       outputPath: null,
     };
+    this._resetStructuredOutput();
 
     const env = { ...process.env, TERM: 'xterm-256color' };
     delete env.CLAUDECODE;
@@ -119,6 +167,7 @@ class Agent {
       }
       this.lastOutputAt = Date.now();
       this._parseTokens(data);
+      this._captureStructuredOutput(data);
       this._syncTaskTokens();
       if (this.bridge.active && this.bridge.outputPath) {
         try { appendFileSync(this.bridge.outputPath, data); } catch { /* ignore */ }
@@ -165,8 +214,44 @@ class Agent {
     }
   }
 
+  _captureStructuredOutput(data) {
+    for (const [kind, markers] of Object.entries(STRUCTURED_BLOCK_MARKERS)) {
+      const state = this.structuredOutput[kind];
+      // Accumulate raw data so ANSI sequences split across chunks
+      // are stripped correctly when we process the combined text.
+      const rawCombined = `${state.pending}${data}`;
+      const combined = stripAnsi(rawCombined);
+      const completed = getLastStructuredBlock(combined, markers.start, markers.end);
+      if (completed) {
+        state.completed = completed;
+        state.allCompleted.push(completed);
+      }
+
+      const lastStartIdx = combined.lastIndexOf(markers.start);
+      const lastEndIdx = combined.lastIndexOf(markers.end);
+      if (lastStartIdx !== -1 && lastStartIdx > lastEndIdx) {
+        // Inside an open block — keep raw data for re-stripping next time
+        state.pending = rawCombined;
+      } else {
+        const tailLength = Math.max(markers.start.length, markers.end.length) * 4;
+        state.pending = rawCombined.slice(-tailLength);
+      }
+    }
+  }
+
+  getStructuredBlock(kind) {
+    return this.structuredOutput[kind]?.completed || null;
+  }
+
+  getAllCapturedBlocks(kind) {
+    return this.structuredOutput[kind]?.allCompleted || [];
+  }
+
   _syncTaskTokens() {
     if (!this.currentTask || this.tokens <= 0) return;
+    const now = Date.now();
+    if (this._lastTokenSync && now - this._lastTokenSync < 2000) return;
+    this._lastTokenSync = now;
     store.updateTaskTokens(this.currentTask, this.taskTokenBase + this.tokens);
     bus.emit('agent:updated', this.getStatus());
   }
@@ -235,6 +320,7 @@ class Agent {
       openedAt: null,
       outputPath: null,
     };
+    this._resetStructuredOutput();
     bus.emit('agent:updated', this.getStatus());
   }
 
@@ -278,6 +364,7 @@ class AgentManager {
     this.agents = new Map();
     this._maxSettings = {};  // { planners: 4, implementors: 8, reviewers: 4 }
     this._cliSettings = {};  // { planners: 'claude', implementors: 'claude', reviewers: 'claude' }
+    this._modelSettings = {}; // { planners: '', implementors: 'opus', reviewers: 'haiku' }
     this._sessionCounters = { plan: 0, imp: 0, rev: 0 };
 
     // Orchestrator is always present
@@ -301,6 +388,7 @@ class AgentManager {
       const cfg = settings.agents[settingsKey];
       this._maxSettings[settingsKey] = cfg.max;
       this._cliSettings[settingsKey] = cfg.cli;
+      this._modelSettings[settingsKey] = cfg.model || '';
 
       // Scale down if current count exceeds new max
       const currentAgents = this.getAgentsByRole(prefix);
@@ -316,10 +404,11 @@ class AgentManager {
         }
       }
 
-      // Update CLI on all existing non-draining agents for this role
+      // Update CLI and model on all existing non-draining agents for this role
       for (const agent of this.getAgentsByRole(prefix)) {
         if (!agent.draining) {
           agent.cli = cfg.cli;
+          agent.model = cfg.model || '';
         }
       }
     }
@@ -330,6 +419,7 @@ class AgentManager {
     const { meta, prefix } = ROLE_MAP[settingsKey];
     const max = this._maxSettings[settingsKey] ?? 1;
     const cli = this._cliSettings[settingsKey] || 'claude';
+    const model = this._modelSettings[settingsKey] || '';
     const current = this.getAgentsByRole(prefix);
 
     if (current.length >= max) return null;
@@ -345,6 +435,7 @@ class AgentManager {
       icon: meta.icon,
       color,
       cli,
+      model,
     });
     this.agents.set(agent.id, agent);
     bus.emit('agent:updated', agent.getStatus());

@@ -166,7 +166,9 @@ export default function KanbanBoard({
       result[column.id].sort((a, b) => {
         if (a.status === 'blocked' && b.status !== 'blocked') return -1;
         if (a.status !== 'blocked' && b.status === 'blocked') return 1;
-        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        const timeDiff = new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        if (timeDiff !== 0) return timeDiff;
+        return a.id.localeCompare(b.id);
       });
     }
 

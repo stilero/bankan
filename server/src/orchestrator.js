@@ -23,8 +23,11 @@ let signalTimer = null;
 
 function stripAnsi(text) {
   if (typeof text !== 'string') return text;
-  // Matches ANSI control sequences emitted by CLI tools.
-  return text.replace(
+  // Replace cursor forward codes (\x1b[nC) with a space to preserve word boundaries.
+  // eslint-disable-next-line no-control-regex
+  let result = text.replace(/\x1b\[\d*C/g, ' ');
+  // Strip remaining ANSI control sequences.
+  return result.replace(
     // eslint-disable-next-line no-control-regex
     /[\x1b\x9b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]|\x1b\].*?(?:\x07|\x1b\\)|\r/g,
     ''
@@ -35,31 +38,34 @@ function escapePrompt(text) {
   return text.replace(/'/g, "'\\''");
 }
 
-function buildCodexExecCommand(prompt, { captureLastMessage = false, sandbox = 'read-only' } = {}) {
+function buildCodexExecCommand(prompt, { captureLastMessage = false, sandbox = 'read-only', model = '' } = {}) {
   const escapedPrompt = escapePrompt(prompt);
+  const modelFlag = model ? `-m ${model} ` : '';
   if (!captureLastMessage) {
-    return `codex exec --sandbox ${sandbox} '${escapedPrompt}'`;
+    return `codex exec ${modelFlag}--sandbox ${sandbox} '${escapedPrompt}'`;
   }
 
-  return `tmpfile=$(mktemp); codex exec --sandbox ${sandbox} -o "$tmpfile" '${escapedPrompt}'; status=$?; printf '\\n=== CODEX_LAST_MESSAGE_FILE:%s ===\\n' "$tmpfile"; exit $status`;
+  return `tmpfile=$(mktemp); codex exec ${modelFlag}--sandbox ${sandbox} -o "$tmpfile" '${escapedPrompt}'; status=$?; printf '\\n=== CODEX_LAST_MESSAGE_FILE:%s ===\\n' "$tmpfile"; exit $status`;
 }
 
-function buildAgentCommand(cliTool, prompt, mode = 'interactive') {
+export function buildAgentCommand(cliTool, prompt, mode = 'interactive', model = '') {
   if (cliTool === 'codex') {
     if (mode === 'plan' || mode === 'review') {
-      return buildCodexExecCommand(prompt, { captureLastMessage: true, sandbox: 'read-only' });
+      return buildCodexExecCommand(prompt, { captureLastMessage: true, sandbox: 'read-only', model });
     }
     if (mode === 'interactive') {
-      return buildCodexExecCommand(prompt, { captureLastMessage: true, sandbox: 'danger-full-access' });
+      return buildCodexExecCommand(prompt, { captureLastMessage: true, sandbox: 'danger-full-access', model });
     }
-    return buildCodexExecCommand(prompt, { captureLastMessage: false, sandbox: 'read-only' });
+    return buildCodexExecCommand(prompt, { captureLastMessage: false, sandbox: 'read-only', model });
   }
+
+  const modelFlag = model ? `--model ${model} ` : '';
 
   if (mode === 'print') {
-    return `claude --print '${escapePrompt(prompt)}'`;
+    return `claude ${modelFlag}--print '${escapePrompt(prompt)}'`;
   }
 
-  return `claude --dangerously-skip-permissions '${escapePrompt(prompt)}'`;
+  return `claude ${modelFlag}--dangerously-skip-permissions '${escapePrompt(prompt)}'`;
 }
 
 function getLastStructuredBlock(text, startMarker, endMarker) {
@@ -69,6 +75,98 @@ function getLastStructuredBlock(text, startMarker, endMarker) {
   const startIdx = text.lastIndexOf(startMarker, endIdx);
   if (startIdx === -1) return null;
   return text.slice(startIdx, endIdx + endMarker.length);
+}
+
+function getAllStructuredBlocks(text, startMarker, endMarker) {
+  if (typeof text !== 'string' || !text) return [];
+  const blocks = [];
+  let searchFrom = 0;
+  while (true) {
+    const startIdx = text.indexOf(startMarker, searchFrom);
+    if (startIdx === -1) break;
+    const endIdx = text.indexOf(endMarker, startIdx + startMarker.length);
+    if (endIdx === -1) break;
+    blocks.push(text.slice(startIdx, endIdx + endMarker.length));
+    searchFrom = endIdx + endMarker.length;
+  }
+  return blocks;
+}
+
+// Terminal UI noise patterns left behind after ANSI stripping.
+// Matches entire lines that are purely artifacts.
+const TERMINAL_ARTIFACT_LINE_RE = /^(?:.*(?:⏵⏵bypass|bypasspermission|shift\+tab\s*to\s*cycle)|.*Opus\s*4\.\d.*(?:│|context)|.*Claude(?:Code|Max)|.*▐▛|.*▝▜|.*[░▓█]{3,}|[─━═]{10,}|^\s*[❯›]\s*$|.*\.data\/workspaces\/T-)/i;
+
+// Prompt echo lines: CLI echoes the full prompt and org messages into the terminal.
+// These lines are noise when captured as part of the plan/review text.
+const PROMPT_ECHO_LINE_RE = /^(?:❯\s+\S|.*\bOrganization:|\s*(?:Repository|Workspace):\s|.*(?:TASK\s+ID|PRIORITY):\s|.*Plan\s+Mode\s+Instructions|.*Core\s+constraints:|.*Output\s+ONLY\s+in\s+this\s+exact\s+format|.*Do\s+not\s+edit\s+files.*change\s+system\s+state|.*Treat\s+this\s+stage\s+as\s+planning\s+only)/i;
+
+// Inline artifacts that can appear at the end of or within content lines.
+// These are stripped from each line individually.
+const TRAILING_ARTIFACT_RE = /\s*[❯›]\s*[─━═]{4,}.*$/;
+const INLINE_ARTIFACT_RE = /[─━═]{10,}/g;
+
+export function cleanTerminalArtifacts(text) {
+  if (typeof text !== 'string') return text;
+
+  // If the text contains a second === PLAN START === or === REVIEW START ===,
+  // truncate at that point — everything after is echoed prompt/template noise.
+  // Also strip noise lines between the real plan content and the truncation point.
+  let truncated = text;
+  for (const marker of ['=== PLAN START ===', '=== REVIEW START ===']) {
+    const firstIdx = truncated.indexOf(marker);
+    if (firstIdx !== -1) {
+      const secondIdx = truncated.indexOf(marker, firstIdx + marker.length);
+      if (secondIdx !== -1) {
+        truncated = truncated.slice(0, secondIdx).trimEnd();
+        // Find where real plan content ends by locating the last structured
+        // section header and its items, then strip everything after.
+        const contentLines = truncated.split('\n');
+        const planHeaderRe = /^(?:SUMMARY:|BRANCH:|FILES_TO_MODIFY:|STEPS:|TESTS_NEEDED:|RISKS:|VERDICT:|CRITICAL_ISSUES:|MINOR_ISSUES:|CHANGED_FILES:)/;
+        let lastFieldLine = contentLines.length - 1;
+        let sectionIdx = -1;
+        for (let i = 0; i < contentLines.length; i++) {
+          if (planHeaderRe.test(contentLines[i].trim())) sectionIdx = i;
+        }
+        if (sectionIdx !== -1) {
+          lastFieldLine = sectionIdx;
+          for (let i = sectionIdx + 1; i < contentLines.length; i++) {
+            const trimmed = contentLines[i].trim();
+            if (!trimmed) break;
+            if (trimmed.startsWith('- ') || /^\d+\.\s/.test(trimmed)) {
+              lastFieldLine = i;
+            } else {
+              break;
+            }
+          }
+        }
+        truncated = contentLines.slice(0, lastFieldLine + 1).join('\n');
+        // Re-add the end marker if it was lost
+        const endMarker = marker.replace('START', 'END');
+        if (!truncated.includes(endMarker)) {
+          truncated += '\n' + endMarker;
+        }
+      }
+    }
+  }
+
+  const lines = truncated.split('\n');
+  const cleaned = lines
+    .map(line => {
+      // Trim trailing box-drawing and prompt artifacts from content lines
+      let result = line.replace(TRAILING_ARTIFACT_RE, '');
+      result = result.replace(INLINE_ARTIFACT_RE, '');
+      // Strip trailing prompt characters (❯/›) from content lines
+      result = result.replace(/\s*[❯›]\s*$/, '');
+      return result.trimEnd();
+    })
+    .filter(line => {
+      if (!line) return true; // keep blank lines
+      if (TERMINAL_ARTIFACT_LINE_RE.test(line)) return false;
+      if (PROMPT_ECHO_LINE_RE.test(line)) return false;
+      return true;
+    });
+  // Collapse runs of 3+ blank lines down to a single blank line
+  return cleaned.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 function getCodexLastMessagePath(buffer) {
@@ -93,9 +191,93 @@ function readCapturedCodexMessage(buffer, { remove = true } = {}) {
   }
 }
 
-function hasCodexStructuredOutput(buffer, endMarker) {
-  const captured = readCapturedCodexMessage(buffer, { remove: false });
-  return Boolean(captured && captured.includes(endMarker));
+function extractStructuredStageText(agent, {
+  startMarker,
+  endMarker,
+  kind,
+  removeCaptured = false,
+  readCapturedCodexMessage: readCaptured = readCapturedCodexMessage,
+} = {}) {
+  if (!agent) return null;
+  const bufStr = agent.getBufferString(100);
+  if (agent.cli === 'codex') {
+    const captured = readCaptured(bufStr, { remove: removeCaptured });
+    if (captured) {
+      return getLastStructuredBlock(captured, startMarker, endMarker);
+    }
+  }
+
+  const structured = agent.getStructuredBlock?.(kind) || null;
+  if (structured) return structured;
+
+  // Fallback: scan terminal buffer directly (handles edge cases
+  // where structured capture missed the block)
+  const cleanBuf = stripAnsi(agent.getBufferString(100));
+  return getLastStructuredBlock(cleanBuf, startMarker, endMarker);
+}
+
+export function extractPlannerPlanText(agent, options = {}) {
+  const startMarker = '=== PLAN START ===';
+  const endMarker = '=== PLAN END ===';
+  const result = extractStructuredStageText(agent, {
+    startMarker,
+    endMarker,
+    kind: 'plan',
+    ...options,
+  });
+
+  // If the extracted block is a placeholder (echoed prompt template),
+  // search all captured blocks first, then fall back to the full buffer.
+  // The CLI can re-render the prompt template after the real plan, causing
+  // getLastStructuredBlock to return the template instead of the real plan.
+  if (result && isPlanPlaceholder(result)) {
+    // Check all blocks captured by the agent's streaming parser
+    const capturedBlocks = agent.getAllCapturedBlocks?.('plan') || [];
+    for (let i = capturedBlocks.length - 1; i >= 0; i--) {
+      if (!isPlanPlaceholder(capturedBlocks[i])) return capturedBlocks[i];
+    }
+
+    // Final fallback: scan the full terminal buffer
+    const cleanBuf = stripAnsi(agent.getBufferString(500));
+    const blocks = getAllStructuredBlocks(cleanBuf, startMarker, endMarker);
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (!isPlanPlaceholder(blocks[i])) return blocks[i];
+    }
+  }
+
+  return result;
+}
+
+export function extractReviewerReviewText(agent, options = {}) {
+  const startMarker = '=== REVIEW START ===';
+  const endMarker = '=== REVIEW END ===';
+  const result = extractStructuredStageText(agent, {
+    startMarker,
+    endMarker,
+    kind: 'review',
+    ...options,
+  });
+
+  // Same fallback as extractPlannerPlanText: if the captured block is a
+  // placeholder (echoed prompt template), search all captured blocks and
+  // the full buffer for the real review output.
+  const reviewResult = result ? parseReviewResult(result) : null;
+  if (result && isReviewResultPlaceholder(result, reviewResult)) {
+    const capturedBlocks = agent.getAllCapturedBlocks?.('review') || [];
+    for (let i = capturedBlocks.length - 1; i >= 0; i--) {
+      const parsed = parseReviewResult(capturedBlocks[i]);
+      if (!isReviewResultPlaceholder(capturedBlocks[i], parsed)) return capturedBlocks[i];
+    }
+
+    const cleanBuf = stripAnsi(agent.getBufferString(500));
+    const blocks = getAllStructuredBlocks(cleanBuf, startMarker, endMarker);
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const parsed = parseReviewResult(blocks[i]);
+      if (!isReviewResultPlaceholder(blocks[i], parsed)) return blocks[i];
+    }
+  }
+
+  return result;
 }
 
 function getImplementationCompletionState(agent, taskId) {
@@ -192,6 +374,18 @@ function slugifyTitle(title) {
 
 function generateBranchName(task) {
   return `feature/${task.id.toLowerCase()}-${slugifyTitle(task.title)}`;
+}
+
+// Strip garbage from branch names caused by ANSI cursor positioning collapse
+// (e.g. "feature/t-a811ca-reporting FILES_TO_MODIFY:" → "feature/t-a811ca-reporting").
+// Stops at the first character that's invalid in a git branch name.
+export function sanitizeBranchName(raw) {
+  if (typeof raw !== 'string') return raw;
+  // Trim leading/trailing whitespace, then keep only valid branch chars.
+  // Git branch names allow: alphanumeric, -, _, /, .
+  // Stop at first space or other invalid char (catches appended field headers).
+  const match = raw.trim().match(/^[a-zA-Z0-9/_.-]+/);
+  return match ? match[0].replace(/\.+$/, '') : raw.trim();
 }
 
 function buildSyntheticPlan(task) {
@@ -342,7 +536,8 @@ ${task.plan}
 Instructions:
 - You are already on branch ${task.branch} in ${repoDir}
 ${promptBody}
-- When fully complete, output this exact string on its own line:
+- Before signaling completion, ensure ALL changes are committed to git on branch ${task.branch}
+- When fully complete and all changes are committed, output this exact string on its own line:
   === IMPLEMENTATION COMPLETE ${task.id} ===
 - If you encounter a blocker you cannot resolve, output:
   === BLOCKED: {reason} ===
@@ -538,7 +733,7 @@ async function startPlanning(task) {
   planner.taskLabel = `Planning: ${task.title}`;
 
   const prompt = buildPlannerPrompt({ ...task, workspacePath });
-  const cmd = buildAgentCommand(planner.cli, prompt, 'plan');
+  const cmd = buildAgentCommand(planner.cli, prompt, 'plan', planner.model);
   const plannerCwd = workspacePath;
   const ok = planner.spawn(plannerCwd, cmd);
   if (!ok) {
@@ -557,18 +752,18 @@ async function startPlanning(task) {
 function onPlanComplete(agentId, taskId) {
   const planner = agentManager.get(agentId);
   if (!planner) return;
-  const bufStr = planner.getBufferString(100);
-  const captured = planner.cli === 'codex' ? readCapturedCodexMessage(bufStr) : null;
-  const sourceText = captured || stripAnsi(bufStr);
+  const rawPlanText = extractPlannerPlanText(planner, { removeCaptured: true });
 
-  // Extract plan text
-  const planText = getLastStructuredBlock(sourceText, '=== PLAN START ===', '=== PLAN END ===');
-  if (!planText) return;
-  if (isPlanPlaceholder(planText)) return;
+  if (!rawPlanText) return;
+  if (isPlanPlaceholder(rawPlanText)) return;
+
+  const planText = cleanTerminalArtifacts(rawPlanText);
 
   // Parse branch name
   const branchMatch = planText.match(/BRANCH:\s*(.+)/);
-  const branch = branchMatch ? branchMatch[1].trim() : generateBranchName(store.getTask(taskId) || { id: taskId, title: 'auto' });
+  const branch = branchMatch
+    ? sanitizeBranchName(branchMatch[1])
+    : generateBranchName(store.getTask(taskId) || { id: taskId, title: 'auto' });
 
   // Save plan
   store.savePlan(taskId, planText);
@@ -583,7 +778,7 @@ function onPlanComplete(agentId, taskId) {
     assignedTo: null,
   });
 
-  retireAgentSession(planner, { taskId, outcome: 'completed', transcript: sourceText });
+  retireAgentSession(planner, { taskId, outcome: 'completed', transcript: planText });
   bus.emit('plan:ready', { taskId, plan: planText });
 }
 
@@ -641,7 +836,7 @@ async function startImplementation(task) {
 
   const cliTool = agent.cli;
   const prompt = buildImplementorPrompt(task, workspacePath);
-  const cmd = buildAgentCommand(cliTool, prompt, 'interactive');
+  const cmd = buildAgentCommand(cliTool, prompt, 'interactive', agent.model);
 
   const ok = agent.spawn(workspacePath, cmd);
   if (!ok) {
@@ -717,7 +912,7 @@ SUMMARY: Review skipped because reviewer max is set to 0.
   reviewer.status = 'active';
 
   const prompt = buildReviewerPrompt(task);
-  const cmd = buildAgentCommand(reviewer.cli, prompt, 'review');
+  const cmd = buildAgentCommand(reviewer.cli, prompt, 'review', reviewer.model);
   const ok = reviewer.spawn(task.workspacePath, cmd);
   if (!ok) {
     store.updateTask(task.id, {
@@ -734,12 +929,9 @@ SUMMARY: Review skipped because reviewer max is set to 0.
 async function onReviewComplete(agentId, taskId) {
   const reviewer = agentManager.get(agentId);
   if (!reviewer) return;
-  const bufStr = reviewer.getBufferString(100);
-
-  const captured = reviewer.cli === 'codex' ? readCapturedCodexMessage(bufStr) : null;
-  const sourceText = captured || stripAnsi(bufStr);
-  const reviewText = getLastStructuredBlock(sourceText, '=== REVIEW START ===', '=== REVIEW END ===');
-  if (!reviewText) return;
+  const rawReviewText = extractReviewerReviewText(reviewer, { removeCaptured: true });
+  if (!rawReviewText) return;
+  const reviewText = cleanTerminalArtifacts(rawReviewText);
   const reviewResult = parseReviewResult(reviewText);
   if (isReviewResultPlaceholder(reviewText, reviewResult)) return;
   const shouldPass = reviewShouldPass(reviewResult);
@@ -748,7 +940,7 @@ async function onReviewComplete(agentId, taskId) {
   retireAgentSession(reviewer, {
     taskId,
     outcome: shouldPass ? 'completed' : 'failed_review',
-    transcript: sourceText,
+    transcript: reviewText,
   });
 
   if (shouldPass) {
@@ -937,17 +1129,16 @@ function checkSignals() {
 
       const buf = agent.getBufferString(50);
       const cleanBuf = stripAnsi(buf);
-      const planReady = agent.cli === 'codex'
-        ? hasCodexStructuredOutput(buf, '=== PLAN END ===')
-        : cleanBuf.includes('=== PLAN END ===');
-      if (planReady) {
+      const planText = extractPlannerPlanText(agent);
+      const hasConcretePlan = Boolean(planText && !isPlanPlaceholder(planText));
+      if (hasConcretePlan) {
         onPlanComplete(agent.id, agent.currentTask);
       } else if (!checkTrustPrompt(agent, buf)) {
         // Live plan streaming
         if (!cleanBuf.includes('=== PLAN END ===') && cleanBuf.includes('=== PLAN START ===')) {
           const partial = cleanBuf.slice(cleanBuf.indexOf('=== PLAN START ==='));
           if (!isPlanPlaceholder(partial)) {
-            bus.emit('plan:partial', { taskId: agent.currentTask, plan: partial });
+            bus.emit('plan:partial', { taskId: agent.currentTask, plan: cleanTerminalArtifacts(partial) });
           }
         }
         if (agent.startedAt && Date.now() - agent.startedAt > PLANNER_TIMEOUT) {
@@ -1000,10 +1191,12 @@ function checkSignals() {
       if (elapsed < 20000) continue;
 
       const buf = agent.getBufferString(50);
-      const reviewReady = agent.cli === 'codex'
-        ? hasCodexStructuredOutput(buf, '=== REVIEW END ===')
-        : stripAnsi(buf).includes('=== REVIEW END ===');
-      if (reviewReady) {
+      const reviewText = extractReviewerReviewText(agent);
+      const reviewResult = reviewText ? parseReviewResult(reviewText) : null;
+      const hasConcreteReview = Boolean(
+        reviewText && reviewResult && !isReviewResultPlaceholder(reviewText, reviewResult)
+      );
+      if (hasConcreteReview) {
         onReviewComplete(agent.id, agent.currentTask);
       } else if (!checkTrustPrompt(agent, buf)) {
         if (agent.startedAt && Date.now() - agent.startedAt > REVIEWER_TIMEOUT) {
@@ -1085,25 +1278,18 @@ function pollLoop() {
       const taskId = agent.currentTask;
       const task = store.getTask(taskId);
       if (task && !['blocked', 'done', 'aborted', 'backlog', 'paused', 'workspace_setup'].includes(task.status)) {
-        const buf = agent.getBufferString(100);
         const isPlanner = agent.id.startsWith('plan-');
         const isImplementor = agent.id.startsWith('imp-');
         const isReviewer = agent.id.startsWith('rev-');
 
-        const cleanBuf = stripAnsi(buf);
         if (isPlanner) {
-          const planReady = agent.cli === 'codex'
-            ? hasCodexStructuredOutput(buf, '=== PLAN END ===')
-            : cleanBuf.includes('=== PLAN END ===');
-          const planText = planReady
-            ? getLastStructuredBlock(cleanBuf, '=== PLAN START ===', '=== PLAN END ===')
-            : null;
+          const planText = extractPlannerPlanText(agent);
           if (planText && !isPlanPlaceholder(planText)) {
             onPlanComplete(agent.id, taskId);
           } else {
             store.updateTask(taskId, {
               status: 'blocked',
-              blockedReason: planReady
+              blockedReason: planText
                 ? 'Planner exited after returning placeholder output'
                 : 'Agent process exited unexpectedly',
               assignedTo: null,
@@ -1127,29 +1313,16 @@ function pollLoop() {
             });
           }
         } else if (isReviewer) {
-          const reviewReady = agent.cli === 'codex'
-            ? hasCodexStructuredOutput(buf, '=== REVIEW END ===')
-            : cleanBuf.includes('=== REVIEW END ===');
-          if (reviewReady) {
-            const reviewer = agentManager.get(agent.id);
-            const bufStr = reviewer?.getBufferString(100) || '';
-            const captured = reviewer?.cli === 'codex' ? readCapturedCodexMessage(bufStr, { remove: false }) : null;
-            const sourceText = captured || bufStr;
-            const reviewText = getLastStructuredBlock(sourceText, '=== REVIEW START ===', '=== REVIEW END ===');
-            const reviewResult = reviewText ? parseReviewResult(reviewText) : null;
-            if (reviewText && reviewResult && !isReviewResultPlaceholder(reviewText, reviewResult)) {
-              onReviewComplete(agent.id, taskId);
-            } else {
-              store.updateTask(taskId, {
-                status: 'blocked',
-                blockedReason: 'Reviewer exited after returning placeholder output',
-                assignedTo: null,
-              });
-            }
+          const reviewText = extractReviewerReviewText(agent);
+          const reviewResult = reviewText ? parseReviewResult(reviewText) : null;
+          if (reviewText && reviewResult && !isReviewResultPlaceholder(reviewText, reviewResult)) {
+            onReviewComplete(agent.id, taskId);
           } else {
             store.updateTask(taskId, {
               status: 'blocked',
-              blockedReason: 'Agent process exited unexpectedly',
+              blockedReason: reviewText
+                ? 'Reviewer exited after returning placeholder output'
+                : 'Agent process exited unexpectedly',
               assignedTo: null,
             });
           }
@@ -1193,17 +1366,12 @@ bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
     const isReviewer = agentId.startsWith('rev-');
 
     if (isPlanner) {
-      const planReady = agent.cli === 'codex'
-        ? hasCodexStructuredOutput(buf, '=== PLAN END ===')
-        : cleanBuf.includes('=== PLAN END ===');
-      if (planReady) {
-        const captured = agent.cli === 'codex' ? readCapturedCodexMessage(buf, { remove: false }) : null;
-        const sourceText = captured || cleanBuf;
-        const planText = getLastStructuredBlock(sourceText, '=== PLAN START ===', '=== PLAN END ===');
-        if (planText && !isPlanPlaceholder(planText)) {
-          onPlanComplete(agentId, taskId);
-          return;
-        }
+      const planText = extractPlannerPlanText(agent);
+      if (planText && !isPlanPlaceholder(planText)) {
+        onPlanComplete(agentId, taskId);
+        return;
+      }
+      if (planText) {
         authBlockedReason = 'Planner exited after returning placeholder output';
       }
     } else if (isImplementor) {
@@ -1216,18 +1384,13 @@ bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
         authBlockedReason = implementationState.blockedReason;
       }
     } else if (isReviewer) {
-      const reviewReady = agent.cli === 'codex'
-        ? hasCodexStructuredOutput(buf, '=== REVIEW END ===')
-        : cleanBuf.includes('=== REVIEW END ===');
-      if (reviewReady) {
-        const captured = agent.cli === 'codex' ? readCapturedCodexMessage(buf, { remove: false }) : null;
-        const sourceText = captured || cleanBuf;
-        const reviewText = getLastStructuredBlock(sourceText, '=== REVIEW START ===', '=== REVIEW END ===');
-        const reviewResult = reviewText ? parseReviewResult(reviewText) : null;
-        if (reviewText && reviewResult && !isReviewResultPlaceholder(reviewText, reviewResult)) {
-          onReviewComplete(agentId, taskId);
-          return;
-        }
+      const reviewText = extractReviewerReviewText(agent);
+      const reviewResult = reviewText ? parseReviewResult(reviewText) : null;
+      if (reviewText && reviewResult && !isReviewResultPlaceholder(reviewText, reviewResult)) {
+        onReviewComplete(agentId, taskId);
+        return;
+      }
+      if (reviewText) {
         authBlockedReason = 'Reviewer exited after returning placeholder output';
       }
     }

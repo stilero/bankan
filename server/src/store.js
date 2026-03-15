@@ -212,10 +212,9 @@ class TaskStore {
     if (!task) return null;
     if (typeof totalTokens !== 'number' || totalTokens < task.totalTokens) return task;
     task.totalTokens = totalTokens;
-    task.updatedAt = new Date().toISOString();
+    // Intentionally skip updatedAt and tasks:changed — token counts are
+    // telemetry and should not affect sort order or trigger full re-renders.
     this._save();
-    bus.emit('task:updated', task);
-    bus.emit('tasks:changed', this.tasks);
     return task;
   }
 

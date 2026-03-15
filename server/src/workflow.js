@@ -48,10 +48,11 @@ export function isReviewResultPlaceholder(reviewText, reviewResult = parseReview
   const normalized = reviewText.replace(/\s+/g, ' ').trim().toLowerCase();
   if (normalized.includes("(issue description, or 'none')")) return true;
   if (normalized.includes('(2-3 sentences summarising the review)')) return true;
+  if (normalized.includes('concrete issue, or none')) return true;
 
   const summary = (reviewResult.summary || '').replace(/\s+/g, ' ').trim().toLowerCase();
   if (!summary) return true;
-  if (summary.includes('2-3 sentences summarising the review')) return true;
+  if (summary.includes('sentences summarising the review')) return true;
 
   return false;
 }
@@ -59,12 +60,27 @@ export function isReviewResultPlaceholder(reviewText, reviewResult = parseReview
 export function isPlanPlaceholder(planText) {
   if (typeof planText !== 'string' || !planText.trim()) return true;
   const normalized = planText.replace(/\s+/g, ' ').trim().toLowerCase();
-  if (normalized.includes('(one sentence describing what will be built)')) return true;
-  if (normalized.includes('(detailed, actionable step)')) return true;
-  if (normalized.includes('path/to/file.ts (reason for modification)')) return true;
-  if (normalized.includes("(test description, or 'none')")) return true;
-  if (normalized.includes("(potential issue or edge case, or 'none')")) return true;
-  return false;
+  const hasPlaceholder =
+    normalized.includes('(one sentence describing what will be built)') ||
+    normalized.includes('(detailed, actionable step)') ||
+    normalized.includes('path/to/file.ts (reason for modification)') ||
+    normalized.includes("(test description, or 'none')") ||
+    normalized.includes("(potential issue or edge case, or 'none')");
+
+  if (!hasPlaceholder) return false;
+
+  // Placeholder patterns found — but the plan may contain real content
+  // alongside echoed prompt template text (terminal echo contamination).
+  // Check if any SUMMARY line has substantive content.
+  const summaryMatches = [...planText.matchAll(/SUMMARY:\s*(.+)/gi)];
+  const hasRealSummary = summaryMatches.some(m => {
+    const val = m[1].trim();
+    return val.length > 20 && !val.startsWith('(');
+  });
+
+  if (hasRealSummary) return false;
+
+  return true;
 }
 
 export function getLiveTaskAgent(task, agentManager) {
