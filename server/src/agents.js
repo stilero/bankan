@@ -45,6 +45,10 @@ const STRUCTURED_BLOCK_MARKERS = {
     start: '=== REVIEW START ===',
     end: '=== REVIEW END ===',
   },
+  implementation: {
+    start: '=== IMPLEMENTATION RESULT START ===',
+    end: '=== IMPLEMENTATION RESULT END ===',
+  },
 };
 
 function stripAnsi(text) {
@@ -108,6 +112,7 @@ class Agent {
     return {
       plan: { pending: '', completed: null, allCompleted: [] },
       review: { pending: '', completed: null, allCompleted: [] },
+      implementation: { pending: '', completed: null, allCompleted: [] },
     };
   }
 

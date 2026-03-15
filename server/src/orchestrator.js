@@ -7,7 +7,7 @@ import { loadSettings, getWorkspacesDir } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
-import { isReviewResultPlaceholder, isPlanPlaceholder, parseReviewResult, reviewShouldPass } from './workflow.js';
+import { isReviewResultPlaceholder, isPlanPlaceholder, isImplementationPlaceholder, parseReviewResult, reviewShouldPass } from './workflow.js';
 import { createSessionEntry } from './sessionHistory.js';
 
 const POLL_INTERVAL = 4000;
@@ -112,7 +112,7 @@ export function cleanTerminalArtifacts(text) {
   // truncate at that point — everything after is echoed prompt/template noise.
   // Also strip noise lines between the real plan content and the truncation point.
   let truncated = text;
-  for (const marker of ['=== PLAN START ===', '=== REVIEW START ===']) {
+  for (const marker of ['=== PLAN START ===', '=== REVIEW START ===', '=== IMPLEMENTATION RESULT START ===']) {
     const firstIdx = truncated.indexOf(marker);
     if (firstIdx !== -1) {
       const secondIdx = truncated.indexOf(marker, firstIdx + marker.length);
@@ -280,30 +280,61 @@ export function extractReviewerReviewText(agent, options = {}) {
   return result;
 }
 
-function getImplementationCompletionState(agent, taskId) {
-  const completionMarker = `=== IMPLEMENTATION COMPLETE ${taskId} ===`;
-  const buf = agent.getBufferString(100);
+export function extractImplementationResult(agent, options = {}) {
+  const startMarker = '=== IMPLEMENTATION RESULT START ===';
+  const endMarker = '=== IMPLEMENTATION RESULT END ===';
+  const result = extractStructuredStageText(agent, {
+    startMarker,
+    endMarker,
+    kind: 'implementation',
+    ...options,
+  });
 
+  if (result && isImplementationPlaceholder(result)) {
+    const capturedBlocks = agent.getAllCapturedBlocks?.('implementation') || [];
+    for (let i = capturedBlocks.length - 1; i >= 0; i--) {
+      if (!isImplementationPlaceholder(capturedBlocks[i])) return capturedBlocks[i];
+    }
+
+    const cleanBuf = stripAnsi(agent.getBufferString(500));
+    const blocks = getAllStructuredBlocks(cleanBuf, startMarker, endMarker);
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (!isImplementationPlaceholder(blocks[i])) return blocks[i];
+    }
+  }
+
+  return result;
+}
+
+function getImplementationCompletionState(agent, taskId) {
+  const resultText = extractImplementationResult(agent);
+
+  if (resultText && !isImplementationPlaceholder(resultText)) {
+    const completionMarker = `=== IMPLEMENTATION COMPLETE ${taskId} ===`;
+    if (resultText.includes(completionMarker)) {
+      return { complete: true, blockedReason: null };
+    }
+    const blockedMatch = resultText.match(/=== BLOCKED: (.+?) ===/);
+    if (blockedMatch) {
+      return { complete: false, blockedReason: blockedMatch[1] };
+    }
+  }
+
+  // Fallback for codex: check captured message directly
   if (agent.cli === 'codex') {
+    const buf = agent.getBufferString(100);
     const captured = readCapturedCodexMessage(buf, { remove: false });
     if (captured) {
+      const completionMarker = `=== IMPLEMENTATION COMPLETE ${taskId} ===`;
       if (captured.includes(completionMarker)) {
         return { complete: true, blockedReason: null };
       }
       const blockedMatch = captured.match(/=== BLOCKED: (.+?) ===/);
       return { complete: false, blockedReason: blockedMatch ? blockedMatch[1] : null };
     }
-
-    return { complete: false, blockedReason: null };
   }
 
-  const cleanBuf = stripAnsi(buf);
-  if (cleanBuf.includes(completionMarker)) {
-    return { complete: true, blockedReason: null };
-  }
-
-  const blockedMatch = cleanBuf.match(/=== BLOCKED: (.+?) ===/);
-  return { complete: false, blockedReason: blockedMatch ? blockedMatch[1] : null };
+  return { complete: false, blockedReason: null };
 }
 
 function summarizeProcessError(prefix, err) {
@@ -537,10 +568,14 @@ Instructions:
 - You are already on branch ${task.branch} in ${repoDir}
 ${promptBody}
 - Before signaling completion, ensure ALL changes are committed to git on branch ${task.branch}
-- When fully complete and all changes are committed, output this exact string on its own line:
+- When fully complete and all changes are committed, output the completion block below with the placeholder replaced:
+  === IMPLEMENTATION RESULT START ===
   === IMPLEMENTATION COMPLETE ${task.id} ===
+  === IMPLEMENTATION RESULT END ===
 - If you encounter a blocker you cannot resolve, output:
-  === BLOCKED: {reason} ===
+  === IMPLEMENTATION RESULT START ===
+  === BLOCKED: {describe the blocker here} ===
+  === IMPLEMENTATION RESULT END ===
 
 Begin implementation now.`;
 

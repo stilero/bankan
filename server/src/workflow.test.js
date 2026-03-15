@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import {
   getLiveTaskAgent,
   getAgentStage,
+  isImplementationPlaceholder,
   isReviewResultPlaceholder,
   isPlanPlaceholder,
   parseReviewResult,
@@ -150,6 +151,49 @@ RISKS:
 - none
 === PLAN END ===`;
     expect(isPlanPlaceholder(contaminated)).toBe(false);
+  });
+});
+
+describe('implementation placeholder detection', () => {
+  test('echoed prompt template is detected as placeholder', () => {
+    const template = `=== IMPLEMENTATION RESULT START ===
+  === IMPLEMENTATION COMPLETE {task.id} ===
+  === IMPLEMENTATION RESULT END ===`;
+    expect(isImplementationPlaceholder(template)).toBe(true);
+  });
+
+  test('blocked placeholder from prompt template is detected', () => {
+    const template = `=== IMPLEMENTATION RESULT START ===
+  === BLOCKED: {describe the blocker here} ===
+  === IMPLEMENTATION RESULT END ===`;
+    expect(isImplementationPlaceholder(template)).toBe(true);
+  });
+
+  test('real completion block is not a placeholder', () => {
+    const real = `=== IMPLEMENTATION RESULT START ===
+  === IMPLEMENTATION COMPLETE T-ABC123 ===
+  === IMPLEMENTATION RESULT END ===`;
+    expect(isImplementationPlaceholder(real)).toBe(false);
+  });
+
+  test('real blocked result is not a placeholder', () => {
+    const real = `=== IMPLEMENTATION RESULT START ===
+  === BLOCKED: npm install failed with EACCES ===
+  === IMPLEMENTATION RESULT END ===`;
+    expect(isImplementationPlaceholder(real)).toBe(false);
+  });
+
+  test('empty or blank text is a placeholder', () => {
+    expect(isImplementationPlaceholder('')).toBe(true);
+    expect(isImplementationPlaceholder('   ')).toBe(true);
+    expect(isImplementationPlaceholder(null)).toBe(true);
+  });
+
+  test('block without completion or blocked marker is a placeholder', () => {
+    const noise = `=== IMPLEMENTATION RESULT START ===
+some random text without markers
+=== IMPLEMENTATION RESULT END ===`;
+    expect(isImplementationPlaceholder(noise)).toBe(true);
   });
 });
 

@@ -57,6 +57,22 @@ export function isReviewResultPlaceholder(reviewText, reviewResult = parseReview
   return false;
 }
 
+export function isImplementationPlaceholder(resultText) {
+  if (typeof resultText !== 'string' || !resultText.trim()) return true;
+  const normalized = resultText.replace(/\s+/g, ' ').trim().toLowerCase();
+  if (normalized.includes('{describe the blocker here}')) return true;
+  // The prompt template contains placeholder instruction text — if the
+  // captured block matches the template exactly it's an echo, not real output.
+  if (normalized.includes('output the completion block below with the placeholder replaced')) return true;
+  // Check for actual completion or blocked markers with real content.
+  // The prompt template contains `{task.id}` and `{describe the blocker here}` —
+  // real output has a concrete task ID (e.g. T-ABC123) or real blocker text.
+  const hasRealCompletion = /=== implementation complete t-/i.test(normalized);
+  const hasRealBlocked = /=== blocked:/.test(normalized) && !normalized.includes('{describe the blocker here}');
+  if (!hasRealCompletion && !hasRealBlocked) return true;
+  return false;
+}
+
 export function isPlanPlaceholder(planText) {
   if (typeof planText !== 'string' || !planText.trim()) return true;
   const normalized = planText.replace(/\s+/g, ' ').trim().toLowerCase();
