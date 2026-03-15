@@ -32,19 +32,6 @@
       }
     ]
   },
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "yarn format"
-          }
-        ]
-      }
-    ]
-  },
   "companyAnnouncements": [
     "🤖 Welcome to The Ban Kan Claude Code Assistant!\n👉🏻 Make sure to update CLAUDE.md regularly and every time Claude makes a mistake. 👈🏻"
   ]
