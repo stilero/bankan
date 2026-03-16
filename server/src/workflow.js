@@ -61,6 +61,7 @@ export function isImplementationPlaceholder(resultText) {
   if (typeof resultText !== 'string' || !resultText.trim()) return true;
   const normalized = resultText.replace(/\s+/g, ' ').trim().toLowerCase();
   if (normalized.includes('{describe the blocker here}')) return true;
+  if (normalized.includes('{task_id}')) return true;
   // The prompt template contains placeholder instruction text — if the
   // captured block matches the template exactly it's an echo, not real output.
   if (normalized.includes('output the completion block below with the placeholder replaced')) return true;

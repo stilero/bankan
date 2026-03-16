@@ -545,7 +545,7 @@ RISKS:
   return prompt;
 }
 
-function buildImplementorPrompt(task, workspacePath) {
+export function buildImplementorPrompt(task, workspacePath) {
   const repoDir = workspacePath || task.repoPath;
   const promptBody = getPromptBody('implementation');
   let prompt = `You are an expert software engineer implementing a feature on a real codebase.
@@ -568,9 +568,9 @@ Instructions:
 - You are already on branch ${task.branch} in ${repoDir}
 ${promptBody}
 - Before signaling completion, ensure ALL changes are committed to git on branch ${task.branch}
-- When fully complete and all changes are committed, output the completion block below with the placeholder replaced:
+- When fully complete and all changes are committed, output the completion block below — replace {TASK_ID} with the actual TASK ID shown above:
   === IMPLEMENTATION RESULT START ===
-  === IMPLEMENTATION COMPLETE ${task.id} ===
+  === IMPLEMENTATION COMPLETE {TASK_ID} ===
   === IMPLEMENTATION RESULT END ===
 - If you encounter a blocker you cannot resolve, output:
   === IMPLEMENTATION RESULT START ===

@@ -195,6 +195,13 @@ some random text without markers
 === IMPLEMENTATION RESULT END ===`;
     expect(isImplementationPlaceholder(noise)).toBe(true);
   });
+
+  test('echoed prompt with {TASK_ID} placeholder is detected as placeholder', () => {
+    const echoedWithPlaceholder = `=== IMPLEMENTATION RESULT START ===
+  === IMPLEMENTATION COMPLETE {TASK_ID} ===
+  === IMPLEMENTATION RESULT END ===`;
+    expect(isImplementationPlaceholder(echoedWithPlaceholder)).toBe(true);
+  });
 });
 
 describe('retry status resolution', () => {

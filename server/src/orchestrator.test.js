@@ -2,12 +2,14 @@ import { describe, expect, test, vi } from 'vitest';
 
 import {
   buildAgentCommand,
+  buildImplementorPrompt,
   cleanTerminalArtifacts,
   extractImplementationResult,
   extractPlannerPlanText,
   extractReviewerReviewText,
   sanitizeBranchName,
 } from './orchestrator.js';
+import { isImplementationPlaceholder } from './workflow.js';
 
 describe('structured output extraction', () => {
   test('planner extraction falls back to agent structured capture when the PTY tail lost the full block', () => {
@@ -265,6 +267,49 @@ SUMMARY: Stable review capture prevents timeout.
     expect(result).not.toContain('{task.id}');
   });
 
+  test('implementation extraction rejects echoed prompt with {TASK_ID} placeholder and finds real block', () => {
+    // After the fix, the prompt template uses {TASK_ID} instead of the
+    // interpolated task ID, so the streaming parser captures a block with
+    // {TASK_ID} which isImplementationPlaceholder correctly rejects.
+    const readCaptured = vi.fn(() => null);
+    const echoedBlock = `=== IMPLEMENTATION RESULT START ===
+  === IMPLEMENTATION COMPLETE {TASK_ID} ===
+  === IMPLEMENTATION RESULT END ===`;
+    const realBlock = `=== IMPLEMENTATION RESULT START ===
+  === IMPLEMENTATION COMPLETE T-ABC123 ===
+  === IMPLEMENTATION RESULT END ===`;
+    const agent = {
+      cli: 'claude',
+      getBufferString: vi.fn(() => 'noise'),
+      getStructuredBlock: vi.fn(() => echoedBlock),
+      getAllCapturedBlocks: vi.fn(() => [echoedBlock, realBlock]),
+    };
+
+    const result = extractImplementationResult(agent, { readCapturedCodexMessage: readCaptured });
+    expect(result).toContain('IMPLEMENTATION COMPLETE T-ABC123');
+    expect(result).not.toContain('{TASK_ID}');
+  });
+
+  test('implementation extraction returns null when only echoed {TASK_ID} block exists', () => {
+    // When the agent has only echoed the prompt and hasn't produced real
+    // output yet, extraction should return the placeholder (which the
+    // signal checker will then reject via isImplementationPlaceholder).
+    const readCaptured = vi.fn(() => null);
+    const echoedBlock = `=== IMPLEMENTATION RESULT START ===
+  === IMPLEMENTATION COMPLETE {TASK_ID} ===
+  === IMPLEMENTATION RESULT END ===`;
+    const agent = {
+      cli: 'claude',
+      getBufferString: vi.fn(() => echoedBlock),
+      getStructuredBlock: vi.fn(() => echoedBlock),
+      getAllCapturedBlocks: vi.fn(() => [echoedBlock]),
+    };
+
+    const result = extractImplementationResult(agent, { readCapturedCodexMessage: readCaptured });
+    // Should return the placeholder block (caller checks isImplementationPlaceholder)
+    expect(result).toContain('{TASK_ID}');
+  });
+
   test('implementation extraction falls back to buffer scan when structured capture is placeholder', () => {
     const readCaptured = vi.fn(() => null);
     const templateBlock = `=== IMPLEMENTATION RESULT START ===
@@ -282,6 +327,34 @@ SUMMARY: Stable review capture prevents timeout.
 
     const result = extractImplementationResult(agent, { readCapturedCodexMessage: readCaptured });
     expect(result).toContain('npm install failed with EACCES');
+  });
+});
+
+describe('implementation prompt echo safety', () => {
+  test('completion block in implementor prompt is detected as placeholder by isImplementationPlaceholder', () => {
+    // This is the core bug: the prompt template interpolates ${task.id} into
+    // the example completion block. When the CLI echoes the prompt, the
+    // streaming parser captures a block with the real task ID, and
+    // isImplementationPlaceholder fails to detect it as a template echo.
+    const task = {
+      id: 'T-4F66CF',
+      title: 'Reporting',
+      branch: 'feature/t-4f66cf-reporting',
+      plan: 'Add reporting feature',
+    };
+    const prompt = buildImplementorPrompt(task, '/tmp/workspace');
+
+    // Extract the completion block from the prompt the same way the
+    // streaming parser would when the CLI echoes the prompt.
+    const startMarker = '=== IMPLEMENTATION RESULT START ===';
+    const endMarker = '=== IMPLEMENTATION RESULT END ===';
+    const startIdx = prompt.indexOf(startMarker);
+    const endIdx = prompt.indexOf(endMarker, startIdx);
+    const echoedBlock = prompt.slice(startIdx, endIdx + endMarker.length);
+
+    // The echoed completion block from the prompt MUST be detected as a
+    // placeholder — otherwise the signal checker treats it as real completion.
+    expect(isImplementationPlaceholder(echoedBlock)).toBe(true);
   });
 });
 
