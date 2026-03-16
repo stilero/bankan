@@ -4,6 +4,7 @@ import KanbanBoard from './KanbanBoard.jsx';
 import TerminalDrawer from './TerminalDrawer.jsx';
 import DirectoryPicker from './DirectoryPicker.jsx';
 import TaskDetailModal from './TaskDetailModal.jsx';
+import ReportingModal from './ReportingModal.jsx';
 import logoUrl from './assets/ban_kan_logo.svg';
 
 const PRIORITY_COLORS = {
@@ -60,6 +61,7 @@ export default function App() {
   const [selectedTask, setSelectedTask] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showReportingModal, setShowReportingModal] = useState(false);
   const hasRepos = repos.length > 0;
   const canCreateTask = hasRepos;
   const showStartupGreeting = isInitialized && !hasRepos && tasks.length === 0;
@@ -152,6 +154,24 @@ export default function App() {
           width: 6, height: 6, borderRadius: '50%',
           background: connected ? 'var(--green)' : 'var(--red)',
         }} />
+
+        {/* Reports */}
+        <button
+          onClick={() => setShowReportingModal(true)}
+          style={{
+            padding: '6px 14px',
+            background: 'var(--bg2)',
+            border: '1px solid var(--border)',
+            borderRadius: 4,
+            fontSize: 12,
+            fontWeight: 500,
+            color: 'var(--text2)',
+            cursor: 'pointer',
+          }}
+          title="View reporting dashboard"
+        >
+          Reports
+        </button>
 
         {/* Settings */}
         <button
@@ -309,6 +329,14 @@ export default function App() {
             updateSettings(newSettings);
             setShowSettingsModal(false);
           }}
+        />
+      )}
+
+      {/* REPORTING MODAL */}
+      {showReportingModal && (
+        <ReportingModal
+          tasks={tasks}
+          onClose={() => setShowReportingModal(false)}
         />
       )}
 
