@@ -43,14 +43,16 @@ function escapePrompt(text) {
   return text.replace(/'/g, "'\\''");
 }
 
-// TODO: buildCodexExecCommand emits bash syntax (mktemp, $?, printf).
-// On Windows the agent shell is PowerShell, so codex with captureLastMessage
-// will not work until this function gets a win32 branch.
 function buildCodexExecCommand(prompt, { captureLastMessage = false, sandbox = 'read-only', model = '' } = {}) {
   const escapedPrompt = escapePrompt(prompt);
   const modelFlag = model ? `-m ${model} ` : '';
   if (!captureLastMessage) {
     return `codex exec ${modelFlag}--sandbox ${sandbox} '${escapedPrompt}'`;
+  }
+
+  if (process.platform === 'win32') {
+    // PowerShell equivalents: GetTempFileName() → mktemp, $LASTEXITCODE → $?, Write-Host → printf
+    return `$tmpfile = [System.IO.Path]::GetTempFileName(); codex exec ${modelFlag}--sandbox ${sandbox} -o $tmpfile '${escapedPrompt}'; $status = $LASTEXITCODE; Write-Host "\`n=== CODEX_LAST_MESSAGE_FILE:$tmpfile ==="; exit $status`;
   }
 
   return `tmpfile=$(mktemp); codex exec ${modelFlag}--sandbox ${sandbox} -o "$tmpfile" '${escapedPrompt}'; status=$?; printf '\\n=== CODEX_LAST_MESSAGE_FILE:%s ===\\n' "$tmpfile"; exit $status`;
