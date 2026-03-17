@@ -797,6 +797,8 @@ async function startPlanning(task) {
 function onPlanComplete(agentId, taskId) {
   const planner = agentManager.get(agentId);
   if (!planner) return;
+  // Null out immediately so re-entrant signal-checker ticks are no-ops.
+  planner.currentTask = null;
   const rawPlanText = extractPlannerPlanText(planner, { removeCaptured: true });
 
   if (!rawPlanText) return;
@@ -901,6 +903,9 @@ async function onImplementationComplete(agentId) {
   if (!agent) return;
   const taskId = agent.currentTask;
   if (!taskId) return;
+  // Null out immediately so the signal checker won't fire this again while the
+  // async git push is in flight (2.5 s tick can overlap with a slow push).
+  agent.currentTask = null;
 
   const task = store.getTask(taskId);
 
@@ -974,6 +979,8 @@ SUMMARY: Review skipped because reviewer max is set to 0.
 async function onReviewComplete(agentId, taskId) {
   const reviewer = agentManager.get(agentId);
   if (!reviewer) return;
+  // Null out immediately so re-entrant signal-checker ticks are no-ops.
+  reviewer.currentTask = null;
   const rawReviewText = extractReviewerReviewText(reviewer, { removeCaptured: true });
   if (!rawReviewText) return;
   const reviewText = cleanTerminalArtifacts(rawReviewText);
