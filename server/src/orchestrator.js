@@ -697,9 +697,20 @@ async function prepareWorkspaceBranch(task) {
 }
 
 async function cleanupWorkspace(task) {
-  if (task.workspacePath && existsSync(task.workspacePath)) {
-    await rm(task.workspacePath, { recursive: true, force: true });
-    store.updateTask(task.id, { workspacePath: null });
+  if (!task.workspacePath || !existsSync(task.workspacePath)) return;
+  // On Windows, the PTY process may briefly hold handles after exit, causing
+  // EPERM on rmdir. Retry a few times with a short back-off before giving up.
+  const MAX_ATTEMPTS = 5;
+  const DELAY_MS = 1000;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      await rm(task.workspacePath, { recursive: true, force: true });
+      store.updateTask(task.id, { workspacePath: null });
+      return;
+    } catch (err) {
+      if (attempt === MAX_ATTEMPTS) throw err;
+      await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+    }
   }
 }
 
@@ -1035,8 +1046,11 @@ async function createPR(taskId) {
   // If a PR was already successfully created in a previous attempt, just finalize.
   if (task?.prUrl) {
     store.updateTask(taskId, { status: 'done', assignedTo: null, completedAt: new Date().toISOString() });
-    await cleanupWorkspace(store.getTask(taskId));
-    store.updateTask(taskId, { status: 'done', assignedTo: null });
+    try {
+      await cleanupWorkspace(store.getTask(taskId));
+    } catch (cleanupErr) {
+      console.warn('Workspace cleanup failed (non-fatal):', cleanupErr.message);
+    }
     return;
   }
   try {
@@ -1086,8 +1100,14 @@ async function createPR(taskId) {
     });
     bus.emit('pr:created', { taskId, prUrl });
 
-    await cleanupWorkspace(store.getTask(taskId));
+    // Mark done before cleanup — on Windows, rmdir can fail with EPERM if the
+    // PTY still holds a handle. That must not revert a successfully created PR.
     store.updateTask(taskId, { status: 'done', assignedTo: null });
+    try {
+      await cleanupWorkspace(store.getTask(taskId));
+    } catch (cleanupErr) {
+      console.warn('Workspace cleanup failed (non-fatal):', cleanupErr.message);
+    }
   } catch (err) {
     console.error('PR creation error:', err.message);
     store.updateTask(taskId, {
