@@ -17,16 +17,56 @@ function StageIcon({ children }) {
   );
 }
 
+const STAGE_ICONS = {
+  backlog: (
+    <StageIcon>
+      <rect x='3' y='2.75' width='10' height='10.5' rx='1.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.5' />
+      <path d='M4.75 5.25h5.75' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+      <path d='M4.75 7.75h4.25' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+      <path d='M4.75 10.25h3' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+      <path d='M9.75 3.25h0.5M9.75 12.75h0.5M3.5 3.25h0.5M3.5 12.75h0.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+    </StageIcon>
+  ),
+  planning: (
+    <StageIcon>
+      <path d='M4 2.75h5.75a.75.75 0 0 1 .75.75v1.5h2a.75.75 0 0 1 .75.75v7.75a.75.75 0 0 1-.75.75H4a.75.75 0 0 1-.75-.75V3.5A.75.75 0 0 1 4 2.75Z' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
+      <path d='M9.75 2.75v2h2.25' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.5' />
+      <path d='M4.75 6.5h6.25M4.75 8.5h5M4.75 10.5h4' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+      <path d='M5.5 6v-1.25M7.75 6v-1.25M10 6v-1.25' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+    </StageIcon>
+  ),
+  implementation: (
+    <StageIcon>
+      <path d='M3.25 5.5 5.5 7.75 3.25 10' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
+      <path d='M12.75 5.5 10.5 7.75 12.75 10' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
+      <path d='M6.5 12.5h3' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+      <path d='M2.75 8h10.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+      <circle cx='8' cy='8' r='3.75' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+    </StageIcon>
+  ),
+  review: (
+    <StageIcon>
+      <circle cx='7.5' cy='7.5' r='3.8' fill='none' stroke='currentColor' strokeWidth='1.5' />
+      <path d='M10.5 10.5l2.5 2.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+      <path d='M5.9 7.35 6.9 8.35 9.35 5.9' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.5' />
+      <circle cx='12.5' cy='3.5' r='1.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+      <path d='M11.5 3.5l.6.6 1.1-1.1' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.5' />
+    </StageIcon>
+  ),
+  done: (
+    <StageIcon>
+      <circle cx='8' cy='8' r='5.5' fill='none' stroke='currentColor' strokeWidth='1.5' />
+      <path d='m5.2 8 1.8 1.8 4-4' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.5' />
+      <path d='M11.75 6.25l-1.5 1.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.5' />
+    </StageIcon>
+  ),
+};
+
 const COLUMNS = [
   {
     id: 'backlog',
     title: 'Backlog',
-    icon: (
-      <StageIcon>
-        <rect x='2.5' y='3' width='11' height='10' rx='2' fill='none' stroke='currentColor' strokeWidth='1.5' />
-        <path d='M5 6h6M5 8.5h6M5 11h3.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
-      </StageIcon>
-    ),
+    icon: STAGE_ICONS.backlog,
     statuses: ['backlog', 'paused', 'aborted'],
     agentPrefix: null,
     color: 'var(--text3)',
@@ -34,13 +74,7 @@ const COLUMNS = [
   {
     id: 'planning',
     title: 'Planning',
-    icon: (
-      <StageIcon>
-        <path d='M4 12.5h2.25l5.75-5.75-2.25-2.25L4 10.25v2.25Z' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
-        <path d='M8.75 5.75 11 8' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
-        <path d='M3.5 13h9' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
-      </StageIcon>
-    ),
+    icon: STAGE_ICONS.planning,
     statuses: ['workspace_setup', 'planning', 'awaiting_approval'],
     agentPrefix: 'plan',
     color: 'var(--steel2)',
@@ -48,13 +82,7 @@ const COLUMNS = [
   {
     id: 'implementation',
     title: 'Implementation',
-    icon: (
-      <StageIcon>
-        <path d='m6.25 4.5 1.25-1.25 5 5L11.25 9.5l-.9-.9-1.6 1.6a1.5 1.5 0 0 1-2.12 0l-.83-.83a1.5 1.5 0 0 1 0-2.12l1.6-1.6-.9-.9Z' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
-        <path d='M4 12.25 7.5 8.75' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
-        <path d='m3.5 10.5 2 2' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
-      </StageIcon>
-    ),
+    icon: STAGE_ICONS.implementation,
     statuses: ['queued', 'implementing'],
     agentPrefix: 'imp',
     color: 'var(--green)',
@@ -62,12 +90,7 @@ const COLUMNS = [
   {
     id: 'review',
     title: 'Review',
-    icon: (
-      <StageIcon>
-        <path d='M1.75 8s2.25-3.75 6.25-3.75S14.25 8 14.25 8 12 11.75 8 11.75 1.75 8 1.75 8Z' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
-        <circle cx='8' cy='8' r='1.75' fill='none' stroke='currentColor' strokeWidth='1.5' />
-      </StageIcon>
-    ),
+    icon: STAGE_ICONS.review,
     statuses: ['review'],
     agentPrefix: 'rev',
     color: 'var(--yellow)',
@@ -75,12 +98,7 @@ const COLUMNS = [
   {
     id: 'done',
     title: 'Done',
-    icon: (
-      <StageIcon>
-        <circle cx='8' cy='8' r='5.25' fill='none' stroke='currentColor' strokeWidth='1.5' />
-        <path d='m5.5 8 1.5 1.5 3.5-3.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.5' />
-      </StageIcon>
-    ),
+    icon: STAGE_ICONS.done,
     statuses: ['done'],
     agentPrefix: null,
     color: 'var(--green)',
