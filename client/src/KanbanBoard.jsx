@@ -23,8 +23,8 @@ const COLUMNS = [
     title: 'Backlog',
     icon: (
       <StageIcon>
-        <rect x='2.5' y='3' width='11' height='10' rx='2' fill='none' stroke='currentColor' strokeWidth='1.5' />
-        <path d='M5 6h6M5 8.5h6M5 11h3.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+        <path d='M4 3.5h8c0.83 0 1.5 0.67 1.5 1.5v6c0 0.83-0.67 1.5-1.5 1.5h-8c-0.83 0-1.5-0.67-1.5-1.5v-6c0-0.83 0.67-1.5 1.5-1.5Z' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.2' />
+        <path d='M5 7h6M5 10h4' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1' />
       </StageIcon>
     ),
     statuses: ['backlog', 'paused', 'aborted'],
@@ -36,9 +36,8 @@ const COLUMNS = [
     title: 'Planning',
     icon: (
       <StageIcon>
-        <path d='M4 12.5h2.25l5.75-5.75-2.25-2.25L4 10.25v2.25Z' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
-        <path d='M8.75 5.75 11 8' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
-        <path d='M3.5 13h9' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+        <path d='M3.5 4h9c0.83 0 1.5 0.67 1.5 1.5v7c0 0.83-0.67 1.5-1.5 1.5h-9c-0.83 0-1.5-0.67-1.5-1.5v-7c0-0.83 0.67-1.5 1.5-1.5Z' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.2' />
+        <path d='M5.5 7h3M5.5 9.5h5M5.5 12h3' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1' />
       </StageIcon>
     ),
     statuses: ['workspace_setup', 'planning', 'awaiting_approval'],
@@ -50,9 +49,8 @@ const COLUMNS = [
     title: 'Implementation',
     icon: (
       <StageIcon>
-        <path d='m6.25 4.5 1.25-1.25 5 5L11.25 9.5l-.9-.9-1.6 1.6a1.5 1.5 0 0 1-2.12 0l-.83-.83a1.5 1.5 0 0 1 0-2.12l1.6-1.6-.9-.9Z' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
-        <path d='M4 12.25 7.5 8.75' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
-        <path d='m3.5 10.5 2 2' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+        <path d='M2 6.5L6 3l4 3.5M2 6.5v4c0 0.83 0.67 1.5 1.5 1.5h9c0.83 0 1.5-0.67 1.5-1.5v-4' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.2' />
+        <path d='M8 8v3.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1' />
       </StageIcon>
     ),
     statuses: ['queued', 'implementing'],
@@ -64,8 +62,8 @@ const COLUMNS = [
     title: 'Review',
     icon: (
       <StageIcon>
-        <path d='M1.75 8s2.25-3.75 6.25-3.75S14.25 8 14.25 8 12 11.75 8 11.75 1.75 8 1.75 8Z' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
-        <circle cx='8' cy='8' r='1.75' fill='none' stroke='currentColor' strokeWidth='1.5' />
+        <circle cx='8' cy='8' r='4.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.2' />
+        <path d='M6 8l1.5 1.5 2.5-2.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.2' />
       </StageIcon>
     ),
     statuses: ['review'],
@@ -77,8 +75,8 @@ const COLUMNS = [
     title: 'Done',
     icon: (
       <StageIcon>
-        <circle cx='8' cy='8' r='5.25' fill='none' stroke='currentColor' strokeWidth='1.5' />
-        <path d='m5.5 8 1.5 1.5 3.5-3.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.5' />
+        <path d='M3 3h10c0.83 0 1.5 0.67 1.5 1.5v7c0 0.83-0.67 1.5-1.5 1.5H3c-0.83 0-1.5-0.67-1.5-1.5v-7c0-0.83 0.67-1.5 1.5-1.5Z' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.2' />
+        <path d='M5 8.5l1.5 2 3.5-4' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.2' />
       </StageIcon>
     ),
     statuses: ['done'],
