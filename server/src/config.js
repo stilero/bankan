@@ -41,6 +41,30 @@ function getLegacyImplementorCli() {
   return legacyCli === 'claude' || legacyCli === 'codex' ? legacyCli : 'claude';
 }
 
+// Canonical mapping of CLI providers to their supported models.
+// Each model entry has a value (passed as --model / -m flag) and a label for the UI.
+// An empty value means "use the CLI's default model" (no flag passed).
+export const CLI_MODEL_MAP = {
+  claude: [
+    { value: '', label: 'Default (CLI default)' },
+    { value: 'claude-opus-4-6', label: 'Opus 4.6 (most intelligent)' },
+    { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6 (balanced)' },
+    { value: 'claude-haiku-4-5', label: 'Haiku 4.5 (fastest, cheapest)' },
+  ],
+  codex: [
+    { value: '', label: 'Default (CLI default)' },
+    { value: 'gpt-5.4', label: 'GPT-5.4 (flagship)' },
+    { value: 'gpt-5.3-codex', label: 'GPT-5.3 Codex (best coding)' },
+    { value: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark (fast)' },
+  ],
+};
+
+export function isValidModelForCli(cli, model) {
+  const models = CLI_MODEL_MAP[cli];
+  if (!models) return false;
+  return models.some(m => m.value === model);
+}
+
 const DEFAULT_PROMPTS = {
   planning: `Plan Mode Instructions
 
@@ -210,6 +234,8 @@ export function validateSettings(settings) {
     }
     if (cfg.model !== undefined && typeof cfg.model !== 'string') {
       errors.push(`${role}.model must be a string`);
+    } else if (typeof cfg.model === 'string' && validClis.includes(cfg.cli) && !isValidModelForCli(cfg.cli, cfg.model)) {
+      errors.push(`${role}.model '${cfg.model}' is not valid for the '${cfg.cli}' CLI`);
     }
   }
 

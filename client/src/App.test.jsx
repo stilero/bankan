@@ -70,9 +70,9 @@ describe('App', () => {
         workspaceRoot: '/tmp/original',
         repos: ['/repo-a', '/repo-b'],
         agents: {
-          planners: { max: 1, cli: 'claude' },
-          implementors: { max: 2, cli: 'codex' },
-          reviewers: { max: 1, cli: 'claude' },
+          planners: { max: 1, cli: 'claude', model: '' },
+          implementors: { max: 2, cli: 'codex', model: '' },
+          reviewers: { max: 1, cli: 'claude', model: '' },
         },
         prompts: {
           planning: 'Plan prompt',
@@ -203,9 +203,9 @@ describe('App', () => {
       workspaceRoot: '/tmp/restored',
       repos: ['/repo-a'],
       agents: {
-        planners: { max: 1, cli: 'claude' },
-        implementors: { max: 2, cli: 'codex' },
-        reviewers: { max: 1, cli: 'claude' },
+        planners: { max: 1, cli: 'claude', model: '' },
+        implementors: { max: 2, cli: 'codex', model: '' },
+        reviewers: { max: 1, cli: 'claude', model: '' },
       },
       prompts: {
         planning: 'Plan prompt',
@@ -232,7 +232,7 @@ describe('App', () => {
     fireEvent.click(screen.getByText('Planning'));
     const maxInput = screen.getByDisplayValue('1');
     fireEvent.change(maxInput, { target: { value: '3' } });
-    fireEvent.change(screen.getByDisplayValue('claude'), { target: { value: 'codex' } });
+    fireEvent.change(screen.getByTestId('model-select-planners'), { target: { value: 'codex:' } });
     fireEvent.change(screen.getByDisplayValue('Plan prompt'), { target: { value: 'Updated plan prompt' } });
 
     fireEvent.click(screen.getByText('Apply'));
@@ -242,9 +242,9 @@ describe('App', () => {
       workspaceRoot: '/tmp/workspaces',
       repos: ['/repo-b', '/repo-c'],
       agents: {
-        planners: { max: 3, cli: 'codex' },
-        implementors: { max: 2, cli: 'codex' },
-        reviewers: { max: 1, cli: 'claude' },
+        planners: { max: 3, cli: 'codex', model: '' },
+        implementors: { max: 2, cli: 'codex', model: '' },
+        reviewers: { max: 1, cli: 'claude', model: '' },
       },
       prompts: {
         planning: 'Updated plan prompt',

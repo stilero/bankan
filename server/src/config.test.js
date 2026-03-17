@@ -136,8 +136,8 @@ describe('config settings lifecycle', () => {
       defaultRepoPath: '/repo',
       workspaceRoot: '/tmp/ws',
       agents: {
-        planners: { max: 1, cli: 'claude', model: 'haiku' },
-        implementors: { max: 1, cli: 'claude', model: 'opus' },
+        planners: { max: 1, cli: 'claude', model: 'claude-haiku-4-5' },
+        implementors: { max: 1, cli: 'claude', model: 'claude-opus-4-6' },
         reviewers: { max: 1, cli: 'claude', model: '' },
       },
       prompts: { planning: 'p', implementation: 'i', review: 'r' },
@@ -148,6 +148,45 @@ describe('config settings lifecycle', () => {
     bad.agents.planners.model = 42;
     const errors = validateSettings(bad);
     expect(errors).toContain('planners.model must be a string');
+  });
+
+  test('validateSettings rejects models that do not belong to the selected CLI', async () => {
+    harness = createRuntimeHarness();
+    const { validateSettings } = await harness.importModule('./src/config.js');
+
+    const mismatch = {
+      repos: ['/repo'],
+      defaultRepoPath: '/repo',
+      workspaceRoot: '/tmp/ws',
+      agents: {
+        planners: { max: 1, cli: 'codex', model: 'claude-haiku-4-5' },
+        implementors: { max: 1, cli: 'claude', model: 'gpt-5.4' },
+        reviewers: { max: 1, cli: 'codex', model: '' },
+      },
+      prompts: { planning: 'p', implementation: 'i', review: 'r' },
+    };
+    const errors = validateSettings(mismatch);
+    expect(errors).toContain("planners.model 'claude-haiku-4-5' is not valid for the 'codex' CLI");
+    expect(errors).toContain("implementors.model 'gpt-5.4' is not valid for the 'claude' CLI");
+    expect(errors).not.toContain(expect.stringContaining('reviewers.model'));
+  });
+
+  test('validateSettings accepts valid codex models', async () => {
+    harness = createRuntimeHarness();
+    const { validateSettings } = await harness.importModule('./src/config.js');
+
+    const valid = {
+      repos: ['/repo'],
+      defaultRepoPath: '/repo',
+      workspaceRoot: '/tmp/ws',
+      agents: {
+        planners: { max: 1, cli: 'codex', model: 'gpt-5.3-codex' },
+        implementors: { max: 1, cli: 'codex', model: 'gpt-5.4' },
+        reviewers: { max: 1, cli: 'claude', model: 'claude-sonnet-4-6' },
+      },
+      prompts: { planning: 'p', implementation: 'i', review: 'r' },
+    };
+    expect(validateSettings(valid)).toEqual([]);
   });
 
   test('returns early when agents are missing and validates repo types', async () => {
