@@ -17,14 +17,26 @@ function StageIcon({ children }) {
   );
 }
 
+const iconStrokeProps = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.5,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+};
+
 const COLUMNS = [
   {
     id: 'backlog',
     title: 'Backlog',
     icon: (
       <StageIcon>
-        <rect x='2.5' y='3' width='11' height='10' rx='2' fill='none' stroke='currentColor' strokeWidth='1.5' />
-        <path d='M5 6h6M5 8.5h6M5 11h3.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+        <circle cx='3.75' cy='4.65' r='0.65' {...iconStrokeProps} />
+        <path d='M5 4.65h6.25' {...iconStrokeProps} />
+        <circle cx='3.75' cy='7.15' r='0.65' {...iconStrokeProps} />
+        <path d='M5 7.15h6.25' {...iconStrokeProps} />
+        <circle cx='3.75' cy='9.65' r='0.65' {...iconStrokeProps} />
+        <path d='M5 9.65h6.25' {...iconStrokeProps} />
       </StageIcon>
     ),
     statuses: ['backlog', 'paused', 'aborted'],
@@ -36,9 +48,11 @@ const COLUMNS = [
     title: 'Planning',
     icon: (
       <StageIcon>
-        <path d='M4 12.5h2.25l5.75-5.75-2.25-2.25L4 10.25v2.25Z' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
-        <path d='M8.75 5.75 11 8' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
-        <path d='M3.5 13h9' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+        <rect x='2.75' y='2.75' width='8.75' height='10.75' rx='1' {...iconStrokeProps} />
+        <path d='M10.75 2.75V5h2.25' {...iconStrokeProps} />
+        <path d='M4.5 6.75h5.5' {...iconStrokeProps} />
+        <path d='M4.5 8.75h5' {...iconStrokeProps} />
+        <path d='M4.5 10.75h4.25' {...iconStrokeProps} />
       </StageIcon>
     ),
     statuses: ['workspace_setup', 'planning', 'awaiting_approval'],
@@ -50,9 +64,12 @@ const COLUMNS = [
     title: 'Implementation',
     icon: (
       <StageIcon>
-        <path d='m6.25 4.5 1.25-1.25 5 5L11.25 9.5l-.9-.9-1.6 1.6a1.5 1.5 0 0 1-2.12 0l-.83-.83a1.5 1.5 0 0 1 0-2.12l1.6-1.6-.9-.9Z' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
-        <path d='M4 12.25 7.5 8.75' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
-        <path d='m3.5 10.5 2 2' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
+        <path d='M3.95 5.5 5.75 6.75 3.95 8' {...iconStrokeProps} />
+        <path d='M12.05 5.5 10.25 6.75 12.05 8' {...iconStrokeProps} />
+        <rect x='3.25' y='3.75' width='9.5' height='8.25' rx='1.15' {...iconStrokeProps} />
+        <path d='M5.25 10.5h2.25' {...iconStrokeProps} />
+        <path d='M5.25 6.25h5.75' {...iconStrokeProps} />
+        <path d='M5.25 8.25h4.25' {...iconStrokeProps} />
       </StageIcon>
     ),
     statuses: ['queued', 'implementing'],
@@ -64,8 +81,9 @@ const COLUMNS = [
     title: 'Review',
     icon: (
       <StageIcon>
-        <path d='M1.75 8s2.25-3.75 6.25-3.75S14.25 8 14.25 8 12 11.75 8 11.75 1.75 8 1.75 8Z' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
-        <circle cx='8' cy='8' r='1.75' fill='none' stroke='currentColor' strokeWidth='1.5' />
+        <circle cx='6.75' cy='6.75' r='3.25' {...iconStrokeProps} />
+        <path d='M8.9 8.9 11 11' {...iconStrokeProps} />
+        <path d='M5.25 6.5 6.75 8 9.35 5.4' {...iconStrokeProps} />
       </StageIcon>
     ),
     statuses: ['review'],
@@ -77,8 +95,12 @@ const COLUMNS = [
     title: 'Done',
     icon: (
       <StageIcon>
-        <circle cx='8' cy='8' r='5.25' fill='none' stroke='currentColor' strokeWidth='1.5' />
-        <path d='m5.5 8 1.5 1.5 3.5-3.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.5' />
+        <path
+          d='M6 4.25h4l2.25 2.25v2.65a2.75 2.75 0 1 1-4.5 0V4.25Z'
+          {...iconStrokeProps}
+        />
+        <path d='M7.25 4.25h1.25V6' {...iconStrokeProps} />
+        <path d='M8 8 9.5 9.5 12 7' {...iconStrokeProps} />
       </StageIcon>
     ),
     statuses: ['done'],
