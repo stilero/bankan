@@ -40,3 +40,7 @@ Run `npm run lint` after code changes and before the test suite. `npm run covera
 - Document any intentional coverage gaps and why they remain.
 - Include manual verification notes when UI or workflow behavior benefits from hands-on validation.
 - Keep commits focused and descriptive.
+
+## Releases
+
+Release publishing is handled by maintainers. See [docs/releasing.md](docs/releasing.md) for the internal release process.
