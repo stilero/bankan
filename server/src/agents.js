@@ -166,6 +166,9 @@ class Agent {
       rows: this.terminalSize.rows,
       cwd,
       env,
+      // On Windows, use the ConPTY DLL path to avoid a node-pty bug where
+      // the kill() method crashes when consoleProcessList resolves undefined.
+      ...(isWindows ? { useConptyDll: true } : {}),
     });
 
     this.process.onData((data) => {

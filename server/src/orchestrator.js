@@ -1023,6 +1023,13 @@ async function onReviewComplete(agentId, taskId) {
 
 async function createPR(taskId) {
   const task = store.getTask(taskId);
+  // If a PR was already successfully created in a previous attempt, just finalize.
+  if (task?.prUrl) {
+    store.updateTask(taskId, { status: 'done', assignedTo: null, completedAt: new Date().toISOString() });
+    await cleanupWorkspace(store.getTask(taskId));
+    store.updateTask(taskId, { status: 'done', assignedTo: null });
+    return;
+  }
   try {
     if (!task?.workspacePath || !existsSync(task.workspacePath)) {
       throw new Error('Workspace is missing before PR creation');
@@ -1041,13 +1048,28 @@ async function createPR(taskId) {
 
     await git.raw(['push', '--force-with-lease', 'origin', task.branch]);
     const prBody = buildPullRequestBody(task);
-    const prUrl = execFileSync('gh', [
-      'pr', 'create',
-      '--title', `[${task.id}] ${task.title}`,
-      '--body', prBody,
-      '--head', task.branch,
-      '--base', 'main',
-    ], { cwd: task.workspacePath, encoding: 'utf-8' }).trim();
+    let prUrl;
+    try {
+      prUrl = execFileSync('gh', [
+        'pr', 'create',
+        '--title', `[${task.id}] ${task.title}`,
+        '--body', prBody,
+        '--head', task.branch,
+        '--base', 'main',
+      ], { cwd: task.workspacePath, encoding: 'utf-8' }).trim();
+    } catch (createErr) {
+      // A PR for this branch may already exist — extract the URL from the error
+      // message or fall back to gh pr view.
+      const existingUrl = createErr.message?.match(/https:\/\/github\.com\/\S+\/pull\/\d+/)?.[0];
+      if (existingUrl) {
+        prUrl = existingUrl;
+      } else {
+        prUrl = execFileSync('gh', [
+          'pr', 'view', task.branch, '--json', 'url', '--jq', '.url',
+        ], { cwd: task.workspacePath, encoding: 'utf-8' }).trim();
+      }
+      if (!prUrl) throw createErr;
+    }
     store.updateTask(taskId, {
       prUrl,
       assignedTo: null,
@@ -1307,6 +1329,13 @@ function pollLoop() {
   // Assign review tasks with no assignee → available reviewers
   const reviewTasks = tasks.filter(t => t.status === 'review' && !t.assignedTo);
   for (const task of reviewTasks) {
+    // If the task already has a passing review result (e.g. retried after a PR
+    // creation failure), skip the review agent and go straight to PR creation.
+    const existingReview = task.review ? parseReviewResult(task.review) : null;
+    if (existingReview && reviewShouldPass(existingReview)) {
+      createPR(task.id);
+      continue;
+    }
     if (!agentManager.getAvailableReviewer()) {
       agentManager.scaleUp('reviewers');
       if (!agentManager.getAvailableReviewer()) break;
