@@ -463,12 +463,32 @@ function AddTaskModal({ repos, settings, onClose, onSubmit }) {
   );
 }
 
-const MODEL_OPTIONS = [
-  { value: '', label: 'Default (CLI default)' },
-  { value: 'sonnet', label: 'Sonnet (balanced)' },
-  { value: 'opus', label: 'Opus (highest capability)' },
-  { value: 'haiku', label: 'Haiku (fastest, cheapest)' },
-];
+// Canonical mapping of CLI providers to their supported models.
+// Must stay in sync with CLI_MODEL_MAP in server/src/config.js.
+const CLI_MODEL_MAP = {
+  claude: [
+    { value: '', label: 'Default (CLI default)' },
+    { value: 'claude-opus-4-6', label: 'Opus 4.6 (most intelligent)' },
+    { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6 (balanced)' },
+    { value: 'claude-haiku-4-5', label: 'Haiku 4.5 (fastest, cheapest)' },
+  ],
+  codex: [
+    { value: '', label: 'Default (CLI default)' },
+    { value: 'gpt-5.4', label: 'GPT-5.4 (flagship)' },
+    { value: 'gpt-5.3-codex', label: 'GPT-5.3 Codex (best coding)' },
+    { value: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark (fast)' },
+  ],
+};
+
+// Encode cli + model into a single select value, decode it back.
+function encodeCliModel(cli, model) {
+  return `${cli}:${model}`;
+}
+function decodeCliModel(encoded) {
+  const idx = encoded.indexOf(':');
+  if (idx === -1) return { cli: 'claude', model: '' };
+  return { cli: encoded.slice(0, idx), model: encoded.slice(idx + 1) };
+}
 
 // --- Settings Modal ---
 function SettingsModal({ settings, onClose, onApply }) {
@@ -596,34 +616,33 @@ function SettingsModal({ settings, onClose, onApply }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-            <span style={{ fontSize: 12, color: 'var(--text2)', width: 45 }}>CLI:</span>
-            <select
-              value={cfg.cli}
-              onChange={e => updateRole(cfgMeta.roleKey, 'cli', e.target.value)}
-              style={{
-                padding: '4px 8px', fontSize: 12,
-                background: 'var(--bg)', border: '1px solid var(--border)',
-                borderRadius: 4,
-              }}
-            >
-              <option value="claude">claude</option>
-              <option value="codex">codex</option>
-            </select>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
             <span style={{ fontSize: 12, color: 'var(--text2)', width: 45 }}>Model:</span>
             <select
-              value={cfg.model || ''}
-              onChange={e => updateRole(cfgMeta.roleKey, 'model', e.target.value)}
+              data-testid={`model-select-${cfgMeta.roleKey}`}
+              value={encodeCliModel(cfg.cli, cfg.model || '')}
+              onChange={e => {
+                const { cli, model } = decodeCliModel(e.target.value);
+                setLocal(prev => {
+                  const next = JSON.parse(JSON.stringify(prev));
+                  next.agents[cfgMeta.roleKey].cli = cli;
+                  next.agents[cfgMeta.roleKey].model = model;
+                  return next;
+                });
+              }}
               style={{
                 padding: '4px 8px', fontSize: 12,
                 background: 'var(--bg)', border: '1px solid var(--border)',
                 borderRadius: 4,
               }}
             >
-              {MODEL_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              {Object.entries(CLI_MODEL_MAP).map(([cli, models]) => (
+                <optgroup key={cli} label={`${cli} CLI`}>
+                  {models.map(opt => (
+                    <option key={encodeCliModel(cli, opt.value)} value={encodeCliModel(cli, opt.value)}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>

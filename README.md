@@ -76,20 +76,23 @@ Contributor workflow, TDD expectations, pull request testing guidance, and verif
 
 ## Requirements
 
-- Node.js >= 18
-- git
-- One AI CLI tool:
-  - claude
-  - codex
+- [Node.js](https://nodejs.org/) >= 18
+- [git](https://git-scm.com/)
+- At least one AI CLI tool:
+  - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`npm install -g @anthropic-ai/claude-code`)
+  - [Codex CLI](https://github.com/openai/codex) (`npm install -g @openai/codex`)
+- [GitHub CLI](https://cli.github.com/) (`gh`) — required only for automatic pull request creation
 
 Native build tools may be needed only if `node-pty` has to compile during install.
 
-macOS: Xcode Command Line Tools  
-Linux: build-essential
+macOS: `xcode-select --install`
+Linux: `sudo apt-get install build-essential`
+Windows: Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the "Desktop development with C++" workload, or run `npm install -g windows-build-tools` from an elevated PowerShell
 
 ---
 
 ### Big heads up
+
 Ban Kan is in early development.
 
 The core workflow works, but bugs and rough edges are expected.

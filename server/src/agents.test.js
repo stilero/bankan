@@ -433,6 +433,38 @@ RISKS:
     expect(updateTokens).toHaveBeenCalledTimes(2);
   });
 
+  test('spawn uses platform-appropriate shell', async () => {
+    agentManager.agents = new Map([
+      ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],
+    ]);
+    agentManager._maxSettings = { ...originalMaxSettings, implementors: 1 };
+    agentManager._cliSettings = { ...originalCliSettings, implementors: 'claude' };
+    agentManager._sessionCounters = { ...originalSessionCounters, imp: 0 };
+
+    const agent = agentManager.scaleUp('implementors');
+    const pty = (await import('node-pty')).default;
+    const spawnSpy = vi.spyOn(pty, 'spawn').mockReturnValue({
+      onData: vi.fn(),
+      onExit: vi.fn(),
+      kill: vi.fn(),
+    });
+
+    const validCwd = new URL('.', import.meta.url).pathname;
+    agent.spawn(validCwd, 'echo test');
+
+    const [shell, args] = spawnSpy.mock.calls[0];
+    if (process.platform === 'win32') {
+      expect(shell).toBe('powershell.exe');
+      expect(args).toEqual(['-NoProfile', '-Command', 'echo test']);
+    } else {
+      expect(shell).toBe('bash');
+      expect(args).toEqual(['-l', '-c', 'echo test']);
+    }
+
+    spawnSpy.mockRestore();
+    agent.kill();
+  });
+
   test('reconfigure removes extra idle agents and marks active overflow agents as draining', () => {
     agentManager.agents = new Map([
       ['orch', { id: 'orch', getStatus: () => ({ id: 'orch' }) }],

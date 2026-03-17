@@ -24,7 +24,8 @@ function cyan(text) { return `\x1b[36m${text}\x1b[0m`; }
 
 function checkCommand(cmd) {
   try {
-    execSync(`which ${cmd}`, { stdio: 'pipe' });
+    const check = process.platform === 'win32' ? `where.exe ${cmd}` : `which ${cmd}`;
+    execSync(check, { stdio: 'pipe' });
     return true;
   } catch {
     return false;
@@ -78,24 +79,50 @@ async function main() {
   }
   console.log(`  ${green('✓')} Node.js v${nodeVer}`);
 
-  const tools = [
-    { cmd: 'git', hint: 'Install via system package manager' },
+  // git is required — exit immediately if missing
+  if (checkCommand('git')) {
+    console.log(`  ${green('✓')} git`);
+  } else {
+    const gitUrl = process.platform === 'win32'
+      ? 'https://git-scm.com/download/win'
+      : 'https://git-scm.com/downloads';
+    console.log(`  ${red('✗')} git not found`);
+    console.log(`    Install: ${dim(gitUrl)}`);
+    console.log(`\n  ${red('git is required — setup cannot continue without it.')}\n`);
+    rl.close();
+    process.exit(1);
+  }
+
+  // gh CLI (needed for PR creation)
+  if (checkCommand('gh')) {
+    console.log(`  ${green('✓')} gh`);
+  } else {
+    console.log(`  ${yellow('⚠')} gh not found ${dim('(needed for PR creation: https://cli.github.com/)')}`);
+  }
+
+  const cliTools = [
     { cmd: 'claude', hint: 'npm install -g @anthropic-ai/claude-code' },
     { cmd: 'codex', hint: 'npm install -g @openai/codex' },
   ];
 
   let hasAnyCLI = false;
-  for (const tool of tools) {
+  for (const tool of cliTools) {
     if (checkCommand(tool.cmd)) {
       console.log(`  ${green('✓')} ${tool.cmd}`);
-      if (tool.cmd === 'claude' || tool.cmd === 'codex') hasAnyCLI = true;
+      hasAnyCLI = true;
     } else {
       console.log(`  ${yellow('⚠')} ${tool.cmd} not found ${dim(`(${tool.hint})`)}`);
     }
   }
 
   if (!hasAnyCLI) {
-    console.log(`\n  ${red('⚠')} Neither claude nor codex CLI found. At least one is required.\n`);
+    console.log(`\n  ${red('⚠')} Neither claude nor codex CLI found. At least one is required.`);
+    console.log(`    ${dim('npm install -g @anthropic-ai/claude-code')}`);
+    console.log(`    ${dim('npm install -g @openai/codex')}`);
+    if (process.platform === 'win32') {
+      console.log(`    ${dim('Note: you may need to restart your terminal after installing npm global packages.')}`);
+    }
+    console.log('');
   }
 
   if (!IS_PACKAGED_RUNTIME) {
@@ -114,6 +141,12 @@ async function main() {
         console.log(`  ${green('✓')} C compiler available`);
       } else {
         console.log(`  ${yellow('⚠')} C compiler not found ${dim('(only needed if node-pty builds from source: apt install build-essential)')}`);
+      }
+    } else if (platform === 'win32') {
+      if (checkCommand('cl')) {
+        console.log(`  ${green('✓')} MSVC compiler available`);
+      } else {
+        console.log(`  ${yellow('⚠')} MSVC compiler not found ${dim('(only needed if node-pty builds from source: install Visual Studio Build Tools)')}`);
       }
     }
   }

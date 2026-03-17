@@ -387,8 +387,8 @@ describe('sanitizeBranchName', () => {
 
 describe('buildAgentCommand model flag', () => {
   test('claude CLI includes --model flag when model is non-empty', () => {
-    const cmd = buildAgentCommand('claude', 'do stuff', 'plan', 'haiku');
-    expect(cmd).toContain('--model haiku');
+    const cmd = buildAgentCommand('claude', 'do stuff', 'plan', 'claude-haiku-4-5');
+    expect(cmd).toContain('--model claude-haiku-4-5');
     expect(cmd).toContain('--dangerously-skip-permissions');
   });
 
@@ -403,8 +403,8 @@ describe('buildAgentCommand model flag', () => {
   });
 
   test('codex CLI includes -m flag when model is non-empty', () => {
-    const cmd = buildAgentCommand('codex', 'do stuff', 'plan', 'opus');
-    expect(cmd).toContain('-m opus');
+    const cmd = buildAgentCommand('codex', 'do stuff', 'plan', 'gpt-5.4');
+    expect(cmd).toContain('-m gpt-5.4');
     expect(cmd).toContain('codex exec');
   });
 
@@ -414,8 +414,8 @@ describe('buildAgentCommand model flag', () => {
   });
 
   test('claude print mode includes --model flag', () => {
-    const cmd = buildAgentCommand('claude', 'do stuff', 'print', 'sonnet');
-    expect(cmd).toContain('--model sonnet');
+    const cmd = buildAgentCommand('claude', 'do stuff', 'print', 'claude-sonnet-4-6');
+    expect(cmd).toContain('--model claude-sonnet-4-6');
     expect(cmd).toContain('--print');
   });
 });
