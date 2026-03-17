@@ -157,7 +157,10 @@ class Agent {
 
     const env = { ...process.env, TERM: 'xterm-256color' };
     delete env.CLAUDECODE;
-    this.process = pty.spawn('bash', ['-l', '-c', command], {
+    const isWindows = process.platform === 'win32';
+    const shell = isWindows ? 'powershell.exe' : 'bash';
+    const shellArgs = isWindows ? ['-NoProfile', '-Command', command] : ['-l', '-c', command];
+    this.process = pty.spawn(shell, shellArgs, {
       name: 'xterm-256color',
       cols: this.terminalSize.cols,
       rows: this.terminalSize.rows,

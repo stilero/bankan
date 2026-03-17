@@ -35,9 +35,17 @@ function stripAnsi(text) {
 }
 
 function escapePrompt(text) {
+  if (process.platform === 'win32') {
+    // PowerShell: escape single quotes by doubling them
+    return text.replace(/'/g, "''");
+  }
+  // Bash: break out of single quotes, insert escaped quote, re-enter
   return text.replace(/'/g, "'\\''");
 }
 
+// TODO: buildCodexExecCommand emits bash syntax (mktemp, $?, printf).
+// On Windows the agent shell is PowerShell, so codex with captureLastMessage
+// will not work until this function gets a win32 branch.
 function buildCodexExecCommand(prompt, { captureLastMessage = false, sandbox = 'read-only', model = '' } = {}) {
   const escapedPrompt = escapePrompt(prompt);
   const modelFlag = model ? `-m ${model} ` : '';
