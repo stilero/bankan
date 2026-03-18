@@ -42,6 +42,15 @@ vi.mock('./TaskDetailModal.jsx', () => ({
   },
 }));
 
+vi.mock('./ReportsModal.jsx', () => ({
+  default: (props) => (
+    <div>
+      <span>Reports modal</span>
+      <button onClick={props.onClose}>Close reports</button>
+    </div>
+  ),
+}));
+
 vi.mock('./DirectoryPicker.jsx', () => ({
   default: ({ onSelect, onClose }) => (
     <div>
@@ -213,6 +222,19 @@ describe('App', () => {
         review: 'Review prompt',
       },
     });
+  });
+
+  test('opens and closes the reports modal from the top bar', () => {
+    render(<App />);
+
+    const reportsButton = screen.getByTitle('Reports');
+    expect(reportsButton).toBeTruthy();
+
+    fireEvent.click(reportsButton);
+    expect(screen.getByText('Reports modal')).toBeTruthy();
+
+    fireEvent.click(screen.getByText('Close reports'));
+    expect(screen.queryByText('Reports modal')).toBeNull();
   });
 
   test('edits settings, browses workspace, and applies the updated configuration', () => {
