@@ -1,6 +1,44 @@
 import { describe, expect, test, vi } from 'vitest';
 
-import {
+vi.mock('./store.js', () => ({
+  default: {
+    getTask: vi.fn(),
+    deleteTask: vi.fn(),
+    removePlan: vi.fn(),
+    updateTask: vi.fn(),
+    appendLog: vi.fn(),
+    addTask: vi.fn(),
+    getAllTasks: vi.fn(() => []),
+    restartRecovery: vi.fn(),
+  },
+}));
+
+vi.mock('./agents.js', () => ({
+  default: {
+    get: vi.fn(),
+    getAllStatus: vi.fn(() => []),
+    agents: new Map(),
+  },
+}));
+
+vi.mock('./events.js', () => ({
+  default: {
+    emit: vi.fn(),
+    on: vi.fn(),
+  },
+}));
+
+vi.mock('./config.js', () => ({
+  default: { PORT: 3001 },
+  loadSettings: vi.fn(() => ({ repos: [] })),
+  getWorkspacesDir: vi.fn(() => '/tmp/test-workspaces'),
+}));
+
+vi.mock('./sessionHistory.js', () => ({
+  createSessionEntry: vi.fn(),
+}));
+
+import orchestratorDefault, {
   buildAgentCommand,
   buildImplementorPrompt,
   cleanTerminalArtifacts,
@@ -10,6 +48,7 @@ import {
   sanitizeBranchName,
 } from './orchestrator.js';
 import { isImplementationPlaceholder } from './workflow.js';
+import store from './store.js';
 
 describe('structured output extraction', () => {
   test('planner extraction falls back to agent structured capture when the PTY tail lost the full block', () => {
@@ -555,5 +594,54 @@ RISKS:
     const cleaned = cleanTerminalArtifacts(dirty);
     expect(cleaned).toContain('BRANCH: feature/fix');
     expect(cleaned).not.toContain('❯');
+  });
+});
+
+describe('deleteTask', () => {
+  test('deletes an aborted task and clears its plan', async () => {
+    store.getTask.mockReturnValue({ id: 'T-ABORT', status: 'aborted' });
+    store.removePlan.mockClear();
+    store.deleteTask.mockClear();
+
+    const result = await orchestratorDefault.deleteTask('T-ABORT');
+
+    expect(result).toBe(true);
+    expect(store.removePlan).toHaveBeenCalledWith('T-ABORT');
+    expect(store.deleteTask).toHaveBeenCalledWith('T-ABORT');
+  });
+
+  test('deletes a done task', async () => {
+    store.getTask.mockReturnValue({ id: 'T-DONE', status: 'done' });
+    store.removePlan.mockClear();
+    store.deleteTask.mockClear();
+
+    const result = await orchestratorDefault.deleteTask('T-DONE');
+
+    expect(result).toBe(true);
+    expect(store.removePlan).toHaveBeenCalledWith('T-DONE');
+    expect(store.deleteTask).toHaveBeenCalledWith('T-DONE');
+  });
+
+  test('refuses to delete a non-terminal task', async () => {
+    store.getTask.mockReturnValue({ id: 'T-ACTIVE', status: 'backlog' });
+    store.removePlan.mockClear();
+    store.deleteTask.mockClear();
+
+    const result = await orchestratorDefault.deleteTask('T-ACTIVE');
+
+    expect(result).toBe(false);
+    expect(store.removePlan).not.toHaveBeenCalled();
+    expect(store.deleteTask).not.toHaveBeenCalled();
+  });
+
+  test('refuses to delete a non-existent task', async () => {
+    store.getTask.mockReturnValue(null);
+    store.removePlan.mockClear();
+    store.deleteTask.mockClear();
+
+    const result = await orchestratorDefault.deleteTask('T-MISSING');
+
+    expect(result).toBe(false);
+    expect(store.deleteTask).not.toHaveBeenCalled();
   });
 });

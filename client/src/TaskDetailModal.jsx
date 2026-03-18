@@ -613,7 +613,7 @@ export default function TaskDetailModal({
                 </button>
               )}
 
-              {task.status === 'done' && onDelete && (
+              {['done', 'aborted'].includes(task.status) && onDelete && (
                 <button
                   onClick={() => {
                     if (confirmDelete) {
@@ -629,7 +629,7 @@ export default function TaskDetailModal({
                     borderRadius: 4, color: 'var(--red)',
                   }}
                 >
-                  {confirmDelete ? 'Confirm Delete' : 'Delete from Done'}
+                  {confirmDelete ? 'Confirm Delete' : 'Delete'}
                 </button>
               )}
             </div>
@@ -657,9 +657,9 @@ export default function TaskDetailModal({
               </div>
             )}
 
-            {confirmDelete && task.status === 'done' && (
+            {confirmDelete && ['done', 'aborted'].includes(task.status) && (
               <div style={{ marginTop: 10, fontSize: 10, color: 'var(--text3)', lineHeight: 1.5 }}>
-                Delete removes the completed task from Ban Kan state and clears any saved plan/workspace artifacts.
+                Delete removes the task from Ban Kan state and clears any saved plan/workspace artifacts.
               </div>
             )}
           </>

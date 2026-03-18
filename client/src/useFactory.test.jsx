@@ -290,4 +290,18 @@ describe('useFactory', () => {
 
     expect(socket.closed).toBe(true);
   });
+
+  test('TASK_DELETED notification uses generic text without status reference', () => {
+    const { result } = renderHook(() => useFactory());
+    const socket = WebSocketMock.instances[0];
+
+    act(() => {
+      socket.open();
+      socket.emit('INIT', { tasks: [], agents: [], repos: [], settings: {} });
+      socket.emit('TASK_DELETED', { taskId: 'T-99' });
+    });
+
+    expect(result.current.notifications).toHaveLength(1);
+    expect(result.current.notifications[0].msg).toBe('Task T-99 deleted');
+  });
 });
