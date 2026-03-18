@@ -90,7 +90,7 @@ export default function ReportsModal({ tasks, onClose }) {
   const availableRepos = useMemo(() => {
     const set = new Set();
     for (const t of tasks) {
-      if (t.status === 'done' && t.completedAt) {
+      if (t.status === 'done') {
         set.add(t.repoPath || NO_REPO_LABEL);
       }
     }
@@ -250,7 +250,7 @@ export default function ReportsModal({ tasks, onClose }) {
                     {t.normalizedRepo}
                   </span>
                   <span style={{ color: 'var(--text3)' }}>
-                    {new Date(t.completedAt).toLocaleDateString()}
+                    {t.completedAt ? new Date(t.completedAt).toLocaleDateString() : '\u2014'}
                   </span>
                   <span style={{ color: 'var(--text2)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
                     {formatTokenCount(t.totalTokens || 0)}

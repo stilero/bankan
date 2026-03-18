@@ -52,12 +52,23 @@ describe('filterTasks', () => {
     expect(result.find(t => t.id === 'T-6')).toBeUndefined();
   });
 
-  test('handles tasks with missing completedAt', () => {
+  test('includes done tasks with missing completedAt in all-time view', () => {
     const withMissing = [
       ...tasks,
       makeDoneTask({ id: 'T-7', completedAt: null }),
     ];
     const result = filterTasks(withMissing, { period: 'all', date: '2026-03-18', repo: 'all' });
+    const t7 = result.find(t => t.id === 'T-7');
+    expect(t7).toBeDefined();
+    expect(t7.durationMs).toBe(0);
+  });
+
+  test('excludes done tasks with missing completedAt from date-based periods', () => {
+    const withMissing = [
+      ...tasks,
+      makeDoneTask({ id: 'T-7', completedAt: null }),
+    ];
+    const result = filterTasks(withMissing, { period: 'day', date: '2026-03-18', repo: 'all' });
     expect(result.find(t => t.id === 'T-7')).toBeUndefined();
   });
 

@@ -25,8 +25,13 @@ export function filterTasks(tasks, { period, date, repo }) {
   const refDayEnd = new Date(year, month - 1, day, 23, 59, 59, 999);
 
   return tasks
-    .filter(t => t.status === 'done' && t.completedAt)
+    .filter(t => t.status === 'done')
     .filter(t => {
+      // For 'all' period, include every done task regardless of timestamp
+      if (period === 'all') return true;
+
+      // Date-based periods require a valid completedAt
+      if (!t.completedAt) return false;
       const completed = new Date(t.completedAt);
       if (Number.isNaN(completed.getTime())) return false;
 
@@ -42,8 +47,7 @@ export function filterTasks(tasks, { period, date, repo }) {
         const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
         return completed >= monthStart && completed <= monthEnd;
       }
-      // 'all'
-      return true;
+      return false;
     })
     .filter(t => repo === 'all' || (t.repoPath || '') === repo)
     .map(t => ({
