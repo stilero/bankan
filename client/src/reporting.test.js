@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { filterTasks, aggregateReport, formatDuration, formatTokenCount } from './reporting.js';
+import { filterTasks, aggregateReport, formatDuration, formatTokenCount, NO_REPO_LABEL } from './reporting.js';
 
 const makeDoneTask = (overrides = {}) => ({
   id: 'T-1',
@@ -65,6 +65,16 @@ describe('filterTasks', () => {
     const withEmpty = [makeDoneTask({ id: 'T-8', repoPath: '', completedAt: '2026-03-18T10:00:00Z' })];
     const result = filterTasks(withEmpty, { period: 'all', date: '2026-03-18', repo: 'all' });
     expect(result[0].normalizedRepo).toBe('No repository');
+    expect(result[0].normalizedRepo).toBe(NO_REPO_LABEL);
+  });
+
+  test('can filter by empty repoPath using empty string', () => {
+    const mixed = [
+      makeDoneTask({ id: 'T-8', repoPath: '', completedAt: '2026-03-18T10:00:00Z' }),
+      makeDoneTask({ id: 'T-9', repoPath: '/repo-a', completedAt: '2026-03-18T10:00:00Z' }),
+    ];
+    const result = filterTasks(mixed, { period: 'all', date: '2026-03-18', repo: '' });
+    expect(result.map(t => t.id)).toEqual(['T-8']);
   });
 });
 

@@ -335,7 +335,6 @@ export default function App() {
       {showReportsModal && (
         <ReportsModal
           tasks={tasks}
-          repos={repos}
           onClose={() => setShowReportsModal(false)}
         />
       )}

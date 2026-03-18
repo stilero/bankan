@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { filterTasks, aggregateReport, formatDuration, formatTokenCount } from './reporting.js';
+import { filterTasks, aggregateReport, formatDuration, formatTokenCount, NO_REPO_LABEL } from './reporting.js';
 
 const PERIOD_OPTIONS = [
   { value: 'day', label: 'Today' },
@@ -80,10 +80,22 @@ function RepoBar({ repos, maxTasks }) {
   );
 }
 
-export default function ReportsModal({ tasks, repos, onClose }) {
+export default function ReportsModal({ tasks, onClose }) {
   const [period, setPeriod] = useState('week');
   const [date] = useState(() => toLocalDateString(new Date()));
   const [selectedRepo, setSelectedRepo] = useState('all');
+
+  // Derive available repos from actual completed task data so that
+  // historical repos and tasks without a repo are always selectable.
+  const availableRepos = useMemo(() => {
+    const set = new Set();
+    for (const t of tasks) {
+      if (t.status === 'done' && t.completedAt) {
+        set.add(t.repoPath || NO_REPO_LABEL);
+      }
+    }
+    return [...set].sort();
+  }, [tasks]);
 
   const report = useMemo(() => {
     const filtered = filterTasks(tasks, { period, date, repo: selectedRepo });
@@ -160,8 +172,8 @@ export default function ReportsModal({ tasks, repos, onClose }) {
             }}
           >
             <option value="all">All repositories</option>
-            {repos.map(r => (
-              <option key={r} value={r}>{r}</option>
+            {availableRepos.map(r => (
+              <option key={r} value={r === NO_REPO_LABEL ? '' : r}>{r}</option>
             ))}
           </select>
         </div>

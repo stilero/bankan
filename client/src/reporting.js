@@ -2,7 +2,7 @@
  * Pure reporting helpers for filtering and aggregating completed task data.
  */
 
-const NO_REPO_LABEL = 'No repository';
+export const NO_REPO_LABEL = 'No repository';
 
 function getTaskDurationMs(task) {
   if (!task.startedAt || !task.completedAt) return 0;
@@ -17,8 +17,12 @@ function getTaskDurationMs(task) {
  * Returns enriched task objects with normalizedRepo and durationMs.
  */
 export function filterTasks(tasks, { period, date, repo }) {
-  const refDate = new Date(date + 'T23:59:59.999Z');
-  const refDayStart = new Date(date + 'T00:00:00.000Z');
+  // Parse YYYY-MM-DD parts and build local-time boundaries so that the
+  // calendar date chosen in the modal matches the user's local clock,
+  // not UTC.
+  const [year, month, day] = date.split('-').map(Number);
+  const refDayStart = new Date(year, month - 1, day, 0, 0, 0, 0);
+  const refDayEnd = new Date(year, month - 1, day, 23, 59, 59, 999);
 
   return tasks
     .filter(t => t.status === 'done' && t.completedAt)
@@ -27,16 +31,15 @@ export function filterTasks(tasks, { period, date, repo }) {
       if (Number.isNaN(completed.getTime())) return false;
 
       if (period === 'day') {
-        return completed >= refDayStart && completed <= refDate;
+        return completed >= refDayStart && completed <= refDayEnd;
       }
       if (period === 'week') {
-        const weekStart = new Date(refDayStart);
-        weekStart.setDate(weekStart.getDate() - 6);
-        return completed >= weekStart && completed <= refDate;
+        const weekStart = new Date(year, month - 1, day - 6, 0, 0, 0, 0);
+        return completed >= weekStart && completed <= refDayEnd;
       }
       if (period === 'month') {
-        const monthStart = new Date(refDayStart.getFullYear(), refDayStart.getMonth(), 1);
-        const monthEnd = new Date(refDayStart.getFullYear(), refDayStart.getMonth() + 1, 0, 23, 59, 59, 999);
+        const monthStart = new Date(year, month - 1, 1, 0, 0, 0, 0);
+        const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
         return completed >= monthStart && completed <= monthEnd;
       }
       // 'all'
