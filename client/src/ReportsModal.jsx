@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { filterTasks, aggregateReport, formatDuration, formatTokenCount, NO_REPO_LABEL } from './reporting.js';
 
 const PERIOD_OPTIONS = [
-  { value: 'day', label: 'Today' },
+  { value: 'day', label: 'Day' },
   { value: 'week', label: 'Week' },
   { value: 'month', label: 'Month' },
   { value: 'all', label: 'All Time' },
@@ -82,7 +82,7 @@ function RepoBar({ repos, maxTasks }) {
 
 export default function ReportsModal({ tasks, onClose }) {
   const [period, setPeriod] = useState('week');
-  const [date] = useState(() => toLocalDateString(new Date()));
+  const [date, setDate] = useState(() => toLocalDateString(new Date()));
   const [selectedRepo, setSelectedRepo] = useState('all');
 
   // Derive available repos from actual completed task data so that
@@ -161,6 +161,21 @@ export default function ReportsModal({ tasks, onClose }) {
               </button>
             ))}
           </div>
+
+          {period !== 'all' && (
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              aria-label="Report date"
+              style={{
+                padding: '5px 8px', fontSize: 11,
+                background: 'var(--bg2)', border: '1px solid var(--border)',
+                borderRadius: 4, color: 'var(--text)',
+                colorScheme: 'dark',
+              }}
+            />
+          )}
 
           <select
             value={selectedRepo}
