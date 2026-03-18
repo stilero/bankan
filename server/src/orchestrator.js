@@ -16,7 +16,7 @@ const PLANNER_TIMEOUT = 5 * 60 * 1000;
 const IMPLEMENTOR_TIMEOUT = 60 * 60 * 1000;
 const REVIEWER_TIMEOUT = 30 * 60 * 1000;
 const STUCK_TIMEOUT = 10 * 60 * 1000;
-const MAX_REVIEW_CYCLES = 3;
+const DEFAULT_MAX_REVIEW_CYCLES = 3;
 
 let pollTimer = null;
 let signalTimer = null;
@@ -738,6 +738,7 @@ async function startPlanning(task) {
       review: null,
       reviewFeedback: null,
       reviewCycleCount: 0,
+      maxReviewCycles: DEFAULT_MAX_REVIEW_CYCLES,
       blockedReason: null,
       assignedTo: null,
     });
@@ -817,6 +818,7 @@ function onPlanComplete(agentId, taskId) {
     review: null,
     reviewFeedback: null,
     reviewCycleCount: 0,
+    maxReviewCycles: DEFAULT_MAX_REVIEW_CYCLES,
     blockedReason: null,
     assignedTo: null,
   });
@@ -997,13 +999,14 @@ async function onReviewComplete(agentId, taskId) {
 
     const task = store.getTask(taskId);
     const nextReviewCycleCount = (task?.reviewCycleCount || 0) + 1;
+    const maxReviewCycles = Math.max(1, task?.maxReviewCycles || DEFAULT_MAX_REVIEW_CYCLES);
 
-    if (nextReviewCycleCount >= MAX_REVIEW_CYCLES) {
+    if (nextReviewCycleCount >= maxReviewCycles) {
       store.updateTask(taskId, {
         status: 'blocked',
         reviewFeedback: criticalIssues,
         reviewCycleCount: nextReviewCycleCount,
-        blockedReason: `Reached maximum review cycles (${MAX_REVIEW_CYCLES}). Human input required.`,
+        blockedReason: `Reached maximum review cycles (${maxReviewCycles}). Human input required.`,
         assignedTo: null,
       });
       bus.emit('task:blocked', { taskId, reason: 'Reached maximum review cycles' });
@@ -1087,6 +1090,7 @@ async function abortTask(taskId) {
     reviewFeedback: null,
     previousStatus: null,
     reviewCycleCount: 0,
+    maxReviewCycles: DEFAULT_MAX_REVIEW_CYCLES,
   });
 
   bus.emit('task:aborted', { taskId });
@@ -1118,6 +1122,7 @@ async function resetTask(taskId) {
     planFeedback: null,
     previousStatus: null,
     reviewCycleCount: 0,
+    maxReviewCycles: DEFAULT_MAX_REVIEW_CYCLES,
     sessionHistory: [],
     progress: 0,
     totalTokens: 0,

@@ -1,9 +1,12 @@
 import { describe, expect, test } from 'vitest';
 
 import {
+  buildMaxReviewBlockerApprovalUpdate,
+  buildMaxReviewBlockerExtensionUpdate,
   getLiveTaskAgent,
   getAgentStage,
   isImplementationPlaceholder,
+  isMaxReviewCyclesBlocker,
   isReviewResultPlaceholder,
   isPlanPlaceholder,
   parseReviewResult,
@@ -268,6 +271,43 @@ describe('retry status resolution', () => {
       lastActiveStage: 'review',
       blockedReason: 'Reached maximum review cycles for this task',
     }, { planningDisabled: false })).toBe('queued');
+  });
+
+  test('maximum review cycle blockers are detected from the canonical message', () => {
+    expect(isMaxReviewCyclesBlocker('Reached maximum review cycles (3). Human input required.')).toBe(true);
+    expect(isMaxReviewCyclesBlocker('Invalid workspace path for review: /tmp/workspace')).toBe(false);
+  });
+
+  test('builds approval and extension updates for max review blockers', () => {
+    const task = {
+      status: 'blocked',
+      blockedReason: 'Reached maximum review cycles (3). Human input required.',
+      maxReviewCycles: 3,
+    };
+
+    const approved = buildMaxReviewBlockerApprovalUpdate(task);
+    const extended = buildMaxReviewBlockerExtensionUpdate(task);
+
+    expect(approved).toMatchObject({
+      status: 'done',
+      blockedReason: null,
+      assignedTo: null,
+    });
+    expect(typeof approved.completedAt).toBe('string');
+    expect(extended).toEqual({
+      status: 'queued',
+      blockedReason: null,
+      assignedTo: null,
+      maxReviewCycles: 4,
+    });
+    expect(buildMaxReviewBlockerApprovalUpdate({
+      status: 'blocked',
+      blockedReason: 'Different blocker',
+    })).toBeNull();
+    expect(buildMaxReviewBlockerExtensionUpdate({
+      status: 'review',
+      blockedReason: 'Reached maximum review cycles (3). Human input required.',
+    })).toBeNull();
   });
 
   test('live planner and reviewer agents preserve their active stage', () => {

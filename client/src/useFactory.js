@@ -144,6 +144,12 @@ export default function useFactory() {
         case 'TASK_WORKSPACE_ERROR':
           addNotification(msg.payload?.message || 'Failed to open task workspace', 'error');
           break;
+        case 'MAX_REVIEW_BLOCKER_APPROVED':
+          addNotification(`Task ${msg.payload.taskId} approved to done`, 'success');
+          break;
+        case 'MAX_REVIEW_BLOCKER_EXTENDED':
+          addNotification(`Task ${msg.payload.taskId} allowed one more review (${msg.payload.maxReviewCycles} max)`, 'info');
+          break;
         case 'SETTINGS_ERROR':
           addNotification((msg.payload?.errors || []).join(', ') || 'Settings update failed', 'error');
           break;
@@ -227,6 +233,14 @@ export default function useFactory() {
     send('RETRY_TASK', { taskId });
   }, [send]);
 
+  const approveMaxReviewBlocker = useCallback((taskId) => {
+    send('APPROVE_MAX_REVIEW_BLOCKER', { taskId });
+  }, [send]);
+
+  const extendMaxReviewBlocker = useCallback((taskId) => {
+    send('EXTEND_MAX_REVIEW_BLOCKER', { taskId });
+  }, [send]);
+
   const deleteTask = useCallback((taskId) => {
     send('DELETE_TASK', { taskId });
   }, [send]);
@@ -273,6 +287,8 @@ export default function useFactory() {
     abortTask,
     resetTask,
     retryTask,
+    approveMaxReviewBlocker,
+    extendMaxReviewBlocker,
     deleteTask,
     openTaskWorkspace,
     injectMessage,

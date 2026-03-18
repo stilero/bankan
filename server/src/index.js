@@ -11,7 +11,12 @@ import config, { loadSettings, saveSettings, validateSettings, getWorkspacesDir,
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
-import { getLiveTaskAgent, stageToRetryStatus } from './workflow.js';
+import {
+  buildMaxReviewBlockerApprovalUpdate,
+  buildMaxReviewBlockerExtensionUpdate,
+  getLiveTaskAgent,
+  stageToRetryStatus,
+} from './workflow.js';
 import { createSessionEntry } from './sessionHistory.js';
 
 const app = express();
@@ -53,6 +58,26 @@ function resolveRetryStatus(task) {
   const planningDisabled = settings.agents?.planners?.max === 0;
   const liveAgent = getLiveTaskAgent(task, agentManager);
   return stageToRetryStatus(task, { planningDisabled, liveAgent });
+}
+
+function approveMaxReviewBlocker(taskId) {
+  const task = store.getTask(taskId);
+  const updates = buildMaxReviewBlockerApprovalUpdate(task);
+  if (!updates) return false;
+  store.updateTask(taskId, updates);
+  store.appendLog(taskId, 'Human override: approved task to done after max review cycles.');
+  bus.emit('max-review-blocker:approved', { taskId });
+  return true;
+}
+
+function extendMaxReviewBlocker(taskId) {
+  const task = store.getTask(taskId);
+  const updates = buildMaxReviewBlockerExtensionUpdate(task);
+  if (!updates) return false;
+  store.updateTask(taskId, updates);
+  store.appendLog(taskId, `Human override: increased review limit to ${updates.maxReviewCycles}.`);
+  bus.emit('max-review-blocker:extended', { taskId, maxReviewCycles: updates.maxReviewCycles });
+  return true;
 }
 
 // REST API
@@ -118,6 +143,24 @@ app.patch('/api/tasks/:id/reject', (req, res) => {
   if (!task) return res.status(404).json({ error: 'Task not found' });
   const { feedback } = req.body || {};
   bus.emit('plan:rejected', { taskId: task.id, feedback: feedback || '' });
+  res.json({ ok: true });
+});
+
+app.patch('/api/tasks/:id/approve-max-review-blocker', (req, res) => {
+  const task = store.getTask(req.params.id);
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  if (!approveMaxReviewBlocker(task.id)) {
+    return res.status(400).json({ error: 'Task is not blocked by maximum review cycles' });
+  }
+  res.json({ ok: true });
+});
+
+app.patch('/api/tasks/:id/extend-max-review-blocker', (req, res) => {
+  const task = store.getTask(req.params.id);
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  if (!extendMaxReviewBlocker(task.id)) {
+    return res.status(400).json({ error: 'Task is not blocked by maximum review cycles' });
+  }
   res.json({ ok: true });
 });
 
@@ -560,6 +603,16 @@ wss.on('connection', (ws) => {
         }
         break;
       }
+      case 'APPROVE_MAX_REVIEW_BLOCKER': {
+        const { taskId } = msg.payload || {};
+        if (taskId) approveMaxReviewBlocker(taskId);
+        break;
+      }
+      case 'EXTEND_MAX_REVIEW_BLOCKER': {
+        const { taskId } = msg.payload || {};
+        if (taskId) extendMaxReviewBlocker(taskId);
+        break;
+      }
       case 'EDIT_TASK': {
         const { taskId, updates } = msg.payload || {};
         const task = store.getTask(taskId);
@@ -693,6 +746,8 @@ bus.on('review:passed', (data) => broadcast('REVIEW_PASSED', data));
 bus.on('review:failed', (data) => broadcast('REVIEW_FAILED', data));
 bus.on('pr:created', (data) => broadcast('PR_CREATED', data));
 bus.on('task:blocked', (data) => broadcast('TASK_BLOCKED', data));
+bus.on('max-review-blocker:approved', (data) => broadcast('MAX_REVIEW_BLOCKER_APPROVED', data));
+bus.on('max-review-blocker:extended', (data) => broadcast('MAX_REVIEW_BLOCKER_EXTENDED', data));
 bus.on('repos:updated', (repos) => broadcast('REPOS_UPDATED', { repos }));
 bus.on('plan:partial', (data) => broadcast('PLAN_PARTIAL', data));
 bus.on('task:aborted', (data) => broadcast('TASK_ABORTED', data));

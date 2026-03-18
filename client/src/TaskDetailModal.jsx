@@ -67,6 +67,11 @@ function formatTotalTime(startedAt, completedAt) {
   return `${minutes}m`;
 }
 
+function isMaxReviewCyclesBlocker(blockedReason) {
+  if (typeof blockedReason !== 'string') return false;
+  return /^Reached maximum review cycles(?: \(\d+\))?\./i.test(blockedReason.trim());
+}
+
 export default function TaskDetailModal({
   task,
   repos = [],
@@ -79,6 +84,8 @@ export default function TaskDetailModal({
   onAbort,
   onReset,
   onRetry,
+  onApproveToDone,
+  onAllowMoreReview,
   onDelete,
   onOpenWorkspace,
 }) {
@@ -99,6 +106,7 @@ export default function TaskDetailModal({
   const canAbort = !['done', 'aborted'].includes(task.status);
   const canReset = task.status !== 'done';
   const canRetry = task.status === 'blocked';
+  const isMaxReviewBlockedTask = task.status === 'blocked' && isMaxReviewCyclesBlocker(task.blockedReason);
   const canOpenWorkspace = Boolean(task.workspacePath && onOpenWorkspace);
   const totalTime = formatTotalTime(task.startedAt, task.completedAt);
   const sessionHistory = Array.isArray(task.sessionHistory) ? task.sessionHistory.slice().reverse() : [];
@@ -301,7 +309,7 @@ export default function TaskDetailModal({
             <div style={{ marginBottom: 14 }}>
               <div style={labelStyle}>Review Cycles</div>
               <div style={{ fontSize: 12, color: 'var(--text2)' }}>
-                {task.reviewCycleCount || 0} / 3
+                {task.reviewCycleCount || 0} / {task.maxReviewCycles || 3}
               </div>
             </div>
 
@@ -555,7 +563,35 @@ export default function TaskDetailModal({
                 </>
               )}
 
-              {canRetry && onRetry && (
+              {isMaxReviewBlockedTask && onApproveToDone && (
+                <button
+                  onClick={() => onApproveToDone(task.id)}
+                  style={{
+                    padding: '6px 14px', fontSize: 12,
+                    background: 'rgba(61, 220, 132, 0.15)',
+                    border: '1px solid rgba(61, 220, 132, 0.3)',
+                    borderRadius: 4, color: 'var(--green)',
+                  }}
+                >
+                  Approve to Done
+                </button>
+              )}
+
+              {isMaxReviewBlockedTask && onAllowMoreReview && (
+                <button
+                  onClick={() => onAllowMoreReview(task.id)}
+                  style={{
+                    padding: '6px 14px', fontSize: 12,
+                    background: 'rgba(100, 160, 255, 0.15)',
+                    border: '1px solid rgba(100, 160, 255, 0.3)',
+                    borderRadius: 4, color: 'var(--steel2)',
+                  }}
+                >
+                  Allow 1 More Review
+                </button>
+              )}
+
+              {canRetry && !isMaxReviewBlockedTask && onRetry && (
                 <button
                   onClick={() => onRetry(task.id)}
                   style={{

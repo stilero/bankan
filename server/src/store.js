@@ -61,6 +61,7 @@ class TaskStore {
         this.tasks = this.tasks.map(task => {
           const normalized = {
             reviewCycleCount: 0,
+            maxReviewCycles: 3,
             lastActiveStage: statusToStage(task.status) || 'backlog',
             previousStatus: null,
             totalTokens: 0,
@@ -79,6 +80,9 @@ class TaskStore {
           }
           if (typeof normalized.reviewCycleCount !== 'number' || normalized.reviewCycleCount < 0) {
             normalized.reviewCycleCount = 0;
+          }
+          if (typeof normalized.maxReviewCycles !== 'number' || normalized.maxReviewCycles < 1) {
+            normalized.maxReviewCycles = 3;
           }
           if (typeof normalized.totalTokens !== 'number' || normalized.totalTokens < 0) {
             normalized.totalTokens = 0;
@@ -130,6 +134,7 @@ class TaskStore {
       blockedReason: null,
       workspacePath: null,
       reviewCycleCount: 0,
+      maxReviewCycles: 3,
       lastActiveStage: 'backlog',
       previousStatus: null,
       totalTokens: 0,
@@ -243,6 +248,10 @@ class TaskStore {
       }
       if (typeof task.reviewCycleCount !== 'number' || task.reviewCycleCount < 0) {
         task.reviewCycleCount = 0;
+        changed = true;
+      }
+      if (typeof task.maxReviewCycles !== 'number' || task.maxReviewCycles < 1) {
+        task.maxReviewCycles = 3;
         changed = true;
       }
       if (typeof task.totalTokens !== 'number' || task.totalTokens < 0) {

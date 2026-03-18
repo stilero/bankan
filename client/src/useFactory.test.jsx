@@ -234,6 +234,8 @@ describe('useFactory', () => {
       socket.emit('BRIDGE_ERROR', { message: 'Bridge failed' });
       socket.emit('TASK_WORKSPACE_OPENED', { message: 'Workspace opened' });
       socket.emit('TASK_WORKSPACE_ERROR', { message: 'Workspace failed' });
+      socket.emit('MAX_REVIEW_BLOCKER_APPROVED', { taskId: 'T-2' });
+      socket.emit('MAX_REVIEW_BLOCKER_EXTENDED', { taskId: 'T-2', maxReviewCycles: 4 });
       socket.emit('SETTINGS_ERROR', { errors: ['Invalid settings'] });
       socket.onmessage({ data: 'not-json' });
     });
@@ -259,6 +261,8 @@ describe('useFactory', () => {
       result.current.abortTask('T-2');
       result.current.resetTask('T-2');
       result.current.retryTask('T-2');
+      result.current.approveMaxReviewBlocker('T-2');
+      result.current.extendMaxReviewBlocker('T-2');
       result.current.deleteTask('T-2');
       result.current.openTaskWorkspace('T-2');
       result.current.openAgentTerminal('imp-1');
@@ -278,6 +282,8 @@ describe('useFactory', () => {
       'ABORT_TASK',
       'RESET_TASK',
       'RETRY_TASK',
+      'APPROVE_MAX_REVIEW_BLOCKER',
+      'EXTEND_MAX_REVIEW_BLOCKER',
       'DELETE_TASK',
       'OPEN_TASK_WORKSPACE',
       'OPEN_AGENT_TERMINAL',

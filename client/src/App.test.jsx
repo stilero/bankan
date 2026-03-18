@@ -90,6 +90,8 @@ describe('App', () => {
       abortTask: vi.fn(),
       resetTask: vi.fn(),
       retryTask: vi.fn(),
+      approveMaxReviewBlocker: vi.fn(),
+      extendMaxReviewBlocker: vi.fn(),
       deleteTask: vi.fn(),
       openTaskWorkspace: vi.fn(),
       injectMessage: vi.fn(),
