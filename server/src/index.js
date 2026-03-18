@@ -125,9 +125,15 @@ app.delete('/api/tasks/:id', async (req, res) => {
   const task = store.getTask(req.params.id);
   if (!task) return res.status(404).json({ error: 'Task not found' });
   if (task.status !== 'done' && task.status !== 'aborted') return res.status(400).json({ error: 'Only completed or aborted tasks can be deleted' });
-  await orchestrator.deleteTask(task.id);
-  broadcast('TASK_DELETED', { taskId: task.id });
-  res.json({ ok: true });
+  try {
+    const deleted = await orchestrator.deleteTask(task.id);
+    if (!deleted) return res.status(500).json({ error: 'Task deletion failed' });
+    broadcast('TASK_DELETED', { taskId: task.id });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(`[REST] DELETE /api/tasks/${task.id} cleanup failed:`, err);
+    res.status(500).json({ error: 'Task cleanup failed' });
+  }
 });
 
 app.get('/api/settings', (req, res) => {
