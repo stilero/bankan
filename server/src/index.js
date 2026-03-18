@@ -449,7 +449,7 @@ wss.on('connection', (ws) => {
     ts: Date.now(),
   }));
 
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
 
@@ -534,8 +534,12 @@ wss.on('connection', (ws) => {
         const { taskId } = msg.payload || {};
         const task = store.getTask(taskId);
         if (task && (task.status === 'done' || task.status === 'aborted')) {
-          orchestrator.deleteTask(taskId);
-          broadcast('TASK_DELETED', { taskId });
+          try {
+            const deleted = await orchestrator.deleteTask(taskId);
+            if (deleted) broadcast('TASK_DELETED', { taskId });
+          } catch (err) {
+            console.error(`[WS] DELETE_TASK cleanup failed for ${taskId}:`, err);
+          }
         }
         break;
       }
