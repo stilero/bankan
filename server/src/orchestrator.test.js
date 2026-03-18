@@ -4,6 +4,7 @@ import {
   buildAgentCommand,
   buildImplementorPrompt,
   cleanTerminalArtifacts,
+  DELETABLE_STATUSES,
   extractImplementationResult,
   extractPlannerPlanText,
   extractReviewerReviewText,
@@ -555,5 +556,21 @@ RISKS:
     const cleaned = cleanTerminalArtifacts(dirty);
     expect(cleaned).toContain('BRANCH: feature/fix');
     expect(cleaned).not.toContain('❯');
+  });
+});
+
+describe('DELETABLE_STATUSES', () => {
+  test('includes done and aborted as deletable statuses', () => {
+    expect(DELETABLE_STATUSES).toContain('done');
+    expect(DELETABLE_STATUSES).toContain('aborted');
+  });
+
+  test('does not include non-terminal statuses', () => {
+    expect(DELETABLE_STATUSES).not.toContain('backlog');
+    expect(DELETABLE_STATUSES).not.toContain('planning');
+    expect(DELETABLE_STATUSES).not.toContain('implementing');
+    expect(DELETABLE_STATUSES).not.toContain('review');
+    expect(DELETABLE_STATUSES).not.toContain('blocked');
+    expect(DELETABLE_STATUSES).not.toContain('paused');
   });
 });

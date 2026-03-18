@@ -1129,9 +1129,11 @@ async function resetTask(taskId) {
   bus.emit('task:reset', { taskId });
 }
 
+export const DELETABLE_STATUSES = ['done', 'aborted'];
+
 async function deleteTask(taskId) {
   const task = store.getTask(taskId);
-  if (!task || task.status !== 'done') return false;
+  if (!task || !DELETABLE_STATUSES.includes(task.status)) return false;
 
   if (task.workspacePath) {
     await cleanupWorkspace(task);

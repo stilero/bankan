@@ -203,6 +203,19 @@ describe('useFactory', () => {
     expect(result.current.notifications).toHaveLength(0);
   });
 
+  test('TASK_DELETED notification uses generic copy', () => {
+    const { result } = renderHook(() => useFactory());
+    const socket = WebSocketMock.instances[0];
+
+    act(() => {
+      socket.open();
+      socket.emit('INIT', { tasks: [], agents: [], repos: [], settings: {} });
+      socket.emit('TASK_DELETED', { taskId: 'T-99' });
+    });
+
+    expect(result.current.notifications[0].msg).toBe('Task T-99 deleted');
+  });
+
   test('handles additional websocket event types and exposes all command helpers', () => {
     const { result } = renderHook(() => useFactory());
     const socket = WebSocketMock.instances[0];
