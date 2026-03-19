@@ -65,8 +65,12 @@ export function approveMaxReviewBlocker(taskId) {
   const task = store.getTask(taskId);
   const updates = buildMaxReviewBlockerApprovalUpdate(task);
   if (!updates) return false;
-  if (task?.workspacePath && existsSync(task.workspacePath)) {
-    rmSync(task.workspacePath, { recursive: true, force: true });
+  if (task?.workspacePath) {
+    try {
+      rmSync(task.workspacePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
+    } catch (err) {
+      console.warn(`Could not remove workspace ${task.workspacePath}: ${err.message}`);
+    }
   }
   store.updateTask(taskId, updates);
   store.appendLog(taskId, 'Human override: approved task to done after max review cycles.');

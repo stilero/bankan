@@ -703,8 +703,12 @@ async function prepareWorkspaceBranch(task) {
 }
 
 async function cleanupWorkspace(task) {
-  if (task.workspacePath && existsSync(task.workspacePath)) {
-    await rm(task.workspacePath, { recursive: true, force: true });
+  if (task.workspacePath) {
+    try {
+      await rm(task.workspacePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
+    } catch (err) {
+      console.warn(`Could not remove workspace ${task.workspacePath}: ${err.message}`);
+    }
     store.updateTask(task.id, { workspacePath: null });
   }
 }
