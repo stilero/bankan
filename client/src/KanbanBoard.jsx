@@ -1,32 +1,12 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
+import { Archive, Pencil, Wrench, Eye, CheckCircle2 } from 'lucide-react';
 import KanbanColumn from './KanbanColumn.jsx';
-
-function StageIcon({ children }) {
-  return (
-    <svg
-      viewBox='0 0 16 16'
-      aria-hidden='true'
-      style={{
-        width: '100%',
-        height: '100%',
-        display: 'block',
-      }}
-    >
-      {children}
-    </svg>
-  );
-}
 
 const COLUMNS = [
   {
     id: 'backlog',
     title: 'Backlog',
-    icon: (
-      <StageIcon>
-        <rect x='2.5' y='3' width='11' height='10' rx='2' fill='none' stroke='currentColor' strokeWidth='1.5' />
-        <path d='M5 6h6M5 8.5h6M5 11h3.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
-      </StageIcon>
-    ),
+    icon: <Archive size={16} strokeWidth={1.5} />,
     statuses: ['backlog', 'paused', 'aborted'],
     agentPrefix: null,
     color: 'var(--text3)',
@@ -34,13 +14,7 @@ const COLUMNS = [
   {
     id: 'planning',
     title: 'Planning',
-    icon: (
-      <StageIcon>
-        <path d='M4 12.5h2.25l5.75-5.75-2.25-2.25L4 10.25v2.25Z' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
-        <path d='M8.75 5.75 11 8' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
-        <path d='M3.5 13h9' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
-      </StageIcon>
-    ),
+    icon: <Pencil size={16} strokeWidth={1.5} />,
     statuses: ['workspace_setup', 'planning', 'awaiting_approval'],
     agentPrefix: 'plan',
     color: 'var(--steel2)',
@@ -48,13 +22,7 @@ const COLUMNS = [
   {
     id: 'implementation',
     title: 'Implementation',
-    icon: (
-      <StageIcon>
-        <path d='m6.25 4.5 1.25-1.25 5 5L11.25 9.5l-.9-.9-1.6 1.6a1.5 1.5 0 0 1-2.12 0l-.83-.83a1.5 1.5 0 0 1 0-2.12l1.6-1.6-.9-.9Z' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
-        <path d='M4 12.25 7.5 8.75' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
-        <path d='m3.5 10.5 2 2' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
-      </StageIcon>
-    ),
+    icon: <Wrench size={16} strokeWidth={1.5} />,
     statuses: ['queued', 'implementing'],
     agentPrefix: 'imp',
     color: 'var(--green)',
@@ -62,12 +30,7 @@ const COLUMNS = [
   {
     id: 'review',
     title: 'Review',
-    icon: (
-      <StageIcon>
-        <path d='M1.75 8s2.25-3.75 6.25-3.75S14.25 8 14.25 8 12 11.75 8 11.75 1.75 8 1.75 8Z' fill='none' stroke='currentColor' strokeLinejoin='round' strokeWidth='1.5' />
-        <circle cx='8' cy='8' r='1.75' fill='none' stroke='currentColor' strokeWidth='1.5' />
-      </StageIcon>
-    ),
+    icon: <Eye size={16} strokeWidth={1.5} />,
     statuses: ['review'],
     agentPrefix: 'rev',
     color: 'var(--yellow)',
@@ -75,12 +38,7 @@ const COLUMNS = [
   {
     id: 'done',
     title: 'Done',
-    icon: (
-      <StageIcon>
-        <circle cx='8' cy='8' r='5.25' fill='none' stroke='currentColor' strokeWidth='1.5' />
-        <path d='m5.5 8 1.5 1.5 3.5-3.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.5' />
-      </StageIcon>
-    ),
+    icon: <CheckCircle2 size={16} strokeWidth={1.5} />,
     statuses: ['done', 'awaiting_manual_pr'],
     agentPrefix: null,
     color: 'var(--green)',
