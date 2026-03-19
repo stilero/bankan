@@ -1080,6 +1080,11 @@ export async function createPR(taskId) {
     await git.fetch('origin', 'main');
     await git.checkout(task.branch);
 
+    // Discard any uncommitted changes left by the agent (e.g. package-lock.json
+    // from npm installs during review) so they don't block the rebase.
+    await git.raw(['checkout', '--', '.']);
+    await git.raw(['clean', '-fd']);
+
     try {
       await git.rebase(['origin/main']);
     } catch (err) {
