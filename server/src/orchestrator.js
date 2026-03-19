@@ -7,7 +7,14 @@ import { loadSettings, getWorkspacesDir } from './config.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
-import { isReviewResultPlaceholder, isPlanPlaceholder, isImplementationPlaceholder, parseReviewResult, reviewShouldPass } from './workflow.js';
+import {
+  isReviewResultPlaceholder,
+  isPlanPlaceholder,
+  isImplementationPlaceholder,
+  parseReviewResult,
+  resolveTaskMaxReviewCycles,
+  reviewShouldPass,
+} from './workflow.js';
 import { createSessionEntry } from './sessionHistory.js';
 
 const POLL_INTERVAL = 4000;
@@ -738,7 +745,7 @@ async function startPlanning(task) {
       review: null,
       reviewFeedback: null,
       reviewCycleCount: 0,
-      maxReviewCycles: DEFAULT_MAX_REVIEW_CYCLES,
+      maxReviewCycles: resolveTaskMaxReviewCycles(task, DEFAULT_MAX_REVIEW_CYCLES),
       blockedReason: null,
       assignedTo: null,
     });
@@ -811,6 +818,7 @@ function onPlanComplete(agentId, taskId) {
 
   // Save plan
   store.savePlan(taskId, planText);
+  const task = store.getTask(taskId);
   store.updateTask(taskId, {
     status: 'awaiting_approval',
     plan: planText,
@@ -818,7 +826,7 @@ function onPlanComplete(agentId, taskId) {
     review: null,
     reviewFeedback: null,
     reviewCycleCount: 0,
-    maxReviewCycles: DEFAULT_MAX_REVIEW_CYCLES,
+    maxReviewCycles: resolveTaskMaxReviewCycles(task, DEFAULT_MAX_REVIEW_CYCLES),
     blockedReason: null,
     assignedTo: null,
   });

@@ -91,4 +91,38 @@ describe('TaskDetailModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRetry).toHaveBeenCalledWith('T-1');
   });
+
+  test('recognizes max review blockers even when the message has no trailing period after the cycle count', () => {
+    const onApproveToDone = vi.fn();
+    const onAllowMoreReview = vi.fn();
+
+    render(
+      <TaskDetailModal
+        task={buildTask({
+          blockedReason: 'Reached maximum review cycles (3) Human input required.',
+        })}
+        repos={[]}
+        onClose={() => {}}
+        onApprove={() => {}}
+        onReject={() => {}}
+        onPause={() => {}}
+        onResume={() => {}}
+        onEdit={() => {}}
+        onAbort={() => {}}
+        onReset={() => {}}
+        onRetry={() => {}}
+        onDelete={() => {}}
+        onOpenWorkspace={() => {}}
+        onApproveToDone={onApproveToDone}
+        onAllowMoreReview={onAllowMoreReview}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve to Done' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Allow 1 More Review' }));
+
+    expect(onApproveToDone).toHaveBeenCalledWith('T-1');
+    expect(onAllowMoreReview).toHaveBeenCalledWith('T-1');
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
 });

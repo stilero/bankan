@@ -60,10 +60,13 @@ function resolveRetryStatus(task) {
   return stageToRetryStatus(task, { planningDisabled, liveAgent });
 }
 
-function approveMaxReviewBlocker(taskId) {
+export function approveMaxReviewBlocker(taskId) {
   const task = store.getTask(taskId);
   const updates = buildMaxReviewBlockerApprovalUpdate(task);
   if (!updates) return false;
+  if (task?.workspacePath && existsSync(task.workspacePath)) {
+    rmSync(task.workspacePath, { recursive: true, force: true });
+  }
   store.updateTask(taskId, updates);
   store.appendLog(taskId, 'Human override: approved task to done after max review cycles.');
   bus.emit('max-review-blocker:approved', { taskId });

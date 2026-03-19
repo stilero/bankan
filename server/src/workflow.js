@@ -47,12 +47,21 @@ export function isMaxReviewCyclesBlocker(blockedReason) {
   return /^Reached maximum review cycles(?: \(\d+\))?/i.test(blockedReason.trim());
 }
 
+export function resolveTaskMaxReviewCycles(task, fallback = 3) {
+  const configuredValue = task?.maxReviewCycles;
+  if (typeof configuredValue === 'number' && configuredValue >= 1) {
+    return configuredValue;
+  }
+  return fallback;
+}
+
 export function buildMaxReviewBlockerApprovalUpdate(task, now = new Date().toISOString()) {
   if (task?.status !== 'blocked' || !isMaxReviewCyclesBlocker(task?.blockedReason)) return null;
   return {
     status: 'done',
     blockedReason: null,
     assignedTo: null,
+    workspacePath: null,
     completedAt: task.completedAt || now,
   };
 }
@@ -63,7 +72,7 @@ export function buildMaxReviewBlockerExtensionUpdate(task) {
     status: 'queued',
     blockedReason: null,
     assignedTo: null,
-    maxReviewCycles: Math.max(1, task?.maxReviewCycles || 3) + 1,
+    maxReviewCycles: resolveTaskMaxReviewCycles(task) + 1,
   };
 }
 
