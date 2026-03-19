@@ -13,7 +13,7 @@ function statusToStage(status) {
   if (['workspace_setup', 'planning', 'awaiting_approval'].includes(status)) return 'planning';
   if (['queued', 'implementing'].includes(status)) return 'implementation';
   if (status === 'review') return 'review';
-  if (status === 'done') return 'done';
+  if (status === 'done' || status === 'awaiting_manual_pr') return 'done';
   if (['backlog', 'aborted'].includes(status)) return 'backlog';
   return null;
 }

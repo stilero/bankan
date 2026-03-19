@@ -51,7 +51,7 @@ export default function App() {
   const {
     connected, isInitialized, agents, tasks, repos, settings, notifications,
     addTask, approvePlan, rejectPlan,
-    pauseTask, resumeTask, editTask, abortTask, resetTask, retryTask, approveMaxReviewBlocker, extendMaxReviewBlocker, deleteTask, openTaskWorkspace,
+    pauseTask, resumeTask, editTask, abortTask, resetTask, retryTask, approveMaxReviewBlocker, extendMaxReviewBlocker, completeManualPr, deleteTask, openTaskWorkspace,
     injectMessage, sendRaw, resizeTerminal,
     updateSettings, subscribeTerminal, openAgentTerminal, returnAgentTerminal,
   } = useFactory();
@@ -66,7 +66,7 @@ export default function App() {
 
   // Derived values
   const needAttention = useMemo(() =>
-    tasks.filter(t => t.status === 'awaiting_approval' || t.status === 'blocked'),
+    tasks.filter(t => ['awaiting_approval', 'blocked', 'awaiting_manual_pr'].includes(t.status)),
     [tasks]
   );
   const totalTokens = useMemo(() =>
@@ -282,6 +282,7 @@ export default function App() {
           onAbort={(id) => { abortTask(id); setSelectedTask(null); }}
           onReset={(id) => { resetTask(id); setSelectedTask(null); }}
           onRetry={(id) => { retryTask(id); setSelectedTask(null); }}
+          onCompleteManualPr={(id) => { completeManualPr(id); setSelectedTask(null); }}
           onApproveToDone={(id) => { approveMaxReviewBlocker(id); setSelectedTask(null); }}
           onAllowMoreReview={(id) => { extendMaxReviewBlocker(id); setSelectedTask(null); }}
           onDelete={(id) => { deleteTask(id); setSelectedTask(null); }}

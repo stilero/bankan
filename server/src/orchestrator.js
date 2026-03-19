@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { simpleGit } from 'simple-git';
 import { loadSettings, getWorkspacesDir } from './config.js';
+import { getGithubCapabilities, isManualPullRequestRequired } from './capabilities.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
@@ -708,6 +709,36 @@ async function cleanupWorkspace(task) {
   }
 }
 
+function buildManualPrGuidance(task, capabilities = getGithubCapabilities()) {
+  const reason = !capabilities.ghAvailable
+    ? 'GitHub CLI is not installed'
+    : !capabilities.ghAuthenticated
+      ? 'GitHub CLI is not authenticated'
+      : 'Automatic pull request creation is unavailable';
+
+  return `${reason}, so Ban Kan could not create the pull request automatically. Your branch has been pushed${task?.branch ? ` (${task.branch})` : ''}. Open the workspace, create the PR manually, then mark this task done.`;
+}
+
+function isManualPrAutomationError(err) {
+  if (!err) return false;
+  const message = typeof err.message === 'string' ? err.message : '';
+  return err.code === 'ENOENT' || /spawn gh ENOENT/i.test(message) || /gh.*not authenticated/i.test(message);
+}
+
+async function transitionTaskToManualPr(taskId, capabilities = getGithubCapabilities()) {
+  const task = store.getTask(taskId);
+  if (!task) return;
+
+  const blockedReason = buildManualPrGuidance(task, capabilities);
+  store.updateTask(taskId, {
+    status: 'awaiting_manual_pr',
+    assignedTo: null,
+    blockedReason,
+  });
+  store.appendLog(taskId, 'Automatic PR creation unavailable; waiting for manual PR completion.');
+  bus.emit('task:manual-pr-required', { taskId, reason: blockedReason });
+}
+
 function retireAgentSession(agent, {
   taskId = agent?.currentTask || null,
   outcome = 'completed',
@@ -1032,7 +1063,7 @@ async function onReviewComplete(agentId, taskId) {
   }
 }
 
-async function createPR(taskId) {
+export async function createPR(taskId) {
   const task = store.getTask(taskId);
   try {
     if (!task?.workspacePath || !existsSync(task.workspacePath)) {
@@ -1051,6 +1082,12 @@ async function createPR(taskId) {
     }
 
     await git.raw(['push', '--force-with-lease', 'origin', task.branch]);
+    const githubCapabilities = getGithubCapabilities();
+    if (isManualPullRequestRequired(githubCapabilities)) {
+      await transitionTaskToManualPr(taskId, githubCapabilities);
+      return;
+    }
+
     const prBody = buildPullRequestBody(task);
     const prUrl = execFileSync('gh', [
       'pr', 'create',
@@ -1069,6 +1106,10 @@ async function createPR(taskId) {
     await cleanupWorkspace(store.getTask(taskId));
     store.updateTask(taskId, { status: 'done', assignedTo: null });
   } catch (err) {
+    if (isManualPrAutomationError(err)) {
+      await transitionTaskToManualPr(taskId);
+      return;
+    }
     console.error('PR creation error:', err.message);
     store.updateTask(taskId, {
       status: 'blocked',
@@ -1077,6 +1118,20 @@ async function createPR(taskId) {
     });
     bus.emit('task:blocked', { taskId, reason: 'PR finalization failed' });
   }
+}
+
+async function completeManualPr(taskId) {
+  const task = store.getTask(taskId);
+  if (!task || task.status !== 'awaiting_manual_pr') return;
+
+  await cleanupWorkspace(task);
+  store.updateTask(taskId, {
+    status: 'done',
+    assignedTo: null,
+    blockedReason: null,
+    completedAt: new Date().toISOString(),
+  });
+  bus.emit('task:manual-pr-completed', { taskId });
 }
 
 async function abortTask(taskId) {
@@ -1489,6 +1544,7 @@ const orchestrator = {
   abortTask,
   resetTask,
   deleteTask,
+  completeManualPr,
 };
 
 export default orchestrator;

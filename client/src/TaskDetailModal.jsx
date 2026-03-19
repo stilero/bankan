@@ -26,6 +26,7 @@ const STAGE_COLORS = {
   workspace_setup: 'var(--steel2)',
   implementing: 'var(--green)',
   review: '#A78BFA',
+  awaiting_manual_pr: 'var(--amber)',
   blocked: 'var(--red)',
   paused: 'var(--amber)',
   backlog: 'var(--text3)',
@@ -84,6 +85,7 @@ export default function TaskDetailModal({
   onAbort,
   onReset,
   onRetry,
+  onCompleteManualPr,
   onApproveToDone,
   onAllowMoreReview,
   onDelete,
@@ -101,11 +103,12 @@ export default function TaskDetailModal({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [expandedSessions, setExpandedSessions] = useState({});
 
-  const canPause = !['done', 'paused', 'aborted'].includes(task.status);
+  const canPause = !['done', 'paused', 'aborted', 'awaiting_manual_pr'].includes(task.status);
   const canResume = task.status === 'paused';
   const canAbort = !['done', 'aborted'].includes(task.status);
   const canReset = task.status !== 'done';
   const canRetry = task.status === 'blocked';
+  const canCompleteManualPr = task.status === 'awaiting_manual_pr' && onCompleteManualPr;
   const isMaxReviewBlockedTask = task.status === 'blocked' && isMaxReviewCyclesBlocker(task.blockedReason);
   const canOpenWorkspace = Boolean(task.workspacePath && onOpenWorkspace);
   const totalTime = formatTotalTime(task.startedAt, task.completedAt);
@@ -338,7 +341,7 @@ export default function TaskDetailModal({
 
             {task.blockedReason && (
               <div style={{ marginBottom: 14 }}>
-                <div style={labelStyle}>Blocked Reason</div>
+                <div style={labelStyle}>{task.status === 'awaiting_manual_pr' ? 'Next Step' : 'Blocked Reason'}</div>
                 <div
                   title={task.blockedReason}
                   style={{ fontSize: 12, color: 'var(--red)', lineHeight: 1.5 }}
@@ -602,6 +605,20 @@ export default function TaskDetailModal({
                   }}
                 >
                   Retry
+                </button>
+              )}
+
+              {canCompleteManualPr && (
+                <button
+                  onClick={() => onCompleteManualPr(task.id)}
+                  style={{
+                    padding: '6px 14px', fontSize: 12,
+                    background: 'rgba(61, 220, 132, 0.15)',
+                    border: '1px solid rgba(61, 220, 132, 0.3)',
+                    borderRadius: 4, color: 'var(--green)',
+                  }}
+                >
+                  Mark Done
                 </button>
               )}
 

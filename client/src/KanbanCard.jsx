@@ -14,6 +14,7 @@ const STAGE_COLORS = {
   workspace_setup: 'var(--steel2)',
   implementing: 'var(--green)',
   review: '#A78BFA',
+  awaiting_manual_pr: 'var(--amber)',
   blocked: 'var(--red)',
   paused: 'var(--amber)',
   backlog: 'var(--text3)',
@@ -199,6 +200,12 @@ export default function KanbanCard({
           >
             PR
           </a>
+        </div>
+      )}
+
+      {task.status === 'awaiting_manual_pr' && (
+        <div style={{ marginTop: 4 }}>
+          <span style={{ fontSize: 10, color: 'var(--amber)', fontWeight: 600 }}>MANUAL PR REQUIRED</span>
         </div>
       )}
 

@@ -7,17 +7,19 @@ function buildTask(overrides = {}) {
   return {
     id: 'T-1',
     title: 'Review override task',
-    priority: 'high',
-    status: 'blocked',
     description: '',
+    priority: 'high',
     repoPath: '/repo',
     branch: 'feature/t-1-review-override',
+    status: 'blocked',
     review: null,
     blockedReason: 'Reached maximum review cycles (3). Human input required.',
     reviewCycleCount: 3,
     maxReviewCycles: 3,
     totalTokens: 0,
     workspacePath: '/tmp/workspace',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     sessionHistory: [],
     startedAt: null,
     completedAt: null,
@@ -26,6 +28,44 @@ function buildTask(overrides = {}) {
 }
 
 describe('TaskDetailModal', () => {
+  test('shows manual PR guidance and lets the user mark the task done', () => {
+    const onCompleteManualPr = vi.fn();
+
+    render(
+      <TaskDetailModal
+        task={buildTask({
+          id: 'T-42',
+          title: 'Ship manual PR flow',
+          description: 'Implement fallback when gh is missing',
+          branch: null,
+          status: 'awaiting_manual_pr',
+          blockedReason: 'GitHub CLI is unavailable. Create the PR manually, then mark this task done.',
+          workspacePath: '/tmp/workspaces/T-42',
+          startedAt: new Date().toISOString(),
+        })}
+        repos={['/repo']}
+        onClose={vi.fn()}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+        onPause={vi.fn()}
+        onResume={vi.fn()}
+        onEdit={vi.fn()}
+        onAbort={vi.fn()}
+        onReset={vi.fn()}
+        onRetry={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenWorkspace={vi.fn()}
+        onCompleteManualPr={onCompleteManualPr}
+      />
+    );
+
+    expect(screen.getByText(/create the PR manually/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /mark done/i }));
+
+    expect(onCompleteManualPr).toHaveBeenCalledWith('T-42');
+  });
+
   test('shows max review blocker actions and dynamic review limit', () => {
     const onApproveToDone = vi.fn();
     const onAllowMoreReview = vi.fn();

@@ -14,6 +14,7 @@ export default function useFactory() {
   const [agents, setAgents] = useState([]);
   const [repos, setRepos] = useState([]);
   const [settings, setSettings] = useState(null);
+  const [capabilities, setCapabilities] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const wsRef = useRef(null);
   const termSubsRef = useRef(new Map()); // agentId → callback
@@ -62,6 +63,12 @@ export default function useFactory() {
           setAgents(msg.payload.agents || []);
           setRepos(msg.payload.repos || []);
           if (msg.payload.settings) setSettings(msg.payload.settings);
+          if (msg.payload.capabilities) {
+            setCapabilities(msg.payload.capabilities);
+            if (!msg.payload.capabilities.canCreatePullRequests) {
+              addNotification('GitHub CLI pull request automation is unavailable. PRs will need to be created manually.', 'warning');
+            }
+          }
           setIsInitialized(true);
           break;
         case 'TASKS_UPDATED':
@@ -110,6 +117,9 @@ export default function useFactory() {
           break;
         case 'TASK_BLOCKED':
           addNotification(`${msg.payload.taskId} blocked: ${msg.payload.reason}`, 'error');
+          break;
+        case 'TASK_MANUAL_PR_REQUIRED':
+          addNotification(`${msg.payload.taskId} requires a manual PR before it can be marked done`, 'warning');
           break;
         case 'REVIEW_FAILED':
           addNotification(`Review failed for ${msg.payload.taskId} — returning to implementor`, 'warning');
@@ -233,6 +243,10 @@ export default function useFactory() {
     send('RETRY_TASK', { taskId });
   }, [send]);
 
+  const completeManualPr = useCallback((taskId) => {
+    send('COMPLETE_MANUAL_PR', { taskId });
+  }, [send]);
+
   const approveMaxReviewBlocker = useCallback((taskId) => {
     send('APPROVE_MAX_REVIEW_BLOCKER', { taskId });
   }, [send]);
@@ -277,6 +291,7 @@ export default function useFactory() {
     agents,
     repos,
     settings,
+    capabilities,
     notifications,
     addTask,
     approvePlan,
@@ -287,6 +302,7 @@ export default function useFactory() {
     abortTask,
     resetTask,
     retryTask,
+    completeManualPr,
     approveMaxReviewBlocker,
     extendMaxReviewBlocker,
     deleteTask,
