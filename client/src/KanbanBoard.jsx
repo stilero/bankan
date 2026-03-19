@@ -81,7 +81,7 @@ const COLUMNS = [
         <path d='m5.5 8 1.5 1.5 3.5-3.5' fill='none' stroke='currentColor' strokeLinecap='round' strokeLinejoin='round' strokeWidth='1.5' />
       </StageIcon>
     ),
-    statuses: ['done'],
+    statuses: ['done', 'awaiting_manual_pr'],
     agentPrefix: null,
     color: 'var(--green)',
   },

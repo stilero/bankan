@@ -8,6 +8,7 @@ import { resolve, dirname as pathDirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import config, { loadSettings, saveSettings, validateSettings, getWorkspacesDir, getRuntimeStatePaths } from './config.js';
+import { getGithubCapabilities } from './capabilities.js';
 import store from './store.js';
 import agentManager from './agents.js';
 import bus from './events.js';
@@ -491,6 +492,7 @@ wss.on('connection', (ws) => {
       agents: agentManager.getAllStatus(),
       repos: loadSettings().repos || [],
       settings: loadSettings(),
+      capabilities: getGithubCapabilities(),
     },
     ts: Date.now(),
   }));
@@ -583,6 +585,11 @@ wss.on('connection', (ws) => {
           orchestrator.deleteTask(taskId);
           broadcast('TASK_DELETED', { taskId });
         }
+        break;
+      }
+      case 'COMPLETE_MANUAL_PR': {
+        const { taskId } = msg.payload || {};
+        if (taskId) orchestrator.completeManualPr(taskId);
         break;
       }
       case 'RETRY_TASK': {
@@ -749,6 +756,7 @@ bus.on('review:passed', (data) => broadcast('REVIEW_PASSED', data));
 bus.on('review:failed', (data) => broadcast('REVIEW_FAILED', data));
 bus.on('pr:created', (data) => broadcast('PR_CREATED', data));
 bus.on('task:blocked', (data) => broadcast('TASK_BLOCKED', data));
+bus.on('task:manual-pr-required', (data) => broadcast('TASK_MANUAL_PR_REQUIRED', data));
 bus.on('max-review-blocker:approved', (data) => broadcast('MAX_REVIEW_BLOCKER_APPROVED', data));
 bus.on('max-review-blocker:extended', (data) => broadcast('MAX_REVIEW_BLOCKER_EXTENDED', data));
 bus.on('repos:updated', (repos) => broadcast('REPOS_UPDATED', { repos }));

@@ -69,6 +69,7 @@ describe('useFactory', () => {
         agents: [{ id: 'orch', status: 'active' }],
         repos: ['/repo'],
         settings: { defaultRepoPath: '/repo' },
+        capabilities: { ghAvailable: true, ghAuthenticated: true, canCreatePullRequests: true },
       });
     });
 
@@ -78,6 +79,11 @@ describe('useFactory', () => {
     expect(result.current.agents).toEqual([{ id: 'orch', status: 'active' }]);
     expect(result.current.repos).toEqual(['/repo']);
     expect(result.current.settings).toEqual({ defaultRepoPath: '/repo' });
+    expect(result.current.capabilities).toEqual({
+      ghAvailable: true,
+      ghAuthenticated: true,
+      canCreatePullRequests: true,
+    });
 
     act(() => {
       result.current.addTask('Add tests', 'high', 'Critical path', '/repo');
@@ -104,6 +110,7 @@ describe('useFactory', () => {
         agents: [{ id: 'imp-1', status: 'idle' }],
         repos: [],
         settings: {},
+        capabilities: { ghAvailable: true, ghAuthenticated: true, canCreatePullRequests: true },
       });
     });
 
@@ -214,6 +221,7 @@ describe('useFactory', () => {
         agents: [{ id: 'imp-1', status: 'idle' }],
         repos: ['/repo-a'],
         settings: { repos: ['/repo-a'] },
+        capabilities: { ghAvailable: true, ghAuthenticated: true, canCreatePullRequests: true },
       });
       socket.emit('TASKS_UPDATED', { tasks: [{ id: 'T-2', status: 'queued' }] });
       socket.emit('TASK_ADDED', { task: { id: 'T-3', status: 'backlog' } });
@@ -261,6 +269,7 @@ describe('useFactory', () => {
       result.current.abortTask('T-2');
       result.current.resetTask('T-2');
       result.current.retryTask('T-2');
+      result.current.completeManualPr('T-2');
       result.current.approveMaxReviewBlocker('T-2');
       result.current.extendMaxReviewBlocker('T-2');
       result.current.deleteTask('T-2');
@@ -282,6 +291,7 @@ describe('useFactory', () => {
       'ABORT_TASK',
       'RESET_TASK',
       'RETRY_TASK',
+      'COMPLETE_MANUAL_PR',
       'APPROVE_MAX_REVIEW_BLOCKER',
       'EXTEND_MAX_REVIEW_BLOCKER',
       'DELETE_TASK',
@@ -295,5 +305,29 @@ describe('useFactory', () => {
     });
 
     expect(socket.closed).toBe(true);
+  });
+
+  test('notifies early when automatic PR creation is unavailable', () => {
+    const { result } = renderHook(() => useFactory());
+    const socket = WebSocketMock.instances[0];
+
+    act(() => {
+      socket.open();
+      socket.emit('INIT', {
+        tasks: [],
+        agents: [],
+        repos: ['/repo'],
+        settings: { defaultRepoPath: '/repo' },
+        capabilities: { ghAvailable: false, ghAuthenticated: false, canCreatePullRequests: false },
+      });
+    });
+
+    expect(result.current.capabilities).toEqual({
+      ghAvailable: false,
+      ghAuthenticated: false,
+      canCreatePullRequests: false,
+    });
+    expect(result.current.notifications[0].msg).toContain('GitHub CLI');
+    expect(result.current.notifications[0].msg).toContain('manual');
   });
 });
