@@ -722,7 +722,13 @@ function buildManualPrGuidance(task, capabilities = getGithubCapabilities()) {
 function isManualPrAutomationError(err) {
   if (!err) return false;
   const message = typeof err.message === 'string' ? err.message : '';
-  return err.code === 'ENOENT' || /spawn gh ENOENT/i.test(message) || /gh.*not authenticated/i.test(message);
+  const path = typeof err.path === 'string' ? err.path : '';
+  const spawnargs = Array.isArray(err.spawnargs) ? err.spawnargs : [];
+  const firstSpawnArg = typeof spawnargs[0] === 'string' ? spawnargs[0] : '';
+  return path === 'gh'
+    || firstSpawnArg === 'gh'
+    || /spawn(?:sync)? gh ENOENT/i.test(message)
+    || /gh.*not authenticated/i.test(message);
 }
 
 async function transitionTaskToManualPr(taskId, capabilities = getGithubCapabilities()) {

@@ -123,10 +123,11 @@ describe('createPR', () => {
 
     getTask.mockReturnValue(task);
     existsSyncMock.mockReturnValue(true);
-    execFileSyncMock.mockImplementation((cmd, args) => {
-      if (cmd === 'gh' && args?.[0] === 'pr') {
+    execFileSyncMock.mockImplementation((cmd) => {
+      if (cmd === 'gh') {
         const error = new Error('spawn gh ENOENT');
         error.code = 'ENOENT';
+        error.path = 'gh';
         throw error;
       }
       return '';
@@ -148,5 +149,29 @@ describe('createPR', () => {
       blockedReason: expect.stringContaining('create the PR manually'),
     }));
     expect(emit).toHaveBeenCalledWith('task:manual-pr-required', expect.objectContaining({ taskId: 'T-42' }));
+  });
+
+  test('keeps non-gh ENOENT failures blocked instead of treating them as manual PR fallback', async () => {
+    fetchMock.mockRejectedValueOnce(Object.assign(new Error('spawn git ENOENT'), {
+      code: 'ENOENT',
+      path: 'git',
+      spawnargs: ['git', 'fetch'],
+    }));
+    execFileSyncMock.mockImplementation(() => '');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { createPR } = await import('./orchestrator.js');
+
+    await createPR('T-42');
+
+    expect(updateTask).toHaveBeenCalledWith('T-42', expect.objectContaining({
+      status: 'blocked',
+      assignedTo: null,
+      blockedReason: expect.stringContaining('PR finalization failed'),
+    }));
+    expect(emit).toHaveBeenCalledWith('task:blocked', { taskId: 'T-42', reason: 'PR finalization failed' });
+    expect(emit).not.toHaveBeenCalledWith('task:manual-pr-required', expect.anything());
+
+    consoleError.mockRestore();
   });
 });
