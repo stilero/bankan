@@ -42,8 +42,10 @@ function stripAnsi(text) {
   );
 }
 
+const isWindows = process.platform === 'win32';
+
 function escapePrompt(text) {
-  if (process.platform === 'win32') {
+  if (isWindows) {
     // PowerShell: escape single quotes by doubling them
     return text.replace(/'/g, "''");
   }
@@ -51,9 +53,6 @@ function escapePrompt(text) {
   return text.replace(/'/g, "'\\''");
 }
 
-// TODO: buildCodexExecCommand emits bash syntax (mktemp, $?, printf).
-// On Windows the agent shell is PowerShell, so codex with captureLastMessage
-// will not work until this function gets a win32 branch.
 function buildCodexExecCommand(prompt, { captureLastMessage = false, sandbox = 'read-only', model = '' } = {}) {
   const escapedPrompt = escapePrompt(prompt);
   const modelFlag = model ? `-m ${model} ` : '';
@@ -64,13 +63,17 @@ function buildCodexExecCommand(prompt, { captureLastMessage = false, sandbox = '
   return `tmpfile=$(mktemp); codex exec ${modelFlag}--sandbox ${sandbox} -o "$tmpfile" '${escapedPrompt}'; status=$?; printf '\\n=== CODEX_LAST_MESSAGE_FILE:%s ===\\n' "$tmpfile"; exit $status`;
 }
 
+// On Windows the agent shell is PowerShell, so the bash-syntax
+// captureLastMessage path cannot work — the structured-capture and
+// terminal-buffer fallbacks in extractStructuredStageText still apply.
 export function buildAgentCommand(cliTool, prompt, mode = 'interactive', model = '') {
   if (cliTool === 'codex') {
+    const capture = !isWindows;
     if (mode === 'plan' || mode === 'review') {
-      return buildCodexExecCommand(prompt, { captureLastMessage: true, sandbox: 'read-only', model });
+      return buildCodexExecCommand(prompt, { captureLastMessage: capture, sandbox: 'read-only', model });
     }
     if (mode === 'interactive') {
-      return buildCodexExecCommand(prompt, { captureLastMessage: true, sandbox: 'danger-full-access', model });
+      return buildCodexExecCommand(prompt, { captureLastMessage: capture, sandbox: 'danger-full-access', model });
     }
     return buildCodexExecCommand(prompt, { captureLastMessage: false, sandbox: 'read-only', model });
   }
