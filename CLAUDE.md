@@ -74,6 +74,31 @@ Dev mode: client runs at `http://localhost:5173` with API proxy to `:3001`.
 - React components use inline styles (no CSS modules or styled-components)
 - ESLint is the shared source of truth for code standards
 
+## Workflow
+
+### Plan First
+- Enter plan mode for any non-trivial task (3+ steps or architectural decisions).
+- If something goes sideways, STOP and re-plan immediately.
+- Use subagents liberally to keep the main context window clean — offload research, exploration, and parallel analysis.
+
+### Verification Before Done
+- Never mark a task complete without proving it works.
+- Run the relevant test suite and `npm run lint` after every change.
+- Diff behavior between main and your changes when relevant.
+- Ask yourself: "Would a staff engineer approve this?"
+
+### Autonomous Bug Fixing
+- When given a bug report: just fix it. Don't ask for hand-holding.
+- Point at logs, errors, failing tests — then resolve them.
+- Go fix failing CI tests without being told how.
+
+## Core Principles
+
+- **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
+- **Minimal Impact**: Only touch what's necessary. No side effects with new bugs.
+- **Demand Elegance (Balanced)**: For non-trivial changes, pause and ask "is there a more elegant way?" Skip this for simple, obvious fixes — don't over-engineer.
+
 ## Testing Expectations
 
 - Claude-driven code changes should follow TDD: create or update the failing automated test first, implement the change second, then rerun the relevant suite.

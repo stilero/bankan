@@ -26,6 +26,7 @@ describe('TaskStore persistence and recovery', () => {
     expect(task.status).toBe('backlog');
     expect(task.lastActiveStage).toBe('backlog');
     expect(task.log.at(-1).message).toBe('Task created');
+    expect(task.maxReviewCycles).toBe(3);
 
     store.updateTask(task.id, { status: 'planning', assignedTo: 'plan-1' });
     store.appendLog(task.id, 'Planner started');
@@ -125,6 +126,7 @@ describe('TaskStore persistence and recovery', () => {
         status: 'awaiting_human_review',
         repoPath: '/repo',
         reviewCycleCount: -2,
+        maxReviewCycles: -1,
         totalTokens: -10,
         startedAt: 42,
         completedAt: 24,
@@ -143,6 +145,7 @@ describe('TaskStore persistence and recovery', () => {
     expect(task.assignedTo).toBeNull();
     expect(task.workspacePath).toBeNull();
     expect(task.reviewCycleCount).toBe(0);
+    expect(task.maxReviewCycles).toBe(3);
     expect(task.totalTokens).toBe(0);
     expect(task.startedAt).toBeNull();
     expect(task.completedAt).toBeNull();
@@ -170,6 +173,7 @@ describe('TaskStore persistence and recovery', () => {
       blockedReason: 'Invalid planner working directory: git@github.com:stilero/bankan.git',
       workspacePath: null,
       reviewCycleCount: -1,
+      maxReviewCycles: -1,
       totalTokens: -1,
       lastActiveStage: null,
     });
@@ -181,6 +185,7 @@ describe('TaskStore persistence and recovery', () => {
     expect(recovered.previousStatus).toBeNull();
     expect(recovered.lastActiveStage).toBe('backlog');
     expect(recovered.reviewCycleCount).toBe(0);
+    expect(recovered.maxReviewCycles).toBe(3);
     expect(recovered.totalTokens).toBe(0);
   });
 });

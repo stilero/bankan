@@ -42,6 +42,40 @@ export function reviewShouldPass(reviewResult) {
   return reviewResult.verdict === 'PASS' || !reviewResult.hasCriticalIssues;
 }
 
+export function isMaxReviewCyclesBlocker(blockedReason) {
+  if (typeof blockedReason !== 'string') return false;
+  return /^Reached maximum review cycles(?: \(\d+\))?/i.test(blockedReason.trim());
+}
+
+export function resolveTaskMaxReviewCycles(task, fallback = 3) {
+  const configuredValue = task?.maxReviewCycles;
+  if (typeof configuredValue === 'number' && configuredValue >= 1) {
+    return configuredValue;
+  }
+  return fallback;
+}
+
+export function buildMaxReviewBlockerApprovalUpdate(task, now = new Date().toISOString()) {
+  if (task?.status !== 'blocked' || !isMaxReviewCyclesBlocker(task?.blockedReason)) return null;
+  return {
+    status: 'done',
+    blockedReason: null,
+    assignedTo: null,
+    workspacePath: null,
+    completedAt: task.completedAt || now,
+  };
+}
+
+export function buildMaxReviewBlockerExtensionUpdate(task) {
+  if (task?.status !== 'blocked' || !isMaxReviewCyclesBlocker(task?.blockedReason)) return null;
+  return {
+    status: 'queued',
+    blockedReason: null,
+    assignedTo: null,
+    maxReviewCycles: resolveTaskMaxReviewCycles(task) + 1,
+  };
+}
+
 export function isReviewResultPlaceholder(reviewText, reviewResult = parseReviewResult(reviewText)) {
   if (typeof reviewText !== 'string' || !reviewText.trim()) return true;
 
@@ -123,7 +157,7 @@ export function stageToRetryStatus(task, { planningDisabled = false, liveAgent =
     if (stage === 'review') return 'review';
   }
 
-  if ((task.blockedReason || '').includes('maximum review cycles')) {
+  if (isMaxReviewCyclesBlocker(task.blockedReason || '')) {
     return 'queued';
   }
   if (task.lastActiveStage === 'review') {

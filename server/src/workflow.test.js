@@ -1,12 +1,16 @@
 import { describe, expect, test } from 'vitest';
 
 import {
-  getLiveTaskAgent,
+  buildMaxReviewBlockerApprovalUpdate,
+  buildMaxReviewBlockerExtensionUpdate,
   getAgentStage,
+  getLiveTaskAgent,
   isImplementationPlaceholder,
-  isReviewResultPlaceholder,
+  isMaxReviewCyclesBlocker,
   isPlanPlaceholder,
+  isReviewResultPlaceholder,
   parseReviewResult,
+  resolveTaskMaxReviewCycles,
   reviewShouldPass,
   stageToRetryStatus,
 } from './workflow.js';
@@ -268,6 +272,51 @@ describe('retry status resolution', () => {
       lastActiveStage: 'review',
       blockedReason: 'Reached maximum review cycles for this task',
     }, { planningDisabled: false })).toBe('queued');
+  });
+
+  test('maximum review cycle blockers are detected from the canonical message', () => {
+    expect(isMaxReviewCyclesBlocker('Reached maximum review cycles (3). Human input required.')).toBe(true);
+    expect(isMaxReviewCyclesBlocker('Reached maximum review cycles (3) Human input required.')).toBe(true);
+    expect(isMaxReviewCyclesBlocker('Invalid workspace path for review: /tmp/workspace')).toBe(false);
+  });
+
+  test('builds approval and extension updates for max review blockers', () => {
+    const task = {
+      status: 'blocked',
+      blockedReason: 'Reached maximum review cycles (3). Human input required.',
+      maxReviewCycles: 3,
+    };
+
+    const approved = buildMaxReviewBlockerApprovalUpdate(task);
+    const extended = buildMaxReviewBlockerExtensionUpdate(task);
+
+    expect(approved).toMatchObject({
+      status: 'done',
+      blockedReason: null,
+      assignedTo: null,
+      workspacePath: null,
+    });
+    expect(typeof approved.completedAt).toBe('string');
+    expect(extended).toEqual({
+      status: 'queued',
+      blockedReason: null,
+      assignedTo: null,
+      maxReviewCycles: 4,
+    });
+    expect(buildMaxReviewBlockerApprovalUpdate({
+      status: 'blocked',
+      blockedReason: 'Different blocker',
+    })).toBeNull();
+    expect(buildMaxReviewBlockerExtensionUpdate({
+      status: 'review',
+      blockedReason: 'Reached maximum review cycles (3). Human input required.',
+    })).toBeNull();
+  });
+
+  test('preserves an existing per-task review cap and falls back only when missing or invalid', () => {
+    expect(resolveTaskMaxReviewCycles({ maxReviewCycles: 7 }, 3)).toBe(7);
+    expect(resolveTaskMaxReviewCycles({ maxReviewCycles: 0 }, 3)).toBe(3);
+    expect(resolveTaskMaxReviewCycles({}, 3)).toBe(3);
   });
 
   test('live planner and reviewer agents preserve their active stage', () => {
