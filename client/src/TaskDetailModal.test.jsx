@@ -165,4 +165,22 @@ describe('TaskDetailModal', () => {
     expect(onAllowMoreReview).toHaveBeenCalledWith('T-1');
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
+
+  test('renders delete button when task status is aborted', () => {
+    const onDelete = vi.fn();
+    render(
+      <TaskDetailModal
+        task={buildTask({ status: 'aborted', blockedReason: null, reviewCycleCount: 0 })}
+        onClose={() => {}}
+        onAbort={() => {}}
+        onReset={() => {}}
+        onRetry={() => {}}
+        onDelete={onDelete}
+        onOpenWorkspace={() => {}}
+      />
+    );
+
+    const deleteBtn = screen.getByRole('button', { name: 'Delete Task' });
+    expect(deleteBtn).toBeTruthy();
+  });
 });
