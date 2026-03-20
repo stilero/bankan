@@ -69,6 +69,7 @@ describe('App', () => {
         defaultRepoPath: '/repo-b',
         workspaceRoot: '/tmp/original',
         repos: ['/repo-a', '/repo-b'],
+        maxReviewCycles: 3,
         agents: {
           planners: { max: 1, cli: 'claude', model: '' },
           implementors: { max: 2, cli: 'codex', model: '' },
@@ -204,6 +205,7 @@ describe('App', () => {
       defaultRepoPath: '/repo-a',
       workspaceRoot: '/tmp/restored',
       repos: ['/repo-a'],
+      maxReviewCycles: 3,
       agents: {
         planners: { max: 1, cli: 'claude', model: '' },
         implementors: { max: 2, cli: 'codex', model: '' },
@@ -243,6 +245,7 @@ describe('App', () => {
       defaultRepoPath: '/repo-b',
       workspaceRoot: '/tmp/workspaces',
       repos: ['/repo-b', '/repo-c'],
+      maxReviewCycles: 3,
       agents: {
         planners: { max: 3, cli: 'codex', model: '' },
         implementors: { max: 2, cli: 'codex', model: '' },
@@ -254,5 +257,23 @@ describe('App', () => {
         review: 'Review prompt',
       },
     });
+  });
+
+  test('renders max review cycles input in Review tab and updates local state', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTitle('Settings'));
+    fireEvent.click(screen.getByText('Review'));
+
+    const cyclesInput = screen.getByTestId('max-review-cycles');
+    expect(cyclesInput).toBeTruthy();
+    expect(cyclesInput.value).toBe('3');
+
+    fireEvent.change(cyclesInput, { target: { value: '5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(factoryState.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ maxReviewCycles: 5 })
+    );
   });
 });

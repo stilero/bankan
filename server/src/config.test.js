@@ -76,6 +76,53 @@ describe('config settings lifecycle', () => {
     expect(errors).toContain('prompts.review must be a string');
   });
 
+  test('getDefaults includes maxReviewCycles and normalizeSettingsShape corrects invalid values', async () => {
+    harness = createRuntimeHarness();
+    const configModule = await harness.importModule('./src/config.js');
+
+    const defaults = configModule.getDefaults();
+    expect(defaults.maxReviewCycles).toBe(3);
+
+    configModule.saveSettings({
+      ...defaults,
+      maxReviewCycles: -5,
+    });
+    const loaded = configModule.loadSettings();
+    expect(loaded.maxReviewCycles).toBe(3);
+
+    configModule.saveSettings({
+      ...defaults,
+      maxReviewCycles: 'bad',
+    });
+    expect(configModule.loadSettings().maxReviewCycles).toBe(3);
+
+    configModule.saveSettings({
+      ...defaults,
+      maxReviewCycles: 10,
+    });
+    expect(configModule.loadSettings().maxReviewCycles).toBe(10);
+  });
+
+  test('validateSettings rejects out-of-range maxReviewCycles', async () => {
+    harness = createRuntimeHarness();
+    const { validateSettings, getDefaults } = await harness.importModule('./src/config.js');
+    const base = {
+      ...getDefaults(),
+      repos: ['/repo'],
+      defaultRepoPath: '/repo',
+      workspaceRoot: '/tmp/ws',
+    };
+
+    expect(validateSettings({ ...base, maxReviewCycles: 0 }))
+      .toContain('maxReviewCycles must be a number between 1 and 20');
+    expect(validateSettings({ ...base, maxReviewCycles: 21 }))
+      .toContain('maxReviewCycles must be a number between 1 and 20');
+    expect(validateSettings({ ...base, maxReviewCycles: 'bad' }))
+      .toContain('maxReviewCycles must be a number between 1 and 20');
+    expect(validateSettings({ ...base, maxReviewCycles: 5 }))
+      .not.toContain('maxReviewCycles must be a number between 1 and 20');
+  });
+
   test('reads env defaults for repos, port, and legacy implementor cli', async () => {
     harness = createRuntimeHarness();
     const { writeFileSync } = await import('node:fs');
@@ -135,6 +182,7 @@ describe('config settings lifecycle', () => {
       repos: ['/repo'],
       defaultRepoPath: '/repo',
       workspaceRoot: '/tmp/ws',
+      maxReviewCycles: 3,
       agents: {
         planners: { max: 1, cli: 'claude', model: 'claude-haiku-4-5' },
         implementors: { max: 1, cli: 'claude', model: 'claude-opus-4-6' },
@@ -158,6 +206,7 @@ describe('config settings lifecycle', () => {
       repos: ['/repo'],
       defaultRepoPath: '/repo',
       workspaceRoot: '/tmp/ws',
+      maxReviewCycles: 3,
       agents: {
         planners: { max: 1, cli: 'codex', model: 'claude-haiku-4-5' },
         implementors: { max: 1, cli: 'claude', model: 'gpt-5.4' },
@@ -179,6 +228,7 @@ describe('config settings lifecycle', () => {
       repos: ['/repo'],
       defaultRepoPath: '/repo',
       workspaceRoot: '/tmp/ws',
+      maxReviewCycles: 3,
       agents: {
         planners: { max: 1, cli: 'codex', model: 'gpt-5.3-codex' },
         implementors: { max: 1, cli: 'codex', model: 'gpt-5.4' },

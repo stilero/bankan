@@ -555,6 +555,7 @@ function SettingsModal({ settings, onClose, onApply }) {
       const range = maxRules[role] || { min: 1, max: 10 };
       return cfg.max >= range.min && cfg.max <= range.max;
     }) &&
+    typeof local.maxReviewCycles === 'number' && local.maxReviewCycles >= 1 && local.maxReviewCycles <= 20 &&
     ['planning', 'implementation', 'review'].every(stage => typeof local.prompts?.[stage] === 'string');
 
   const tabs = [
@@ -654,6 +655,40 @@ function SettingsModal({ settings, onClose, onApply }) {
             {cfgMeta.description}
           </div>
         </div>
+
+        {stage === 'review' && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{
+              fontSize: 11, fontWeight: 600, color: 'var(--text2)',
+              letterSpacing: 1, marginBottom: 10,
+            }}>
+              REVIEW CYCLES
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <span style={{ fontSize: 12, color: 'var(--text2)', width: 130 }}>Max review cycles:</span>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                data-testid="max-review-cycles"
+                value={local.maxReviewCycles ?? 3}
+                onChange={e => {
+                  const parsed = parseInt(e.target.value, 10);
+                  const clamped = Number.isNaN(parsed) ? 1 : Math.max(1, Math.min(20, parsed));
+                  setLocal(prev => ({ ...prev, maxReviewCycles: clamped }));
+                }}
+                style={{
+                  width: 60, padding: '4px 6px', fontSize: 12,
+                  background: 'var(--bg)', border: '1px solid var(--border)',
+                  borderRadius: 4, textAlign: 'center',
+                }}
+              />
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+              Maximum review-fix iterations before a task is blocked for human input.
+            </div>
+          </div>
+        )}
 
         <div style={{ marginBottom: 18 }}>
           <div style={{
