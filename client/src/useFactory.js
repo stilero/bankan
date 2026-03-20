@@ -160,6 +160,20 @@ export default function useFactory() {
         case 'MAX_REVIEW_BLOCKER_EXTENDED':
           addNotification(`Task ${msg.payload.taskId} allowed one more review (${msg.payload.maxReviewCycles} max)`, 'info');
           break;
+        case 'SUPERVISOR_DECISION': {
+          const { taskId: sTaskId, stage, decision, feedback } = msg.payload || {};
+          const label = stage === 'plan' ? 'plan' : 'review';
+          if (decision === 'APPROVE') {
+            addNotification(`Supervisor auto-approved ${label} for ${sTaskId}`, 'success');
+          } else if (decision === 'REJECT') {
+            addNotification(`Supervisor rejected ${label} for ${sTaskId}: ${feedback || ''}`, 'warning');
+          } else if (decision === 'RETRY') {
+            addNotification(`Supervisor retrying ${label} for ${sTaskId}`, 'info');
+          } else if (decision === 'ESCALATE') {
+            addNotification(`Supervisor escalated ${sTaskId} — human input needed`, 'error');
+          }
+          break;
+        }
         case 'SETTINGS_ERROR':
           addNotification((msg.payload?.errors || []).join(', ') || 'Settings update failed', 'error');
           break;

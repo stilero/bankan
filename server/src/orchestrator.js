@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { simpleGit } from 'simple-git';
 import { loadSettings, getWorkspacesDir } from './config.js';
+import { evaluatePlan, evaluateReviewFailure } from './supervisor.js';
 import { getGithubCapabilities, isManualPullRequestRequired } from './capabilities.js';
 import store from './store.js';
 import agentManager from './agents.js';
@@ -26,6 +27,10 @@ const REVIEWER_TIMEOUT = 30 * 60 * 1000;
 const STUCK_TIMEOUT = 10 * 60 * 1000;
 function getMaxReviewCycles() {
   return loadSettings().maxReviewCycles || 3;
+}
+
+function getAutopilotMode() {
+  return loadSettings().autopilotMode || 'manual';
 }
 
 let pollTimer = null;
@@ -879,6 +884,28 @@ function onPlanComplete(agentId, taskId) {
 
   retireAgentSession(planner, { taskId, outcome: 'completed', transcript: planText });
   bus.emit('plan:ready', { taskId, plan: planText });
+
+  // Supervisor auto-approval for autopilot and hybrid modes
+  const mode = getAutopilotMode();
+  if (mode === 'autopilot' || mode === 'hybrid') {
+    const settings = loadSettings();
+    evaluatePlan(store.getTask(taskId), settings).then((result) => {
+      // Guard against race condition: user may have manually approved/rejected
+      const current = store.getTask(taskId);
+      if (!current || current.status !== 'awaiting_approval') return;
+
+      bus.emit('supervisor:decision', { taskId, stage: 'plan', decision: result.decision, feedback: result.feedback });
+
+      if (result.decision === 'APPROVE') {
+        approvePlan(taskId);
+      } else if (result.decision === 'REJECT') {
+        rejectPlan(taskId, result.feedback);
+      }
+      // ESCALATE: leave in awaiting_approval for human
+    }).catch(() => {
+      // On error, leave in awaiting_approval (fail-safe)
+    });
+  }
 }
 
 function approvePlan(taskId) {
@@ -1055,7 +1082,52 @@ async function onReviewComplete(agentId, taskId) {
     const nextReviewCycleCount = (task?.reviewCycleCount || 0) + 1;
     const maxReviewCycles = Math.max(1, task?.maxReviewCycles || getMaxReviewCycles());
 
+    const mode = getAutopilotMode();
+
     if (nextReviewCycleCount >= maxReviewCycles) {
+      if (mode === 'autopilot') {
+        // Let supervisor decide whether to extend cycles or escalate
+        const settings = loadSettings();
+        evaluateReviewFailure(store.getTask(taskId), reviewText, criticalIssues, settings).then((result) => {
+          const current = store.getTask(taskId);
+          if (!current) return;
+          bus.emit('supervisor:decision', { taskId, stage: 'review-max-cycles', decision: result.decision, feedback: result.enhancedFeedback });
+
+          if (result.decision === 'RETRY') {
+            // Extend max cycles by 1 and re-queue
+            store.updateTask(taskId, {
+              status: 'queued',
+              reviewFeedback: result.enhancedFeedback || criticalIssues,
+              reviewCycleCount: nextReviewCycleCount,
+              maxReviewCycles: maxReviewCycles + 1,
+              blockedReason: null,
+              assignedTo: null,
+            });
+            bus.emit('review:failed', { taskId, issues: criticalIssues });
+          } else {
+            store.updateTask(taskId, {
+              status: 'blocked',
+              reviewFeedback: criticalIssues,
+              reviewCycleCount: nextReviewCycleCount,
+              blockedReason: `Supervisor escalated after max review cycles (${maxReviewCycles}): ${result.enhancedFeedback || 'Human input required.'}`,
+              assignedTo: null,
+            });
+            bus.emit('task:blocked', { taskId, reason: 'Supervisor escalated at max review cycles' });
+          }
+        }).catch(() => {
+          // Fail-safe: block as normal
+          store.updateTask(taskId, {
+            status: 'blocked',
+            reviewFeedback: criticalIssues,
+            reviewCycleCount: nextReviewCycleCount,
+            blockedReason: `Reached maximum review cycles (${maxReviewCycles}). Human input required.`,
+            assignedTo: null,
+          });
+          bus.emit('task:blocked', { taskId, reason: 'Reached maximum review cycles' });
+        });
+        return;
+      }
+
       store.updateTask(taskId, {
         status: 'blocked',
         reviewFeedback: criticalIssues,
@@ -1067,6 +1139,49 @@ async function onReviewComplete(agentId, taskId) {
       return;
     }
 
+    // Review failed but cycles remain
+    if (mode === 'autopilot') {
+      // Let supervisor provide enhanced feedback for retry
+      const settings = loadSettings();
+      evaluateReviewFailure(store.getTask(taskId), reviewText, criticalIssues, settings).then((result) => {
+        const current = store.getTask(taskId);
+        if (!current) return;
+        bus.emit('supervisor:decision', { taskId, stage: 'review-failure', decision: result.decision, feedback: result.enhancedFeedback });
+
+        if (result.decision === 'RETRY') {
+          store.updateTask(taskId, {
+            status: 'queued',
+            reviewFeedback: result.enhancedFeedback || criticalIssues,
+            reviewCycleCount: nextReviewCycleCount,
+            blockedReason: null,
+            assignedTo: null,
+          });
+          bus.emit('review:failed', { taskId, issues: criticalIssues });
+        } else {
+          store.updateTask(taskId, {
+            status: 'blocked',
+            reviewFeedback: criticalIssues,
+            reviewCycleCount: nextReviewCycleCount,
+            blockedReason: `Supervisor escalated: ${result.enhancedFeedback || 'Human input required.'}`,
+            assignedTo: null,
+          });
+          bus.emit('task:blocked', { taskId, reason: 'Supervisor escalated review failure' });
+        }
+      }).catch(() => {
+        // Fail-safe: auto-retry with raw issues
+        store.updateTask(taskId, {
+          status: 'queued',
+          reviewFeedback: criticalIssues,
+          reviewCycleCount: nextReviewCycleCount,
+          blockedReason: null,
+          assignedTo: null,
+        });
+        bus.emit('review:failed', { taskId, issues: criticalIssues });
+      });
+      return;
+    }
+
+    // Manual and hybrid: auto-retry with raw critical issues
     store.updateTask(taskId, {
       status: 'queued',
       reviewFeedback: criticalIssues,
