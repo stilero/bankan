@@ -13,13 +13,18 @@ function parseDecisionBlock(output) {
 
   const block = output.slice(startIdx + DECISION_START.length, endIdx).trim();
   const decisionMatch = block.match(/^DECISION:\s*(.+)/m);
-  const feedbackMatch = block.match(/^(?:FEEDBACK|ENHANCED_FEEDBACK):\s*([\s\S]*?)$/m);
-
   if (!decisionMatch) return null;
+
+  // Extract feedback: find the label and take everything after it to end of block.
+  // Using slice instead of a regex with $ avoids multi-line truncation issues.
+  const feedbackLabelMatch = block.match(/^(?:FEEDBACK|ENHANCED_FEEDBACK):\s*/m);
+  const feedback = feedbackLabelMatch
+    ? block.slice(feedbackLabelMatch.index + feedbackLabelMatch[0].length).trim()
+    : '';
 
   return {
     decision: decisionMatch[1].trim().toUpperCase(),
-    feedback: feedbackMatch ? feedbackMatch[1].trim() : '',
+    feedback,
   };
 }
 

@@ -73,6 +73,41 @@ FEEDBACK: No decision line present.
     expect(parseDecisionBlock(output)).toBeNull();
   });
 
+  test('captures multi-line feedback without truncation', () => {
+    const output = `=== SUPERVISOR DECISION START ===
+DECISION: REJECT
+FEEDBACK: The plan has several issues:
+1. Missing error handling for the API endpoint
+2. No test coverage for edge cases
+3. The branch name does not follow conventions
+
+Please address all of the above before re-submitting.
+=== SUPERVISOR DECISION END ===`;
+
+    const result = parseDecisionBlock(output);
+    expect(result.decision).toBe('REJECT');
+    expect(result.feedback).toContain('1. Missing error handling');
+    expect(result.feedback).toContain('2. No test coverage');
+    expect(result.feedback).toContain('3. The branch name');
+    expect(result.feedback).toContain('Please address all of the above');
+  });
+
+  test('captures multi-line ENHANCED_FEEDBACK without truncation', () => {
+    const output = `=== SUPERVISOR DECISION START ===
+DECISION: RETRY
+ENHANCED_FEEDBACK: Fix the following critical issues:
+- The null check in parseConfig is missing
+- Add validation for empty inputs
+- Ensure the error message is user-friendly
+=== SUPERVISOR DECISION END ===`;
+
+    const result = parseDecisionBlock(output);
+    expect(result.decision).toBe('RETRY');
+    expect(result.feedback).toContain('The null check in parseConfig is missing');
+    expect(result.feedback).toContain('Add validation for empty inputs');
+    expect(result.feedback).toContain('Ensure the error message is user-friendly');
+  });
+
   test('returns empty feedback when no FEEDBACK line', () => {
     const output = `=== SUPERVISOR DECISION START ===
 DECISION: APPROVE
