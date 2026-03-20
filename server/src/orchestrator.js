@@ -25,6 +25,7 @@ const PLANNER_TIMEOUT = 5 * 60 * 1000;
 const IMPLEMENTOR_TIMEOUT = 60 * 60 * 1000;
 const REVIEWER_TIMEOUT = 30 * 60 * 1000;
 const STUCK_TIMEOUT = 10 * 60 * 1000;
+export const MAX_SUPERVISOR_EXTENSIONS = 2;
 function getMaxReviewCycles() {
   return loadSettings().maxReviewCycles || 3;
 }
@@ -1094,7 +1095,21 @@ async function onReviewComplete(agentId, taskId) {
           bus.emit('supervisor:decision', { taskId, stage: 'review-max-cycles', decision: result.decision, feedback: result.enhancedFeedback });
 
           if (result.decision === 'RETRY') {
-            // Extend max cycles by 1 and re-queue
+            // Extend max cycles by 1, but enforce a hard cap to prevent infinite loops
+            const configuredMax = getMaxReviewCycles();
+            const extensionsSoFar = maxReviewCycles - configuredMax;
+            if (extensionsSoFar >= MAX_SUPERVISOR_EXTENSIONS) {
+              // Hard cap reached — block instead of extending further
+              store.updateTask(taskId, {
+                status: 'blocked',
+                reviewFeedback: criticalIssues,
+                reviewCycleCount: nextReviewCycleCount,
+                blockedReason: `Supervisor exhausted ${MAX_SUPERVISOR_EXTENSIONS} extension(s) beyond max review cycles (${configuredMax}). Human input required.`,
+                assignedTo: null,
+              });
+              bus.emit('task:blocked', { taskId, reason: 'Supervisor exhausted cycle extensions' });
+              return;
+            }
             store.updateTask(taskId, {
               status: 'queued',
               reviewFeedback: result.enhancedFeedback || criticalIssues,

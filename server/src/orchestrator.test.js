@@ -7,6 +7,7 @@ import {
   extractImplementationResult,
   extractPlannerPlanText,
   extractReviewerReviewText,
+  MAX_SUPERVISOR_EXTENSIONS,
   sanitizeBranchName,
 } from './orchestrator.js';
 import { isImplementationPlaceholder } from './workflow.js';
@@ -555,6 +556,18 @@ RISKS:
     const cleaned = cleanTerminalArtifacts(dirty);
     expect(cleaned).toContain('BRANCH: feature/fix');
     expect(cleaned).not.toContain('❯');
+  });
+});
+
+describe('MAX_SUPERVISOR_EXTENSIONS', () => {
+  test('is exported as a positive integer', () => {
+    expect(typeof MAX_SUPERVISOR_EXTENSIONS).toBe('number');
+    expect(MAX_SUPERVISOR_EXTENSIONS).toBeGreaterThan(0);
+    expect(Number.isInteger(MAX_SUPERVISOR_EXTENSIONS)).toBe(true);
+  });
+
+  test('defaults to 2 to prevent unbounded cycle extensions', () => {
+    expect(MAX_SUPERVISOR_EXTENSIONS).toBe(2);
   });
 });
 
