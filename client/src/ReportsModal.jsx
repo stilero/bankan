@@ -7,13 +7,13 @@ const TIME_PERIODS = [
   { key: '90d', label: '90 Days' },
 ];
 
-function formatTokens(n) {
+export function formatTokens(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
 }
 
-function formatDuration(minutes) {
+export function formatDuration(minutes) {
   if (!minutes || minutes < 1) return '0m';
   const days = Math.floor(minutes / (60 * 24));
   const hours = Math.floor((minutes % (60 * 24)) / 60);
@@ -23,20 +23,20 @@ function formatDuration(minutes) {
   return `${mins}m`;
 }
 
-function getRepoName(repoPath) {
+export function getRepoName(repoPath) {
   if (!repoPath) return 'No repo';
   // Extract repo name from URL or path
   const parts = repoPath.replace(/\.git$/, '').split('/');
   return parts[parts.length - 1] || repoPath;
 }
 
-function getTimeCutoff(period) {
+export function getTimeCutoff(period) {
   if (period === 'all') return 0;
   const days = parseInt(period, 10);
   return Date.now() - days * 24 * 60 * 60 * 1000;
 }
 
-function computeDurationMinutes(task) {
+export function computeDurationMinutes(task) {
   const start = task.startedAt ? new Date(task.startedAt).getTime() : null;
   const end = task.completedAt ? new Date(task.completedAt).getTime() : (task.status === 'done' ? Date.now() : null);
   if (!start || !end || Number.isNaN(start) || Number.isNaN(end) || end < start) return 0;
