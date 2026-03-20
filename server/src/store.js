@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node
 import { join } from 'node:path';
 import { v4 as uuidv4 } from 'uuid';
 import bus from './events.js';
-import { getRuntimeStatePaths } from './config.js';
+import { getRuntimeStatePaths, loadSettings } from './config.js';
 
 const runtimePaths = getRuntimeStatePaths();
 const DATA_DIR = runtimePaths.dataDir;
@@ -42,6 +42,10 @@ function isLegacyPlannerPathBlocker(task) {
   return false;
 }
 
+function getDefaultMaxReviewCycles() {
+  return loadSettings().maxReviewCycles || 3;
+}
+
 class TaskStore {
   constructor() {
     this.tasks = [];
@@ -61,7 +65,7 @@ class TaskStore {
         this.tasks = this.tasks.map(task => {
           const normalized = {
             reviewCycleCount: 0,
-            maxReviewCycles: 3,
+            maxReviewCycles: getDefaultMaxReviewCycles(),
             lastActiveStage: statusToStage(task.status) || 'backlog',
             previousStatus: null,
             totalTokens: 0,
@@ -82,7 +86,7 @@ class TaskStore {
             normalized.reviewCycleCount = 0;
           }
           if (typeof normalized.maxReviewCycles !== 'number' || normalized.maxReviewCycles < 1) {
-            normalized.maxReviewCycles = 3;
+            normalized.maxReviewCycles = getDefaultMaxReviewCycles();
           }
           if (typeof normalized.totalTokens !== 'number' || normalized.totalTokens < 0) {
             normalized.totalTokens = 0;
@@ -134,7 +138,7 @@ class TaskStore {
       blockedReason: null,
       workspacePath: null,
       reviewCycleCount: 0,
-      maxReviewCycles: 3,
+      maxReviewCycles: getDefaultMaxReviewCycles(),
       lastActiveStage: 'backlog',
       previousStatus: null,
       totalTokens: 0,
@@ -251,7 +255,7 @@ class TaskStore {
         changed = true;
       }
       if (typeof task.maxReviewCycles !== 'number' || task.maxReviewCycles < 1) {
-        task.maxReviewCycles = 3;
+        task.maxReviewCycles = getDefaultMaxReviewCycles();
         changed = true;
       }
       if (typeof task.totalTokens !== 'number' || task.totalTokens < 0) {

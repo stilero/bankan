@@ -136,6 +136,7 @@ export function getDefaults() {
       implementors: { max: 8, cli: getLegacyImplementorCli(), model: '' },
       reviewers:    { max: 4, cli: 'claude', model: '' },
     },
+    maxReviewCycles: 3,
     prompts: { ...DEFAULT_PROMPTS },
   };
 }
@@ -168,6 +169,10 @@ function normalizeSettingsShape(data) {
         data.agents[role].model = '';
       }
     }
+  }
+
+  if (typeof data.maxReviewCycles !== 'number' || data.maxReviewCycles < 1) {
+    data.maxReviewCycles = defaults.maxReviewCycles;
   }
 
   data.prompts = {
@@ -237,6 +242,10 @@ export function validateSettings(settings) {
     } else if (typeof cfg.model === 'string' && validClis.includes(cfg.cli) && !isValidModelForCli(cfg.cli, cfg.model)) {
       errors.push(`${role}.model '${cfg.model}' is not valid for the '${cfg.cli}' CLI`);
     }
+  }
+
+  if (typeof settings.maxReviewCycles !== 'number' || settings.maxReviewCycles < 1 || settings.maxReviewCycles > 20) {
+    errors.push('maxReviewCycles must be a number between 1 and 20');
   }
 
   if (!settings.prompts || typeof settings.prompts !== 'object') {

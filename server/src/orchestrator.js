@@ -24,7 +24,9 @@ const PLANNER_TIMEOUT = 5 * 60 * 1000;
 const IMPLEMENTOR_TIMEOUT = 60 * 60 * 1000;
 const REVIEWER_TIMEOUT = 30 * 60 * 1000;
 const STUCK_TIMEOUT = 10 * 60 * 1000;
-const DEFAULT_MAX_REVIEW_CYCLES = 3;
+function getMaxReviewCycles() {
+  return loadSettings().maxReviewCycles || 3;
+}
 
 let pollTimer = null;
 let signalTimer = null;
@@ -789,7 +791,7 @@ async function startPlanning(task) {
       review: null,
       reviewFeedback: null,
       reviewCycleCount: 0,
-      maxReviewCycles: resolveTaskMaxReviewCycles(task, DEFAULT_MAX_REVIEW_CYCLES),
+      maxReviewCycles: resolveTaskMaxReviewCycles(task, getMaxReviewCycles()),
       blockedReason: null,
       assignedTo: null,
     });
@@ -870,7 +872,7 @@ function onPlanComplete(agentId, taskId) {
     review: null,
     reviewFeedback: null,
     reviewCycleCount: 0,
-    maxReviewCycles: resolveTaskMaxReviewCycles(task, DEFAULT_MAX_REVIEW_CYCLES),
+    maxReviewCycles: resolveTaskMaxReviewCycles(task, getMaxReviewCycles()),
     blockedReason: null,
     assignedTo: null,
   });
@@ -1051,7 +1053,7 @@ async function onReviewComplete(agentId, taskId) {
 
     const task = store.getTask(taskId);
     const nextReviewCycleCount = (task?.reviewCycleCount || 0) + 1;
-    const maxReviewCycles = Math.max(1, task?.maxReviewCycles || DEFAULT_MAX_REVIEW_CYCLES);
+    const maxReviewCycles = Math.max(1, task?.maxReviewCycles || getMaxReviewCycles());
 
     if (nextReviewCycleCount >= maxReviewCycles) {
       store.updateTask(taskId, {
@@ -1171,7 +1173,7 @@ async function abortTask(taskId) {
     reviewFeedback: null,
     previousStatus: null,
     reviewCycleCount: 0,
-    maxReviewCycles: DEFAULT_MAX_REVIEW_CYCLES,
+    maxReviewCycles: getMaxReviewCycles(),
   });
 
   bus.emit('task:aborted', { taskId });
@@ -1203,7 +1205,7 @@ async function resetTask(taskId) {
     planFeedback: null,
     previousStatus: null,
     reviewCycleCount: 0,
-    maxReviewCycles: DEFAULT_MAX_REVIEW_CYCLES,
+    maxReviewCycles: getMaxReviewCycles(),
     sessionHistory: [],
     progress: 0,
     totalTokens: 0,
