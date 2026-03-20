@@ -122,6 +122,7 @@ Key rules:
 - Relevant tests pass (new and existing).
 - Linter passes with no new violations.
 - Commit after each logical unit of work with descriptive commit messages.
+- Version bump if applicable, following the repository's versioning conventions.
 - After all work is done, make a final commit if there are any uncommitted changes.`,
   review: `You are an expert code reviewer.
 
