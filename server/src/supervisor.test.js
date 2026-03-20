@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { parseDecisionBlock } from './supervisor.js';
+import { parseDecisionBlock, validateDecision, PLAN_DECISIONS, REVIEW_DECISIONS } from './supervisor.js';
 
 describe('supervisor decision parsing', () => {
   test('parses APPROVE decision with feedback', () => {
@@ -116,5 +116,36 @@ DECISION: APPROVE
     const result = parseDecisionBlock(output);
     expect(result.decision).toBe('APPROVE');
     expect(result.feedback).toBe('');
+  });
+});
+
+describe('decision validation', () => {
+  test('accepts valid plan decisions', () => {
+    for (const decision of ['APPROVE', 'REJECT', 'ESCALATE']) {
+      const result = { decision, feedback: 'ok' };
+      expect(validateDecision(result, PLAN_DECISIONS)).toBe(result);
+    }
+  });
+
+  test('rejects invalid plan decisions', () => {
+    expect(validateDecision({ decision: 'RETRY', feedback: '' }, PLAN_DECISIONS)).toBeNull();
+    expect(validateDecision({ decision: 'GARBAGE', feedback: '' }, PLAN_DECISIONS)).toBeNull();
+  });
+
+  test('accepts valid review decisions', () => {
+    for (const decision of ['RETRY', 'ESCALATE']) {
+      const result = { decision, feedback: 'ok' };
+      expect(validateDecision(result, REVIEW_DECISIONS)).toBe(result);
+    }
+  });
+
+  test('rejects invalid review decisions', () => {
+    expect(validateDecision({ decision: 'APPROVE', feedback: '' }, REVIEW_DECISIONS)).toBeNull();
+    expect(validateDecision({ decision: 'REJECT', feedback: '' }, REVIEW_DECISIONS)).toBeNull();
+  });
+
+  test('returns null for null or missing decision', () => {
+    expect(validateDecision(null, PLAN_DECISIONS)).toBeNull();
+    expect(validateDecision({ feedback: 'no decision field' }, PLAN_DECISIONS)).toBeNull();
   });
 });

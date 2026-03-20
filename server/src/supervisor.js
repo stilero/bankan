@@ -6,6 +6,9 @@ const SUPERVISOR_TIMEOUT = 60_000;
 const DECISION_START = '=== SUPERVISOR DECISION START ===';
 const DECISION_END = '=== SUPERVISOR DECISION END ===';
 
+const PLAN_DECISIONS = new Set(['APPROVE', 'REJECT', 'ESCALATE']);
+const REVIEW_DECISIONS = new Set(['RETRY', 'ESCALATE']);
+
 function parseDecisionBlock(output) {
   const startIdx = output.indexOf(DECISION_START);
   const endIdx = output.indexOf(DECISION_END);
@@ -26,6 +29,11 @@ function parseDecisionBlock(output) {
     decision: decisionMatch[1].trim().toUpperCase(),
     feedback,
   };
+}
+
+function validateDecision(result, validSet) {
+  if (!result || !validSet.has(result.decision)) return null;
+  return result;
 }
 
 function runSupervisorQuery(cli, model, prompt) {
@@ -87,7 +95,9 @@ ${DECISION_END}
 - REJECT if the plan has clear deficiencies that can be fixed by re-planning
 - ESCALATE if you are uncertain or the task needs human judgement`;
 
-  const result = await runSupervisorQuery(cli, model, prompt);
+  const raw = await runSupervisorQuery(cli, model, prompt);
+  const result = validateDecision(raw, PLAN_DECISIONS)
+    || { decision: 'ESCALATE', feedback: `Invalid supervisor decision: ${raw?.decision || 'none'}` };
   store.appendLog(task.id, `Supervisor evaluated plan: ${result.decision}${result.feedback ? ' — ' + result.feedback : ''}`);
   return result;
 }
@@ -120,10 +130,12 @@ ${DECISION_END}
 - RETRY if the issues are fixable by an AI implementor with better instructions
 - ESCALATE if the issues require architectural decisions, clarification, or human judgement`;
 
-  const result = await runSupervisorQuery(cli, model, prompt);
+  const raw = await runSupervisorQuery(cli, model, prompt);
+  const result = validateDecision(raw, REVIEW_DECISIONS)
+    || { decision: 'ESCALATE', feedback: `Invalid supervisor decision: ${raw?.decision || 'none'}` };
   store.appendLog(task.id, `Supervisor evaluated review failure: ${result.decision}${result.feedback ? ' — ' + result.feedback : ''}`);
   return { decision: result.decision, enhancedFeedback: result.feedback };
 }
 
 // Exported for testing
-export { parseDecisionBlock, runSupervisorQuery };
+export { parseDecisionBlock, runSupervisorQuery, validateDecision, PLAN_DECISIONS, REVIEW_DECISIONS };
