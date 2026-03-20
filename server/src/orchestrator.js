@@ -1217,7 +1217,7 @@ async function resetTask(taskId) {
 
 async function deleteTask(taskId) {
   const task = store.getTask(taskId);
-  if (!task || task.status !== 'done') return false;
+  if (!task || !['done', 'aborted'].includes(task.status)) return false;
 
   if (task.workspacePath) {
     await cleanupWorkspace(task);
