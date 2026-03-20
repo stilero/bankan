@@ -4,6 +4,7 @@ import KanbanBoard from './KanbanBoard.jsx';
 import TerminalDrawer from './TerminalDrawer.jsx';
 import DirectoryPicker from './DirectoryPicker.jsx';
 import TaskDetailModal from './TaskDetailModal.jsx';
+import ReportsModal from './ReportsModal.jsx';
 import logoUrl from './assets/ban_kan_logo.svg';
 
 const PRIORITY_COLORS = {
@@ -60,6 +61,7 @@ export default function App() {
   const [selectedTask, setSelectedTask] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showReportsModal, setShowReportsModal] = useState(false);
   const hasRepos = repos.length > 0;
   const canCreateTask = hasRepos;
   const showStartupGreeting = isInitialized && !hasRepos && tasks.length === 0;
@@ -152,6 +154,23 @@ export default function App() {
           width: 6, height: 6, borderRadius: '50%',
           background: connected ? 'var(--green)' : 'var(--red)',
         }} />
+
+        {/* Reports */}
+        <button
+          onClick={() => setShowReportsModal(true)}
+          style={{
+            padding: '6px 10px',
+            background: 'var(--bg2)',
+            border: '1px solid var(--border)',
+            borderRadius: 4,
+            fontSize: 12,
+            color: 'var(--text2)',
+            cursor: 'pointer',
+          }}
+          title="Reports"
+        >
+          {'\u2637'}
+        </button>
 
         {/* Settings */}
         <button
@@ -287,6 +306,15 @@ export default function App() {
           onAllowMoreReview={(id) => { extendMaxReviewBlocker(id); setSelectedTask(null); }}
           onDelete={(id) => { deleteTask(id); setSelectedTask(null); }}
           onOpenWorkspace={(id) => { openTaskWorkspace(id); }}
+        />
+      )}
+
+      {/* REPORTS MODAL */}
+      {showReportsModal && (
+        <ReportsModal
+          tasks={tasks}
+          repos={repos}
+          onClose={() => setShowReportsModal(false)}
         />
       )}
 
