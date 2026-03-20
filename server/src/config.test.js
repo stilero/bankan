@@ -239,6 +239,47 @@ describe('config settings lifecycle', () => {
     expect(validateSettings(valid)).toEqual([]);
   });
 
+  test('getDefaults includes autopilotMode and normalizeSettingsShape corrects invalid values', async () => {
+    harness = createRuntimeHarness();
+    const configModule = await harness.importModule('./src/config.js');
+
+    const defaults = configModule.getDefaults();
+    expect(defaults.autopilotMode).toBe('manual');
+
+    // Invalid string falls back to default
+    configModule.saveSettings({ ...defaults, autopilotMode: 'invalid' });
+    expect(configModule.loadSettings().autopilotMode).toBe('manual');
+
+    // Missing field falls back to default
+    configModule.saveSettings({ ...defaults, autopilotMode: undefined });
+    expect(configModule.loadSettings().autopilotMode).toBe('manual');
+
+    // Valid values are preserved
+    for (const mode of ['manual', 'autopilot', 'hybrid']) {
+      configModule.saveSettings({ ...defaults, autopilotMode: mode });
+      expect(configModule.loadSettings().autopilotMode).toBe(mode);
+    }
+  });
+
+  test('validateSettings rejects invalid autopilotMode', async () => {
+    harness = createRuntimeHarness();
+    const { validateSettings, getDefaults } = await harness.importModule('./src/config.js');
+    const base = {
+      ...getDefaults(),
+      repos: ['/repo'],
+      defaultRepoPath: '/repo',
+      workspaceRoot: '/tmp/ws',
+    };
+
+    expect(validateSettings({ ...base, autopilotMode: 'bad' }))
+      .toContain('autopilotMode must be one of: manual, autopilot, hybrid');
+    expect(validateSettings({ ...base, autopilotMode: 'autopilot' }))
+      .not.toContain('autopilotMode must be one of: manual, autopilot, hybrid');
+    // undefined is allowed (treated as manual)
+    expect(validateSettings({ ...base, autopilotMode: undefined }))
+      .not.toContain('autopilotMode must be one of: manual, autopilot, hybrid');
+  });
+
   test('returns early when agents are missing and validates repo types', async () => {
     harness = createRuntimeHarness();
     const { validateSettings } = await harness.importModule('./src/config.js');

@@ -164,6 +164,7 @@ export function getDefaults() {
       reviewers:    { max: 4, cli: 'claude', model: '' },
     },
     maxReviewCycles: 3,
+    autopilotMode: 'manual',
     prompts: { ...DEFAULT_PROMPTS },
   };
 }
@@ -200,6 +201,11 @@ function normalizeSettingsShape(data) {
 
   if (typeof data.maxReviewCycles !== 'number' || data.maxReviewCycles < 1) {
     data.maxReviewCycles = defaults.maxReviewCycles;
+  }
+
+  const validModes = ['manual', 'autopilot', 'hybrid'];
+  if (!validModes.includes(data.autopilotMode)) {
+    data.autopilotMode = defaults.autopilotMode;
   }
 
   data.prompts = {
@@ -273,6 +279,11 @@ export function validateSettings(settings) {
 
   if (typeof settings.maxReviewCycles !== 'number' || settings.maxReviewCycles < 1 || settings.maxReviewCycles > 20) {
     errors.push('maxReviewCycles must be a number between 1 and 20');
+  }
+
+  const validAutopilotModes = ['manual', 'autopilot', 'hybrid'];
+  if (settings.autopilotMode !== undefined && !validAutopilotModes.includes(settings.autopilotMode)) {
+    errors.push('autopilotMode must be one of: manual, autopilot, hybrid');
   }
 
   if (!settings.prompts || typeof settings.prompts !== 'object') {

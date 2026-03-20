@@ -765,6 +765,7 @@ bus.on('max-review-blocker:approved', (data) => broadcast('MAX_REVIEW_BLOCKER_AP
 bus.on('max-review-blocker:extended', (data) => broadcast('MAX_REVIEW_BLOCKER_EXTENDED', data));
 bus.on('repos:updated', (repos) => broadcast('REPOS_UPDATED', { repos }));
 bus.on('plan:partial', (data) => broadcast('PLAN_PARTIAL', data));
+bus.on('supervisor:decision', (data) => broadcast('SUPERVISOR_DECISION', data));
 bus.on('task:aborted', (data) => broadcast('TASK_ABORTED', data));
 bus.on('task:reset', (data) => broadcast('TASK_RESET', data));
 bus.on('agent:updated', (agentStatus) => {

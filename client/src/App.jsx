@@ -584,6 +584,7 @@ function SettingsModal({ settings, onClose, onApply }) {
       return cfg.max >= range.min && cfg.max <= range.max;
     }) &&
     typeof local.maxReviewCycles === 'number' && local.maxReviewCycles >= 1 && local.maxReviewCycles <= 20 &&
+    ['manual', 'autopilot', 'hybrid'].includes(local.autopilotMode || 'manual') &&
     ['planning', 'implementation', 'review'].every(stage => typeof local.prompts?.[stage] === 'string');
 
   const tabs = [
@@ -914,6 +915,47 @@ function SettingsModal({ settings, onClose, onApply }) {
                   </div>
                 </div>
               )}
+
+              <div style={{ marginBottom: 20 }}>
+                <div style={{
+                  fontSize: 11, fontWeight: 600, color: 'var(--text2)',
+                  letterSpacing: 1, marginBottom: 8,
+                }}>
+                  EXECUTION MODE
+                </div>
+                <div style={{ display: 'flex', gap: 0, marginBottom: 8 }}>
+                  {[
+                    { value: 'manual', label: 'Manual' },
+                    { value: 'hybrid', label: 'Hybrid' },
+                    { value: 'autopilot', label: 'Autopilot' },
+                  ].map((opt, i, arr) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setLocal(prev => ({ ...prev, autopilotMode: opt.value }))}
+                      style={{
+                        flex: 1,
+                        padding: '7px 10px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        background: (local.autopilotMode || 'manual') === opt.value ? 'var(--amber)' : 'var(--bg2)',
+                        color: (local.autopilotMode || 'manual') === opt.value ? '#000' : 'var(--text2)',
+                        border: '1px solid',
+                        borderColor: (local.autopilotMode || 'manual') === opt.value ? 'var(--amber)' : 'var(--border)',
+                        borderRadius: i === 0 ? '4px 0 0 4px' : i === arr.length - 1 ? '0 4px 4px 0' : 0,
+                        cursor: 'pointer',
+                        borderRight: i < arr.length - 1 ? 'none' : undefined,
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+                  {(local.autopilotMode || 'manual') === 'manual' && 'Human approves all plans and handles review failures.'}
+                  {local.autopilotMode === 'hybrid' && 'AI supervisor auto-approves plans. Review failures use standard auto-retry.'}
+                  {local.autopilotMode === 'autopilot' && 'Fully automated: AI supervisor approves plans and makes smart retry decisions on review failures. Escalates only when stuck.'}
+                </div>
+              </div>
 
               <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 16, fontStyle: 'italic' }}>
                 Orchestrator scales agents up on demand, up to the max per role. Planning and Review can be disabled by setting max to 0.
