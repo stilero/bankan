@@ -449,7 +449,7 @@ RISKS:
       kill: vi.fn(),
     });
 
-    const validCwd = new URL('.', import.meta.url).pathname;
+    const validCwd = decodeURIComponent(new URL('.', import.meta.url).pathname);
     agent.spawn(validCwd, 'echo test');
 
     const [shell, args] = spawnSpy.mock.calls[0];

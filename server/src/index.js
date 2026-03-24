@@ -7,6 +7,7 @@ import { homedir } from 'node:os';
 import { resolve, dirname as pathDirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { simpleGit } from 'simple-git';
 import config, { loadSettings, saveSettings, validateSettings, getWorkspacesDir, getRuntimeStatePaths } from './config.js';
 import { getGithubCapabilities } from './capabilities.js';
 import store from './store.js';
@@ -19,6 +20,7 @@ import {
   stageToRetryStatus,
 } from './workflow.js';
 import { createSessionEntry } from './sessionHistory.js';
+import { removeTaskWorktree } from './orchestrator.js';
 
 const app = express();
 app.use(cors());
@@ -61,16 +63,12 @@ function resolveRetryStatus(task) {
   return stageToRetryStatus(task, { planningDisabled, liveAgent });
 }
 
-export function approveMaxReviewBlocker(taskId) {
+export async function approveMaxReviewBlocker(taskId) {
   const task = store.getTask(taskId);
   const updates = buildMaxReviewBlockerApprovalUpdate(task);
   if (!updates) return false;
   if (task?.workspacePath) {
-    try {
-      rmSync(task.workspacePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
-    } catch (err) {
-      console.warn(`Could not remove workspace ${task.workspacePath}: ${err.message}`);
-    }
+    await removeTaskWorktree(task);
   }
   store.updateTask(taskId, updates);
   store.appendLog(taskId, 'Human override: approved task to done after max review cycles.');
@@ -86,6 +84,73 @@ function extendMaxReviewBlocker(taskId) {
   store.appendLog(taskId, `Human override: increased review limit to ${updates.maxReviewCycles}.`);
   bus.emit('max-review-blocker:extended', { taskId, maxReviewCycles: updates.maxReviewCycles });
   return true;
+}
+
+function parseWorktreeList(rawOutput) {
+  const worktrees = new Set();
+  if (typeof rawOutput !== 'string' || !rawOutput.trim()) return worktrees;
+
+  for (const block of rawOutput.trim().split('\n\n')) {
+    for (const line of block.split('\n')) {
+      if (line.startsWith('worktree ')) {
+        worktrees.add(line.slice('worktree '.length).trim());
+      }
+    }
+  }
+
+  return worktrees;
+}
+
+export async function cleanupOrphanTaskWorktrees() {
+  const workspacesDir = getWorkspacesDir();
+  if (!existsSync(workspacesDir)) return;
+
+  let entries;
+  try {
+    entries = readdirSync(workspacesDir);
+  } catch {
+    entries = [];
+  }
+
+  const tasks = store.getAllTasks();
+  const activeWorkspacePaths = new Set(
+    tasks
+      .filter(task => task?.workspacePath && !['done', 'aborted', 'awaiting_human_review'].includes(task.status))
+      .map(task => task.workspacePath)
+  );
+  const referencedWorkspacePaths = new Set(
+    tasks
+      .map(task => task?.workspacePath)
+      .filter(Boolean)
+  );
+  const repoPaths = [...new Set(tasks.map(task => task?.repoPath).filter(Boolean))];
+  const registeredWorktrees = new Set();
+
+  for (const repoPath of repoPaths) {
+    try {
+      const output = await simpleGit(repoPath).raw(['worktree', 'list', '--porcelain']);
+      for (const worktreePath of parseWorktreeList(output)) {
+        registeredWorktrees.add(worktreePath);
+      }
+    } catch {
+      // Ignore repo inspection failures and avoid deleting paths conservatively.
+    }
+  }
+
+  for (const entry of entries) {
+    if (!entry.startsWith('T-')) continue;
+    const entryPath = join(workspacesDir, entry);
+    if (activeWorkspacePaths.has(entryPath)) continue;
+    if (referencedWorkspacePaths.has(entryPath)) continue;
+    if (registeredWorktrees.has(entryPath)) continue;
+
+    try {
+      rmSync(entryPath, { recursive: true, force: true });
+      console.log(`Cleaned up orphan workspace: ${entry}`);
+    } catch (err) {
+      console.error(`Failed to cleanup workspace ${entry}:`, err.message);
+    }
+  }
 }
 
 // REST API
@@ -154,10 +219,10 @@ app.patch('/api/tasks/:id/reject', (req, res) => {
   res.json({ ok: true });
 });
 
-app.patch('/api/tasks/:id/approve-max-review-blocker', (req, res) => {
+app.patch('/api/tasks/:id/approve-max-review-blocker', async (req, res) => {
   const task = store.getTask(req.params.id);
   if (!task) return res.status(404).json({ error: 'Task not found' });
-  if (!approveMaxReviewBlocker(task.id)) {
+  if (!await approveMaxReviewBlocker(task.id)) {
     return res.status(400).json({ error: 'Task is not blocked by maximum review cycles' });
   }
   res.json({ ok: true });
@@ -786,23 +851,7 @@ async function ensureAppStarted() {
   startupPromise = (async () => {
     store.restartRecovery();
 
-    const workspacesDir = getWorkspacesDir();
-    if (existsSync(workspacesDir)) {
-      const terminalStatuses = ['done', 'backlog', 'aborted', 'awaiting_human_review'];
-      let entries;
-      try { entries = readdirSync(workspacesDir); } catch { entries = []; }
-      for (const entry of entries) {
-        const task = store.getTask(entry);
-        if (!task || terminalStatuses.includes(task.status)) {
-          try {
-            rmSync(join(workspacesDir, entry), { recursive: true, force: true });
-            console.log(`Cleaned up orphan workspace: ${entry}`);
-          } catch (err) {
-            console.error(`Failed to cleanup workspace ${entry}:`, err.message);
-          }
-        }
-      }
-    }
+    await cleanupOrphanTaskWorktrees();
 
     const imported = await import('./orchestrator.js');
     orchestrator = imported.default;

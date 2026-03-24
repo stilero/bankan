@@ -4,6 +4,8 @@ const getTask = vi.fn();
 const deleteTaskStore = vi.fn();
 const removePlan = vi.fn();
 const appendLog = vi.fn();
+const updateTask = vi.fn();
+const repoRaw = vi.fn();
 
 vi.mock('./store.js', () => ({
   default: {
@@ -11,7 +13,7 @@ vi.mock('./store.js', () => ({
     deleteTask: deleteTaskStore,
     removePlan,
     appendLog,
-    updateTask: vi.fn(),
+    updateTask,
     restartRecovery: vi.fn(),
     getAllTasks: vi.fn(() => []),
   },
@@ -48,7 +50,29 @@ vi.mock('./config.js', () => ({
 }));
 
 vi.mock('simple-git', () => ({
-  simpleGit: vi.fn(() => ({})),
+  simpleGit: vi.fn((cwd) => {
+    if (cwd === '/repo') {
+      return { raw: repoRaw };
+    }
+    return {};
+  }),
+}));
+
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual('node:fs');
+  return {
+    ...actual,
+    existsSync: vi.fn(() => true),
+    mkdirSync: vi.fn(),
+    readFileSync: vi.fn(() => ''),
+    readdirSync: vi.fn(() => []),
+    unlinkSync: vi.fn(),
+  };
+});
+
+const rm = vi.fn();
+vi.mock('node:fs/promises', () => ({
+  rm,
 }));
 
 const orchestrator = (await import('./orchestrator.js')).default;
@@ -59,6 +83,9 @@ describe('deleteTask', () => {
     getTask.mockReset();
     deleteTaskStore.mockReset();
     removePlan.mockReset();
+    updateTask.mockReset();
+    repoRaw.mockReset();
+    rm.mockReset();
   });
 
   test('succeeds for a task with status done', async () => {
@@ -91,5 +118,22 @@ describe('deleteTask', () => {
     getTask.mockReturnValue(undefined);
     const result = await deleteTask('T-999');
     expect(result).toBe(false);
+  });
+
+  test('removes a task worktree before deleting terminal tasks', async () => {
+    getTask.mockReturnValue({
+      id: 'T-4',
+      status: 'done',
+      workspacePath: '/tmp/workspaces/T-4',
+      repoPath: '/repo',
+    });
+
+    const result = await deleteTask('T-4');
+
+    expect(result).toBe(true);
+    expect(repoRaw).toHaveBeenCalledWith(['worktree', 'remove', '--force', '/tmp/workspaces/T-4']);
+    expect(updateTask).toHaveBeenCalledWith('T-4', { workspacePath: null });
+    expect(deleteTaskStore).toHaveBeenCalledWith('T-4');
+    expect(rm).not.toHaveBeenCalled();
   });
 });

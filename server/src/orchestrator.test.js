@@ -1,7 +1,8 @@
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
   buildAgentCommand,
+  buildPlannerPrompt,
   buildImplementorPrompt,
   cleanTerminalArtifacts,
   extractImplementationResult,
@@ -555,5 +556,305 @@ RISKS:
     const cleaned = cleanTerminalArtifacts(dirty);
     expect(cleaned).toContain('BRANCH: feature/fix');
     expect(cleaned).not.toContain('❯');
+  });
+});
+
+describe('worktree lifecycle helpers', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
+  test('planning uses task.repoPath directly and does not provision a task workspace first', async () => {
+    const updateTask = vi.fn();
+    const emit = vi.fn();
+    const spawn = vi.fn(() => true);
+    const planner = {
+      id: 'plan-1',
+      cli: 'codex',
+      model: '',
+      spawn,
+      getStatus: vi.fn(() => ({ id: 'plan-1', status: 'active' })),
+    };
+    const simpleGitFactory = vi.fn();
+
+    vi.doMock('./store.js', () => ({
+      default: {
+        updateTask,
+        appendLog: vi.fn(),
+        appendSession: vi.fn(),
+        getTask: vi.fn(),
+        savePlan: vi.fn(),
+      },
+    }));
+    vi.doMock('./events.js', () => ({
+      default: {
+        emit,
+        on: vi.fn(),
+      },
+    }));
+    vi.doMock('./agents.js', () => ({
+      default: {
+        getAvailablePlanner: vi.fn(() => planner),
+        getAvailableImplementor: vi.fn(),
+        getAvailableReviewer: vi.fn(),
+        getAllStatus: vi.fn(() => []),
+        agents: new Map(),
+        getAgentsByRole: vi.fn(() => []),
+        get: vi.fn(),
+        removeAgent: vi.fn(),
+        scaleUp: vi.fn(),
+        reconfigure: vi.fn(),
+      },
+    }));
+    vi.doMock('./config.js', () => ({
+      loadSettings: vi.fn(() => ({
+        maxReviewCycles: 3,
+        agents: {
+          planners: { max: 1, cli: 'codex', model: '' },
+          implementors: { max: 1, cli: 'codex', model: '' },
+          reviewers: { max: 1, cli: 'codex', model: '' },
+        },
+      })),
+      getWorkspacesDir: vi.fn(() => '/tmp/workspaces'),
+    }));
+    vi.doMock('simple-git', () => ({
+      simpleGit: simpleGitFactory,
+    }));
+    vi.doMock('./workflow.js', () => ({
+      isReviewResultPlaceholder: vi.fn(() => false),
+      isPlanPlaceholder: vi.fn(() => false),
+      isImplementationPlaceholder: vi.fn(() => false),
+      parseReviewResult: vi.fn(() => ({ verdict: 'PASS', criticalIssues: [], minorIssues: [] })),
+      resolveTaskMaxReviewCycles: vi.fn((task, fallback = 3) => task?.maxReviewCycles || fallback),
+      reviewShouldPass: vi.fn(() => true),
+    }));
+    vi.doMock('./sessionHistory.js', () => ({
+      createSessionEntry: vi.fn(() => ({ id: 'session-1' })),
+    }));
+
+    const { startPlanning } = await import('./orchestrator.js');
+    const task = {
+      id: 'T-101',
+      title: 'Plan in repo checkout',
+      description: 'Planning should not create a worktree',
+      priority: 'medium',
+      repoPath: '/repo/main-checkout',
+      workspacePath: null,
+    };
+
+    await startPlanning(task);
+
+    expect(updateTask).not.toHaveBeenCalledWith(task.id, expect.objectContaining({ status: 'workspace_setup' }));
+    expect(updateTask).toHaveBeenCalledWith(task.id, expect.objectContaining({
+      status: 'planning',
+      assignedTo: 'plan-1',
+      blockedReason: null,
+    }));
+    expect(spawn).toHaveBeenCalledWith(task.repoPath, expect.any(String));
+    expect(simpleGitFactory).not.toHaveBeenCalled();
+  });
+
+  test('prepareTaskWorktree creates a branch-backed worktree under the configured workspace root', async () => {
+    const repoGit = {
+      fetch: vi.fn(),
+      branchLocal: vi.fn(() => ({ all: ['main'] })),
+      raw: vi.fn(async (args) => {
+        if (args[0] === 'worktree' && args[1] === 'list') return '';
+        return '';
+      }),
+      deleteLocalBranch: vi.fn(),
+    };
+    const worktreeGit = {
+      addConfig: vi.fn(),
+      branchLocal: vi.fn(() => ({ current: 'feature/t-102-worktree' })),
+    };
+    const simpleGitFactory = vi.fn((cwd) => {
+      if (cwd === '/repo/main-checkout') return repoGit;
+      if (cwd === '/tmp/worktrees/T-102') return worktreeGit;
+      throw new Error(`unexpected cwd ${cwd}`);
+    });
+
+    vi.doMock('./store.js', () => ({
+      default: {
+        updateTask: vi.fn(),
+        appendLog: vi.fn(),
+        appendSession: vi.fn(),
+        getTask: vi.fn(),
+        savePlan: vi.fn(),
+      },
+    }));
+    vi.doMock('./events.js', () => ({ default: { emit: vi.fn(), on: vi.fn() } }));
+    vi.doMock('./agents.js', () => ({
+      default: {
+        getAvailablePlanner: vi.fn(),
+        getAvailableImplementor: vi.fn(),
+        getAvailableReviewer: vi.fn(),
+        getAllStatus: vi.fn(() => []),
+        agents: new Map(),
+        getAgentsByRole: vi.fn(() => []),
+        get: vi.fn(),
+        removeAgent: vi.fn(),
+        scaleUp: vi.fn(),
+        reconfigure: vi.fn(),
+      },
+    }));
+    vi.doMock('./config.js', () => ({
+      loadSettings: vi.fn(() => ({ workspaceRoot: '/tmp/worktrees', maxReviewCycles: 3, agents: {} })),
+      getWorkspacesDir: vi.fn(() => '/tmp/worktrees'),
+    }));
+    vi.doMock('simple-git', () => ({
+      simpleGit: simpleGitFactory,
+    }));
+    vi.doMock('./workflow.js', () => ({
+      isReviewResultPlaceholder: vi.fn(() => false),
+      isPlanPlaceholder: vi.fn(() => false),
+      isImplementationPlaceholder: vi.fn(() => false),
+      parseReviewResult: vi.fn(() => ({ verdict: 'PASS', criticalIssues: [], minorIssues: [] })),
+      resolveTaskMaxReviewCycles: vi.fn((task, fallback = 3) => task?.maxReviewCycles || fallback),
+      reviewShouldPass: vi.fn(() => true),
+    }));
+    vi.doMock('./sessionHistory.js', () => ({
+      createSessionEntry: vi.fn(() => ({ id: 'session-1' })),
+    }));
+    vi.doMock('node:fs', async () => {
+      const actual = await vi.importActual('node:fs');
+      return {
+        ...actual,
+        existsSync: vi.fn((path) => path === '/tmp/worktrees'),
+        mkdirSync: vi.fn(),
+        readFileSync: vi.fn(() => ''),
+        readdirSync: vi.fn(() => []),
+        unlinkSync: vi.fn(),
+      };
+    });
+    const rm = vi.fn();
+    vi.doMock('node:fs/promises', () => ({ rm }));
+
+    const { prepareTaskWorktree } = await import('./orchestrator.js');
+    const task = {
+      id: 'T-102',
+      repoPath: '/repo/main-checkout',
+      branch: 'feature/t-102-worktree',
+    };
+
+    const workspacePath = await prepareTaskWorktree(task);
+
+    expect(workspacePath).toBe('/tmp/worktrees/T-102');
+    expect(repoGit.fetch).toHaveBeenCalledWith('origin', 'main');
+    expect(repoGit.raw).toHaveBeenCalledWith(['worktree', 'add', '-b', 'feature/t-102-worktree', '/tmp/worktrees/T-102', 'origin/main']);
+    expect(worktreeGit.addConfig).toHaveBeenCalledWith('user.email', 'ai-factory@local');
+    expect(worktreeGit.addConfig).toHaveBeenCalledWith('user.name', 'AI Factory');
+    expect(rm).not.toHaveBeenCalled();
+  });
+
+  test('prepareTaskWorktree reuses a registered worktree and recreates stale task directories', async () => {
+    const repoGit = {
+      fetch: vi.fn(),
+      branchLocal: vi.fn(() => ({ all: ['main', 'feature/t-103-reuse'] })),
+      raw: vi.fn(async (args) => {
+        if (args[0] === 'worktree' && args[1] === 'list') {
+          return 'worktree /tmp/worktrees/T-103\nbranch refs/heads/feature/t-103-wrong\n\n';
+        }
+        return '';
+      }),
+      deleteLocalBranch: vi.fn(),
+    };
+    const worktreeGit = {
+      addConfig: vi.fn(),
+      branchLocal: vi.fn(() => ({ current: 'feature/t-103-reuse' })),
+    };
+    const simpleGitFactory = vi.fn((cwd) => {
+      if (cwd === '/repo/main-checkout') return repoGit;
+      if (cwd === '/tmp/worktrees/T-103') return worktreeGit;
+      throw new Error(`unexpected cwd ${cwd}`);
+    });
+    const existsSync = vi.fn((path) => path === '/tmp/worktrees' || path === '/tmp/worktrees/T-103');
+    const rm = vi.fn();
+
+    vi.doMock('./store.js', () => ({
+      default: {
+        updateTask: vi.fn(),
+        appendLog: vi.fn(),
+        appendSession: vi.fn(),
+        getTask: vi.fn(),
+        savePlan: vi.fn(),
+      },
+    }));
+    vi.doMock('./events.js', () => ({ default: { emit: vi.fn(), on: vi.fn() } }));
+    vi.doMock('./agents.js', () => ({
+      default: {
+        getAvailablePlanner: vi.fn(),
+        getAvailableImplementor: vi.fn(),
+        getAvailableReviewer: vi.fn(),
+        getAllStatus: vi.fn(() => []),
+        agents: new Map(),
+        getAgentsByRole: vi.fn(() => []),
+        get: vi.fn(),
+        removeAgent: vi.fn(),
+        scaleUp: vi.fn(),
+        reconfigure: vi.fn(),
+      },
+    }));
+    vi.doMock('./config.js', () => ({
+      loadSettings: vi.fn(() => ({ workspaceRoot: '/tmp/worktrees', maxReviewCycles: 3, agents: {} })),
+      getWorkspacesDir: vi.fn(() => '/tmp/worktrees'),
+    }));
+    vi.doMock('simple-git', () => ({
+      simpleGit: simpleGitFactory,
+    }));
+    vi.doMock('./workflow.js', () => ({
+      isReviewResultPlaceholder: vi.fn(() => false),
+      isPlanPlaceholder: vi.fn(() => false),
+      isImplementationPlaceholder: vi.fn(() => false),
+      parseReviewResult: vi.fn(() => ({ verdict: 'PASS', criticalIssues: [], minorIssues: [] })),
+      resolveTaskMaxReviewCycles: vi.fn((task, fallback = 3) => task?.maxReviewCycles || fallback),
+      reviewShouldPass: vi.fn(() => true),
+    }));
+    vi.doMock('./sessionHistory.js', () => ({
+      createSessionEntry: vi.fn(() => ({ id: 'session-1' })),
+    }));
+    vi.doMock('node:fs', async () => {
+      const actual = await vi.importActual('node:fs');
+      return {
+        ...actual,
+        existsSync,
+        mkdirSync: vi.fn(),
+        readFileSync: vi.fn(() => ''),
+        readdirSync: vi.fn(() => []),
+        unlinkSync: vi.fn(),
+      };
+    });
+    vi.doMock('node:fs/promises', () => ({ rm }));
+
+    const { prepareTaskWorktree } = await import('./orchestrator.js');
+    const task = {
+      id: 'T-103',
+      repoPath: '/repo/main-checkout',
+      branch: 'feature/t-103-reuse',
+    };
+
+    const workspacePath = await prepareTaskWorktree(task);
+
+    expect(workspacePath).toBe('/tmp/worktrees/T-103');
+    expect(rm).toHaveBeenCalledWith('/tmp/worktrees/T-103', expect.objectContaining({ recursive: true, force: true }));
+    expect(repoGit.deleteLocalBranch).toHaveBeenCalledWith('feature/t-103-reuse', true);
+    expect(repoGit.raw).toHaveBeenCalledWith(['worktree', 'add', '-b', 'feature/t-103-reuse', '/tmp/worktrees/T-103', 'origin/main']);
+  });
+});
+
+describe('prompt lifecycle wording', () => {
+  test('planner prompt does not require a task worktree before planning starts', () => {
+    const prompt = buildPlannerPrompt({
+      id: 'T-104',
+      title: 'Planning prompt',
+      description: '',
+      priority: 'medium',
+      repoPath: '/repo/main-checkout',
+      workspacePath: null,
+    });
+
+    expect(prompt).toContain('Repository: /repo/main-checkout');
+    expect(prompt).toContain('Workspace: planning runs in the repository checkout until implementation creates a task worktree.');
   });
 });

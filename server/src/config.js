@@ -110,6 +110,7 @@ Key rules:
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Minimal Impact**: Only touch what's necessary. No side effects with new bugs.
 - **Demand Elegance (Balanced)**: For non-trivial changes, pause and ask "is there a more elegant way?" Skip this for simple, obvious fixes — don't over-engineer.
+- Implementation runs inside a task-specific Git worktree that Ban Kan prepares after plan approval.
 
 ## Mandatory Test Verification
 - Follow TDD when practical: create or update the failing test first, implement the change second, then rerun the suite.
