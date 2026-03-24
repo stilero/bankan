@@ -249,7 +249,7 @@ The generated plan is shown in the dashboard so the developer can approve it bef
   <img src="https://raw.githubusercontent.com/stilero/bankan/HEAD/docs/images/workflow/implementing_task.png" alt="Ban Kan implementation stage showing the Stripe payments task being actively worked on by an agent" />
 </p>
 
-After approval, the implementor agent creates its workspace, writes the code, and reports progress live in the UI.
+After approval, the implementor agent creates or reuses a task-specific Git worktree, writes the code there, and reports progress live in the UI.
 
 ### 5. Review stage
 
@@ -296,7 +296,7 @@ Multiple tasks can run in parallel across different agents.
 Run multiple planning, implementation, and review agents simultaneously.
 
 ### Local-first workflow
-Repositories stay on your machine. Agents operate directly on local clones and workspaces.
+Repositories stay on your machine. Agents operate directly on your local repository checkouts and per-task Git worktrees.
 
 ### Human approval gates
 Developers approve plans before implementation begins.
@@ -305,7 +305,7 @@ Developers approve plans before implementation begins.
 Open the terminal of any running agent and take control when needed.
 
 ### VS Code workspace support
-Open a task workspace directly from the dashboard.
+Open a task worktree directly from the dashboard.
 
 ### PR automation
 Configure GitHub settings to automatically create pull requests.
