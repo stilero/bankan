@@ -326,4 +326,211 @@ SUMMARY: Another retry would exceed the cap.
       reason: 'Supervisor exhausted cycle extensions',
     });
   });
+
+  test('T1: RETRY on cycles-remaining autopilot path queues with enhanced feedback', async () => {
+    const reviewText = `=== REVIEW START ===
+VERDICT: FAIL
+CRITICAL_ISSUES:
+- handle edge case
+MINOR_ISSUES:
+- none
+SUMMARY: Needs a fix.
+=== REVIEW END ===`;
+
+    const { __test__ } = await import('./orchestrator.js');
+
+    settingsState.autopilotMode = 'autopilot';
+    settingsState.maxReviewCycles = 3;
+    evaluateReviewFailureMock.mockResolvedValue({
+      decision: 'RETRY',
+      enhancedFeedback: 'Fix the edge case in parser.',
+      logMessage: 'Supervisor evaluated review failure: RETRY',
+    });
+    taskState.set('T-REVIEW', {
+      id: 'T-REVIEW',
+      title: 'Review retry',
+      status: 'review',
+      reviewCycleCount: 0,
+      maxReviewCycles: 3,
+      workspacePath: '/tmp/workspace',
+    });
+    agentState.set('rev-1', makeReviewer(reviewText));
+
+    await __test__.onReviewComplete('rev-1', 'T-REVIEW');
+    await flushPromises();
+
+    expect(evaluateReviewFailureMock).toHaveBeenCalledOnce();
+    expect(taskState.get('T-REVIEW')).toMatchObject({
+      status: 'queued',
+      reviewFeedback: 'Fix the edge case in parser.',
+      reviewCycleCount: 1,
+    });
+  });
+
+  test('T2: successful cycle extension when RETRY at max cycles with extensions remaining', async () => {
+    const reviewText = `=== REVIEW START ===
+VERDICT: FAIL
+CRITICAL_ISSUES:
+- flaky test
+MINOR_ISSUES:
+- none
+SUMMARY: One more try.
+=== REVIEW END ===`;
+
+    const { __test__ } = await import('./orchestrator.js');
+
+    settingsState.autopilotMode = 'autopilot';
+    settingsState.maxReviewCycles = 3;
+    evaluateReviewFailureMock.mockResolvedValue({
+      decision: 'RETRY',
+      enhancedFeedback: 'Try fixing the flaky test.',
+      logMessage: 'Supervisor evaluated review failure: RETRY',
+    });
+    taskState.set('T-REVIEW', {
+      id: 'T-REVIEW',
+      title: 'Review extend',
+      status: 'review',
+      reviewCycleCount: 2,
+      maxReviewCycles: 3,
+      workspacePath: '/tmp/workspace',
+    });
+    agentState.set('rev-1', makeReviewer(reviewText));
+
+    await __test__.onReviewComplete('rev-1', 'T-REVIEW');
+    await flushPromises();
+
+    expect(taskState.get('T-REVIEW')).toMatchObject({
+      status: 'queued',
+      maxReviewCycles: 4,
+      reviewCycleCount: 3,
+    });
+  });
+
+  test('T3: catch fallback blocks at max cycles and retries when cycles remain', async () => {
+    const reviewText = `=== REVIEW START ===
+VERDICT: FAIL
+CRITICAL_ISSUES:
+- error
+MINOR_ISSUES:
+- none
+SUMMARY: Crash test.
+=== REVIEW END ===`;
+
+    const { __test__ } = await import('./orchestrator.js');
+    settingsState.autopilotMode = 'autopilot';
+    settingsState.maxReviewCycles = 3;
+
+    // Max cycles path: supervisor crash should block
+    evaluateReviewFailureMock.mockRejectedValue(new Error('CLI crashed'));
+    taskState.set('T-REVIEW', {
+      id: 'T-REVIEW',
+      title: 'Crash at max',
+      status: 'review',
+      reviewCycleCount: 2,
+      maxReviewCycles: 3,
+      workspacePath: '/tmp/workspace',
+    });
+    agentState.set('rev-1', makeReviewer(reviewText));
+
+    await __test__.onReviewComplete('rev-1', 'T-REVIEW');
+    await flushPromises();
+
+    expect(taskState.get('T-REVIEW').status).toBe('blocked');
+
+    // Cycles remaining path: supervisor crash should auto-retry
+    evaluateReviewFailureMock.mockRejectedValue(new Error('CLI crashed'));
+    taskState.set('T-REVIEW2', {
+      id: 'T-REVIEW2',
+      title: 'Crash with cycles',
+      status: 'review',
+      reviewCycleCount: 0,
+      maxReviewCycles: 3,
+      workspacePath: '/tmp/workspace',
+    });
+    agentState.set('rev-1', makeReviewer(reviewText));
+    agentState.get('rev-1').currentTask = 'T-REVIEW2';
+
+    await __test__.onReviewComplete('rev-1', 'T-REVIEW2');
+    await flushPromises();
+
+    expect(taskState.get('T-REVIEW2').status).toBe('queued');
+    expect(appendLogMock).toHaveBeenCalledWith('T-REVIEW2', expect.stringContaining('Supervisor crashed'));
+  });
+
+  test('T4: plan auto-approval catch leaves task in awaiting_approval and logs', async () => {
+    const planText = `=== PLAN START ===
+SUMMARY: Crash plan test.
+BRANCH: feature/t-plan-crash
+FILES_TO_MODIFY:
+- server/src/orchestrator.js
+STEPS:
+1. Test crash handling.
+TESTS_NEEDED:
+- npm run test:server
+RISKS:
+- none
+=== PLAN END ===`;
+
+    const { __test__ } = await import('./orchestrator.js');
+
+    settingsState.autopilotMode = 'autopilot';
+    evaluatePlanMock.mockRejectedValue(new Error('Supervisor process died'));
+
+    const planner = makePlanner(planText);
+    agentState.set('plan-1', planner);
+    taskState.set('T-PLAN', {
+      id: 'T-PLAN',
+      title: 'Plan crash',
+      priority: 'medium',
+      status: 'planning',
+    });
+
+    __test__.onPlanComplete('plan-1', 'T-PLAN');
+    await flushPromises();
+
+    expect(taskState.get('T-PLAN').status).toBe('awaiting_approval');
+    expect(appendLogMock).toHaveBeenCalledWith('T-PLAN', expect.stringContaining('Supervisor failed during plan auto-approval'));
+  });
+
+  test('review callback does not clobber task when status changed during supervisor evaluation', async () => {
+    const reviewText = `=== REVIEW START ===
+VERDICT: FAIL
+CRITICAL_ISSUES:
+- race condition check
+MINOR_ISSUES:
+- none
+SUMMARY: Race guard test.
+=== REVIEW END ===`;
+
+    const { __test__ } = await import('./orchestrator.js');
+    settingsState.autopilotMode = 'autopilot';
+    settingsState.maxReviewCycles = 3;
+
+    let resolveReview;
+    evaluateReviewFailureMock.mockReturnValue(new Promise((resolve) => {
+      resolveReview = resolve;
+    }));
+
+    taskState.set('T-REVIEW', {
+      id: 'T-REVIEW',
+      title: 'Race guard',
+      status: 'review',
+      reviewCycleCount: 0,
+      maxReviewCycles: 3,
+      workspacePath: '/tmp/workspace',
+    });
+    agentState.set('rev-1', makeReviewer(reviewText));
+
+    const promise = __test__.onReviewComplete('rev-1', 'T-REVIEW');
+
+    // Simulate human changing task status during supervisor evaluation
+    taskState.set('T-REVIEW', { ...taskState.get('T-REVIEW'), status: 'queued' });
+
+    resolveReview({ decision: 'RETRY', enhancedFeedback: 'Late retry.', logMessage: 'log' });
+    await promise;
+    await flushPromises();
+
+    // Task should remain in queued (human's action), not be clobbered
+    expect(taskState.get('T-REVIEW').status).toBe('queued');
+  });
 });

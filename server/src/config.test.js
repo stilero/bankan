@@ -280,6 +280,12 @@ describe('config settings lifecycle', () => {
       .not.toContain('autopilotMode must be one of: manual, autopilot, hybrid');
   });
 
+  test('exports VALID_AUTOPILOT_MODES with expected values', async () => {
+    harness = createRuntimeHarness();
+    const { VALID_AUTOPILOT_MODES } = await harness.importModule('./src/config.js');
+    expect(VALID_AUTOPILOT_MODES).toEqual(['manual', 'autopilot', 'hybrid']);
+  });
+
   test('returns early when agents are missing and validates repo types', async () => {
     harness = createRuntimeHarness();
     const { validateSettings } = await harness.importModule('./src/config.js');

@@ -1,5 +1,4 @@
 import { execFile } from 'node:child_process';
-import store from './store.js';
 
 const SUPERVISOR_TIMEOUT = 60_000;
 
@@ -8,6 +7,29 @@ const DECISION_END = '=== SUPERVISOR DECISION END ===';
 
 const PLAN_DECISIONS = new Set(['APPROVE', 'REJECT', 'ESCALATE']);
 const REVIEW_DECISIONS = new Set(['RETRY', 'ESCALATE']);
+
+const MAX_CONCURRENT_SUPERVISORS = 3;
+let activeSupervisors = 0;
+const supervisorQueue = [];
+
+function acquireSupervisorSlot() {
+  return new Promise((resolve) => {
+    if (activeSupervisors < MAX_CONCURRENT_SUPERVISORS) {
+      activeSupervisors++;
+      resolve();
+    } else {
+      supervisorQueue.push(resolve);
+    }
+  });
+}
+
+function releaseSupervisorSlot() {
+  activeSupervisors--;
+  if (supervisorQueue.length > 0) {
+    activeSupervisors++;
+    supervisorQueue.shift()();
+  }
+}
 
 function parseDecisionBlock(output) {
   const startIdx = output.indexOf(DECISION_START);
@@ -36,28 +58,43 @@ function validateDecision(result, validSet) {
   return result;
 }
 
-function runSupervisorQuery(cli, model, prompt) {
-  return new Promise((resolve) => {
-    const args = ['--print'];
-    if (model) args.push('--model', model);
-    args.push(prompt);
+async function runSupervisorQuery(cli, model, prompt) {
+  await acquireSupervisorSlot();
+  try {
+    return await new Promise((resolve) => {
+      let cliCmd, args;
+      if (cli === 'codex') {
+        cliCmd = 'codex';
+        args = ['exec', '--sandbox', 'read-only'];
+        if (model) args.push('-m', model);
+        args.push(prompt);
+      } else {
+        cliCmd = 'claude';
+        args = ['--print'];
+        if (model) args.push('--model', model);
+        args.push(prompt);
+      }
 
-    const cliCmd = cli === 'codex' ? 'codex' : 'claude';
-    execFile(cliCmd, args, {
-      timeout: SUPERVISOR_TIMEOUT,
-      encoding: 'utf-8',
-      maxBuffer: 1024 * 1024,
-    }, (err, stdout) => {
-      if (err) {
-        return resolve({ decision: 'ESCALATE', feedback: `Supervisor error: ${err.message}` });
-      }
-      const parsed = parseDecisionBlock(stdout);
-      if (!parsed) {
-        return resolve({ decision: 'ESCALATE', feedback: 'Supervisor returned unparseable output' });
-      }
-      resolve(parsed);
+      execFile(cliCmd, args, {
+        timeout: SUPERVISOR_TIMEOUT,
+        encoding: 'utf-8',
+        maxBuffer: 1024 * 1024,
+      }, (err, stdout, stderr) => {
+        if (err) {
+          const detail = stderr ? `${err.message}\nstderr: ${stderr}` : err.message;
+          return resolve({ decision: 'ESCALATE', feedback: `Supervisor error: ${detail}` });
+        }
+        const parsed = parseDecisionBlock(stdout);
+        if (!parsed) {
+          console.error('Supervisor returned unparseable output:', stdout?.slice(0, 500));
+          return resolve({ decision: 'ESCALATE', feedback: 'Supervisor returned unparseable output' });
+        }
+        resolve(parsed);
+      });
     });
-  });
+  } finally {
+    releaseSupervisorSlot();
+  }
 }
 
 export async function evaluatePlan(task, settings) {
@@ -93,8 +130,8 @@ ${DECISION_END}
   const raw = await runSupervisorQuery(cli, model, prompt);
   const result = validateDecision(raw, PLAN_DECISIONS)
     || { decision: 'ESCALATE', feedback: `Invalid supervisor decision: ${raw?.decision || 'none'}` };
-  store.appendLog(task.id, `Supervisor evaluated plan: ${result.decision}${result.feedback ? ' — ' + result.feedback : ''}`);
-  return result;
+  const logMessage = `Supervisor evaluated plan: ${result.decision}${result.feedback ? ' — ' + result.feedback : ''}`;
+  return { ...result, logMessage };
 }
 
 export async function evaluateReviewFailure(task, reviewText, criticalIssues, settings) {
@@ -128,9 +165,9 @@ ${DECISION_END}
   const raw = await runSupervisorQuery(cli, model, prompt);
   const result = validateDecision(raw, REVIEW_DECISIONS)
     || { decision: 'ESCALATE', feedback: `Invalid supervisor decision: ${raw?.decision || 'none'}` };
-  store.appendLog(task.id, `Supervisor evaluated review failure: ${result.decision}${result.feedback ? ' — ' + result.feedback : ''}`);
-  return { decision: result.decision, enhancedFeedback: result.feedback };
+  const logMessage = `Supervisor evaluated review failure: ${result.decision}${result.feedback ? ' — ' + result.feedback : ''}`;
+  return { decision: result.decision, enhancedFeedback: result.feedback, logMessage };
 }
 
 // Exported for testing
-export { parseDecisionBlock, runSupervisorQuery, validateDecision, PLAN_DECISIONS, REVIEW_DECISIONS };
+export { parseDecisionBlock, runSupervisorQuery, validateDecision, PLAN_DECISIONS, REVIEW_DECISIONS, MAX_CONCURRENT_SUPERVISORS };

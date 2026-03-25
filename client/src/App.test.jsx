@@ -294,4 +294,16 @@ describe('App', () => {
     expect(screen.getByRole('radio', { name: 'Autopilot' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('radio', { name: 'Manual' }).getAttribute('aria-checked')).toBe('false');
   });
+
+  test('Apply sends autopilotMode in updateSettings payload', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTitle('Settings'));
+    fireEvent.click(screen.getByRole('radio', { name: 'Autopilot' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(factoryState.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ autopilotMode: 'autopilot' })
+    );
+  });
 });

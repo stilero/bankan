@@ -4,6 +4,7 @@ import { getRuntimePaths } from './paths.js';
 const runtimePaths = getRuntimePaths();
 
 export const DEFAULT_WORKSPACES_DIR = runtimePaths.workspacesDir;
+export const VALID_AUTOPILOT_MODES = ['manual', 'autopilot', 'hybrid'];
 
 let envVars = {};
 try {
@@ -203,8 +204,7 @@ function normalizeSettingsShape(data) {
     data.maxReviewCycles = defaults.maxReviewCycles;
   }
 
-  const validModes = ['manual', 'autopilot', 'hybrid'];
-  if (!validModes.includes(data.autopilotMode)) {
+  if (!VALID_AUTOPILOT_MODES.includes(data.autopilotMode)) {
     data.autopilotMode = defaults.autopilotMode;
   }
 
@@ -281,8 +281,7 @@ export function validateSettings(settings) {
     errors.push('maxReviewCycles must be a number between 1 and 20');
   }
 
-  const validAutopilotModes = ['manual', 'autopilot', 'hybrid'];
-  if (settings.autopilotMode !== undefined && !validAutopilotModes.includes(settings.autopilotMode)) {
+  if (settings.autopilotMode !== undefined && !VALID_AUTOPILOT_MODES.includes(settings.autopilotMode)) {
     errors.push('autopilotMode must be one of: manual, autopilot, hybrid');
   }
 
