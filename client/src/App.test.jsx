@@ -276,4 +276,22 @@ describe('App', () => {
       expect.objectContaining({ maxReviewCycles: 5 })
     );
   });
+
+  test('exposes execution mode as an accessible radio group with the selected mode announced', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTitle('Settings'));
+
+    const group = screen.getByRole('radiogroup', { name: 'Execution mode' });
+    expect(group).toBeTruthy();
+
+    expect(screen.getByRole('radio', { name: 'Manual' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('radio', { name: 'Hybrid' }).getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByRole('radio', { name: 'Autopilot' }).getAttribute('aria-checked')).toBe('false');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Autopilot' }));
+
+    expect(screen.getByRole('radio', { name: 'Autopilot' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('radio', { name: 'Manual' }).getAttribute('aria-checked')).toBe('false');
+  });
 });

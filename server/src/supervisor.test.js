@@ -117,6 +117,20 @@ DECISION: APPROVE
     expect(result.decision).toBe('APPROVE');
     expect(result.feedback).toBe('');
   });
+
+  test('finds the end marker that belongs to the matched decision block', () => {
+    const output = `Preamble mentions === SUPERVISOR DECISION END === before the real block.
+=== SUPERVISOR DECISION START ===
+DECISION: APPROVE
+FEEDBACK: Use the end marker after the matched start marker.
+=== SUPERVISOR DECISION END ===`;
+
+    const result = parseDecisionBlock(output);
+    expect(result).toEqual({
+      decision: 'APPROVE',
+      feedback: 'Use the end marker after the matched start marker.',
+    });
+  });
 });
 
 describe('decision validation', () => {

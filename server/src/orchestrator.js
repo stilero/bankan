@@ -34,6 +34,10 @@ function getAutopilotMode() {
   return loadSettings().autopilotMode || 'manual';
 }
 
+function logSupervisorFailure(message, taskId, mode, error) {
+  console.error(message, { taskId, mode, error });
+}
+
 let pollTimer = null;
 let signalTimer = null;
 
@@ -903,7 +907,8 @@ function onPlanComplete(agentId, taskId) {
         rejectPlan(taskId, result.feedback);
       }
       // ESCALATE: leave in awaiting_approval for human
-    }).catch(() => {
+    }).catch((error) => {
+      logSupervisorFailure('Supervisor evaluation failed during plan auto-approval', taskId, mode, error);
       // On error, leave in awaiting_approval (fail-safe)
     });
   }
@@ -1129,7 +1134,8 @@ async function onReviewComplete(agentId, taskId) {
             });
             bus.emit('task:blocked', { taskId, reason: 'Supervisor escalated at max review cycles' });
           }
-        }).catch(() => {
+        }).catch((error) => {
+          logSupervisorFailure('Supervisor evaluation failed after max review cycles', taskId, mode, error);
           // Fail-safe: block as normal
           store.updateTask(taskId, {
             status: 'blocked',
@@ -1182,7 +1188,8 @@ async function onReviewComplete(agentId, taskId) {
           });
           bus.emit('task:blocked', { taskId, reason: 'Supervisor escalated review failure' });
         }
-      }).catch(() => {
+      }).catch((error) => {
+        logSupervisorFailure('Supervisor evaluation failed during review retry routing', taskId, mode, error);
         // Fail-safe: auto-retry with raw issues
         store.updateTask(taskId, {
           status: 'queued',
@@ -1698,3 +1705,7 @@ const orchestrator = {
 };
 
 export default orchestrator;
+export const __test__ = {
+  onPlanComplete,
+  onReviewComplete,
+};

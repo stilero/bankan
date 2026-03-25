@@ -11,7 +11,7 @@ const REVIEW_DECISIONS = new Set(['RETRY', 'ESCALATE']);
 
 function parseDecisionBlock(output) {
   const startIdx = output.indexOf(DECISION_START);
-  const endIdx = output.indexOf(DECISION_END);
+  const endIdx = output.indexOf(DECISION_END, startIdx + DECISION_START.length);
   if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return null;
 
   const block = output.slice(startIdx + DECISION_START.length, endIdx).trim();
@@ -43,7 +43,7 @@ function runSupervisorQuery(cli, model, prompt) {
     args.push(prompt);
 
     const cliCmd = cli === 'codex' ? 'codex' : 'claude';
-    const child = execFile(cliCmd, args, {
+    execFile(cliCmd, args, {
       timeout: SUPERVISOR_TIMEOUT,
       encoding: 'utf-8',
       maxBuffer: 1024 * 1024,
@@ -56,11 +56,6 @@ function runSupervisorQuery(cli, model, prompt) {
         return resolve({ decision: 'ESCALATE', feedback: 'Supervisor returned unparseable output' });
       }
       resolve(parsed);
-    });
-
-    // Extra safety: kill on timeout (execFile timeout sends SIGTERM)
-    child.on('error', () => {
-      resolve({ decision: 'ESCALATE', feedback: 'Supervisor process error' });
     });
   });
 }

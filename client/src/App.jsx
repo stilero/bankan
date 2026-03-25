@@ -923,32 +923,39 @@ function SettingsModal({ settings, onClose, onApply }) {
                 }}>
                   EXECUTION MODE
                 </div>
-                <div style={{ display: 'flex', gap: 0, marginBottom: 8 }}>
+                <div role="radiogroup" aria-label="Execution mode" style={{ display: 'flex', gap: 0, marginBottom: 8 }}>
                   {[
                     { value: 'manual', label: 'Manual' },
                     { value: 'hybrid', label: 'Hybrid' },
                     { value: 'autopilot', label: 'Autopilot' },
-                  ].map((opt, i, arr) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setLocal(prev => ({ ...prev, autopilotMode: opt.value }))}
-                      style={{
-                        flex: 1,
-                        padding: '7px 10px',
-                        fontSize: 12,
-                        fontWeight: 600,
-                        background: (local.autopilotMode || 'manual') === opt.value ? 'var(--amber)' : 'var(--bg2)',
-                        color: (local.autopilotMode || 'manual') === opt.value ? '#000' : 'var(--text2)',
-                        border: '1px solid',
-                        borderColor: (local.autopilotMode || 'manual') === opt.value ? 'var(--amber)' : 'var(--border)',
-                        borderRadius: i === 0 ? '4px 0 0 4px' : i === arr.length - 1 ? '0 4px 4px 0' : 0,
-                        cursor: 'pointer',
-                        borderRight: i < arr.length - 1 ? 'none' : undefined,
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
+                  ].map((opt, i, arr) => {
+                    const isSelected = (local.autopilotMode || 'manual') === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        onClick={() => setLocal(prev => ({ ...prev, autopilotMode: opt.value }))}
+                        style={{
+                          flex: 1,
+                          padding: '7px 10px',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          background: isSelected ? 'var(--amber)' : 'var(--bg2)',
+                          color: isSelected ? '#000' : 'var(--text2)',
+                          borderStyle: 'solid',
+                          borderWidth: 1,
+                          borderColor: isSelected ? 'var(--amber)' : 'var(--border)',
+                          borderRadius: i === 0 ? '4px 0 0 4px' : i === arr.length - 1 ? '0 4px 4px 0' : 0,
+                          cursor: 'pointer',
+                          borderRightWidth: i < arr.length - 1 ? 0 : 1,
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
                 </div>
                 <div style={{ fontSize: 10, color: 'var(--text3)' }}>
                   {(local.autopilotMode || 'manual') === 'manual' && 'Human approves all plans and handles review failures.'}
