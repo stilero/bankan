@@ -17,15 +17,15 @@ ${feedbackLabel}: ${feedbackText}
 
 function mockExecFileResponse(stdout) {
   execFile.mockImplementation((_cmd, _args, _opts, cb) => {
-    cb(null, stdout);
-    return { on: vi.fn() };
+    cb(null, stdout, '');
+    return { on: vi.fn(), stdin: { write: vi.fn(), end: vi.fn() } };
   });
 }
 
 function mockExecFileError(errorMessage) {
   execFile.mockImplementation((_cmd, _args, _opts, cb) => {
-    cb(new Error(errorMessage), '');
-    return { on: vi.fn() };
+    cb(new Error(errorMessage), '', errorMessage);
+    return { on: vi.fn(), stdin: { write: vi.fn(), end: vi.fn() } };
   });
 }
 
@@ -79,7 +79,7 @@ describe('supervisor integration — plan approval', () => {
   test('evaluatePlan includes stderr in error feedback when available', async () => {
     execFile.mockImplementation((_cmd, _args, _opts, cb) => {
       cb(new Error('Exit code 1'), '', 'Error: unknown flag --bad');
-      return { on: vi.fn() };
+      return { on: vi.fn(), stdin: { write: vi.fn(), end: vi.fn() } };
     });
     const result = await evaluatePlan(mockTask, mockSettings);
     expect(result.decision).toBe('ESCALATE');

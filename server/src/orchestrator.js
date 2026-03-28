@@ -1068,9 +1068,9 @@ SUMMARY: Review skipped because reviewer max is set to 0.
 
 async function handleSupervisorReviewDecision(taskId, reviewText, criticalIssues, nextReviewCycleCount, maxReviewCycles, settings, { allowExtension, snapshotConfiguredMax, mode }) {
   try {
-    const result = await evaluateReviewFailure(store.getTask(taskId), reviewText, criticalIssues, settings);
     const current = store.getTask(taskId);
     if (!current || current.status !== 'evaluating') return;
+    const result = await evaluateReviewFailure(current, reviewText, criticalIssues, settings);
     if (result.logMessage) store.appendLog(taskId, result.logMessage);
     bus.emit('supervisor:decision', { taskId, stage: 'review', decision: result.decision, feedback: result.feedback });
 

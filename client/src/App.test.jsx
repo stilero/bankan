@@ -285,14 +285,14 @@ describe('App', () => {
     const group = screen.getByRole('radiogroup', { name: 'Execution mode' });
     expect(group).toBeTruthy();
 
-    expect(screen.getByRole('radio', { name: 'Manual' }).getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByRole('radio', { name: 'Hybrid' }).getAttribute('aria-checked')).toBe('false');
-    expect(screen.getByRole('radio', { name: 'Autopilot' }).getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByRole('radio', { name: 'Manual' }).checked).toBe(true);
+    expect(screen.getByRole('radio', { name: 'Hybrid' }).checked).toBe(false);
+    expect(screen.getByRole('radio', { name: 'Autopilot' }).checked).toBe(false);
 
     fireEvent.click(screen.getByRole('radio', { name: 'Autopilot' }));
 
-    expect(screen.getByRole('radio', { name: 'Autopilot' }).getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByRole('radio', { name: 'Manual' }).getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByRole('radio', { name: 'Autopilot' }).checked).toBe(true);
+    expect(screen.getByRole('radio', { name: 'Manual' }).checked).toBe(false);
   });
 
   test('Apply sends autopilotMode in updateSettings payload', () => {

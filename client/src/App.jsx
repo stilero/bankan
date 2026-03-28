@@ -931,12 +931,8 @@ function SettingsModal({ settings, onClose, onApply }) {
                   ].map((opt, i, arr) => {
                     const isSelected = (local.autopilotMode || 'manual') === opt.value;
                     return (
-                      <button
+                      <label
                         key={opt.value}
-                        type="button"
-                        role="radio"
-                        aria-checked={isSelected}
-                        onClick={() => setLocal(prev => ({ ...prev, autopilotMode: opt.value }))}
                         style={{
                           flex: 1,
                           padding: '7px 10px',
@@ -950,10 +946,19 @@ function SettingsModal({ settings, onClose, onApply }) {
                           borderRadius: i === 0 ? '4px 0 0 4px' : i === arr.length - 1 ? '0 4px 4px 0' : 0,
                           cursor: 'pointer',
                           borderRightWidth: i < arr.length - 1 ? 0 : 1,
+                          textAlign: 'center',
                         }}
                       >
+                        <input
+                          type="radio"
+                          name="executionMode"
+                          value={opt.value}
+                          checked={isSelected}
+                          onChange={() => setLocal(prev => ({ ...prev, autopilotMode: opt.value }))}
+                          style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+                        />
                         {opt.label}
-                      </button>
+                      </label>
                     );
                   })}
                 </div>
