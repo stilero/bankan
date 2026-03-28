@@ -41,7 +41,7 @@ const COLUMNS = [
         <path d='M3.5 13h9' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
       </StageIcon>
     ),
-    statuses: ['workspace_setup', 'planning', 'awaiting_approval'],
+    statuses: ['planning', 'awaiting_approval'],
     agentPrefix: 'plan',
     color: 'var(--steel2)',
   },
@@ -55,7 +55,7 @@ const COLUMNS = [
         <path d='m3.5 10.5 2 2' fill='none' stroke='currentColor' strokeLinecap='round' strokeWidth='1.5' />
       </StageIcon>
     ),
-    statuses: ['queued', 'implementing'],
+    statuses: ['workspace_setup', 'queued', 'implementing'],
     agentPrefix: 'imp',
     color: 'var(--green)',
   },

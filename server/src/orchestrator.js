@@ -673,8 +673,8 @@ export async function prepareTaskWorktree(task) {
   if (registeredWorktree) {
     try {
       await repoGit.raw(['worktree', 'remove', '--force', workspacePath]);
-    } catch {
-      // Fall through to filesystem cleanup below.
+    } catch (err) {
+      console.warn(`Git worktree remove failed for ${workspacePath}, falling back to rm: ${err.message}`);
     }
   }
 
