@@ -8,6 +8,7 @@ import { resolve, dirname as pathDirname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { simpleGit } from 'simple-git';
+import { parseWorktreeList } from './worktree.js';
 import config, { loadSettings, saveSettings, validateSettings, getWorkspacesDir, getRuntimeStatePaths } from './config.js';
 import { getGithubCapabilities } from './capabilities.js';
 import store from './store.js';
@@ -86,21 +87,6 @@ function extendMaxReviewBlocker(taskId) {
   return true;
 }
 
-function parseWorktreeList(rawOutput) {
-  const worktrees = new Set();
-  if (typeof rawOutput !== 'string' || !rawOutput.trim()) return worktrees;
-
-  for (const block of rawOutput.trim().split('\n\n')) {
-    for (const line of block.split('\n')) {
-      if (line.startsWith('worktree ')) {
-        worktrees.add(line.slice('worktree '.length).trim());
-      }
-    }
-  }
-
-  return worktrees;
-}
-
 export async function cleanupOrphanTaskWorktrees() {
   const workspacesDir = getWorkspacesDir();
   if (!existsSync(workspacesDir)) return;
@@ -129,8 +115,8 @@ export async function cleanupOrphanTaskWorktrees() {
   for (const repoPath of repoPaths) {
     try {
       const output = await simpleGit(repoPath).raw(['worktree', 'list', '--porcelain']);
-      for (const worktreePath of parseWorktreeList(output)) {
-        registeredWorktrees.add(worktreePath);
+      for (const entry of parseWorktreeList(output)) {
+        registeredWorktrees.add(entry.path);
       }
     } catch {
       // Ignore repo inspection failures and avoid deleting paths conservatively.
@@ -144,8 +130,20 @@ export async function cleanupOrphanTaskWorktrees() {
     if (referencedWorkspacePaths.has(entryPath)) continue;
     if (registeredWorktrees.has(entryPath)) continue;
 
+    let removedByGit = false;
+    for (const repoPath of repoPaths) {
+      try {
+        await simpleGit(repoPath).raw(['worktree', 'remove', '--force', entryPath]);
+        removedByGit = true;
+        break;
+      } catch {
+        // Not a worktree for this repo or repo inaccessible.
+      }
+    }
     try {
-      rmSync(entryPath, { recursive: true, force: true });
+      if (!removedByGit || existsSync(entryPath)) {
+        rmSync(entryPath, { recursive: true, force: true });
+      }
       console.log(`Cleaned up orphan workspace: ${entry}`);
     } catch (err) {
       console.error(`Failed to cleanup workspace ${entry}:`, err.message);

@@ -3,6 +3,7 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { simpleGit } from 'simple-git';
+import { parseWorktreeList } from './worktree.js';
 import { loadSettings, getWorkspacesDir } from './config.js';
 import { getGithubCapabilities, isManualPullRequestRequired } from './capabilities.js';
 import store from './store.js';
@@ -637,21 +638,6 @@ function getTaskWorktreePath(task, settings = loadSettings()) {
   return join(getWorkspacesDir(settings), task.id);
 }
 
-function parseWorktreeList(rawOutput) {
-  const worktrees = [];
-  if (typeof rawOutput !== 'string' || !rawOutput.trim()) return worktrees;
-
-  const blocks = rawOutput.trim().split('\n\n');
-  for (const block of blocks) {
-    const entry = {};
-    for (const line of block.split('\n')) {
-      if (line.startsWith('worktree ')) entry.path = line.slice('worktree '.length).trim();
-      if (line.startsWith('branch ')) entry.branchRef = line.slice('branch '.length).trim();
-    }
-    if (entry.path) worktrees.push(entry);
-  }
-  return worktrees;
-}
 
 async function configureTaskWorktree(workspacePath) {
   const worktreeGit = simpleGit(workspacePath);
@@ -688,6 +674,11 @@ export async function prepareTaskWorktree(task) {
 
   if (existsSync(workspacePath)) {
     await rm(workspacePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
+  }
+
+  const PROTECTED_BRANCHES = ['main', 'master', 'develop'];
+  if (!task.branch || PROTECTED_BRANCHES.includes(task.branch)) {
+    throw new Error(`Invalid task branch "${task.branch || ''}" — cannot use a protected or empty branch name for worktree setup`);
   }
 
   const branches = await repoGit.branchLocal();
@@ -819,6 +810,15 @@ export async function startPlanning(task) {
   const prompt = buildPlannerPrompt(task);
   const cmd = buildAgentCommand(planner.cli, prompt, 'plan', planner.model);
   const plannerCwd = task.repoPath;
+  if (!plannerCwd || !existsSync(plannerCwd)) {
+    store.updateTask(task.id, {
+      status: 'blocked',
+      blockedReason: `Task repo path is not a valid local directory: ${plannerCwd || '(empty)'}`,
+      assignedTo: null,
+    });
+    retireAgentSession(planner, { taskId: task.id, outcome: 'blocked' });
+    return false;
+  }
   const ok = planner.spawn(plannerCwd, cmd);
   if (!ok) {
     store.updateTask(task.id, {

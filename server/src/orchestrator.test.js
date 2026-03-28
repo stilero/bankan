@@ -578,6 +578,10 @@ describe('worktree lifecycle helpers', () => {
     };
     const simpleGitFactory = vi.fn();
 
+    vi.doMock('node:fs', async () => {
+      const actual = await vi.importActual('node:fs');
+      return { ...actual, existsSync: vi.fn(() => true) };
+    });
     vi.doMock('./store.js', () => ({
       default: {
         updateTask,

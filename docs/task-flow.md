@@ -25,8 +25,8 @@ This document defines the expected end-to-end task lifecycle for AI Factory.
 
 ## Status Semantics
 
-- `workspace_setup`, `planning`, `awaiting_approval` belong to the planning column.
-- `queued`, `implementing` belong to the implementation column.
+- `planning`, `awaiting_approval` belong to the planning column.
+- `workspace_setup`, `queued`, `implementing` belong to the implementation column.
 - `review` belongs to the review column.
 - `done` means PR creation and worktree cleanup both succeeded.
 - `blocked` and `paused` are overlay states and retain the task's owning column context.
