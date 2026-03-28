@@ -646,7 +646,13 @@ async function configureTaskWorktree(workspacePath) {
   return worktreeGit;
 }
 
+const PROTECTED_BRANCHES = ['main', 'master', 'develop'];
+
 export async function prepareTaskWorktree(task) {
+  if (!task.branch || PROTECTED_BRANCHES.includes(task.branch)) {
+    throw new Error(`Invalid task branch "${task.branch || ''}" — cannot use a protected or empty branch name for worktree setup`);
+  }
+
   const settings = loadSettings();
   const workspaceRoot = getWorkspacesDir(settings);
   const workspacePath = getTaskWorktreePath(task, settings);
@@ -676,11 +682,6 @@ export async function prepareTaskWorktree(task) {
     await rm(workspacePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
   }
 
-  const PROTECTED_BRANCHES = ['main', 'master', 'develop'];
-  if (!task.branch || PROTECTED_BRANCHES.includes(task.branch)) {
-    throw new Error(`Invalid task branch "${task.branch || ''}" — cannot use a protected or empty branch name for worktree setup`);
-  }
-
   const branches = await repoGit.branchLocal();
   if (branches.all.includes(task.branch)) {
     await repoGit.deleteLocalBranch(task.branch, true);
@@ -694,24 +695,29 @@ export async function prepareTaskWorktree(task) {
 export async function removeTaskWorktree(task) {
   if (!task?.workspacePath) return;
 
-  try {
-    if (task.repoPath) {
-      await simpleGit(task.repoPath).raw(['worktree', 'remove', '--force', task.workspacePath]);
-    } else {
-      throw new Error('Task repoPath is missing');
-    }
-  } catch (err) {
+  let removed = false;
+
+  if (task.repoPath) {
     try {
-      await rm(task.workspacePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
-    } catch (rmErr) {
-      console.warn(`Could not remove workspace ${task.workspacePath}: ${rmErr.message}`);
-    }
-    if (err?.message && err.message !== 'Task repoPath is missing') {
+      await simpleGit(task.repoPath).raw(['worktree', 'remove', '--force', task.workspacePath]);
+      removed = true;
+    } catch (err) {
       console.warn(`Git worktree removal failed for ${task.workspacePath}: ${err.message}`);
     }
   }
 
-  store.updateTask(task.id, { workspacePath: null });
+  if (!removed) {
+    try {
+      await rm(task.workspacePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
+      removed = true;
+    } catch (rmErr) {
+      console.warn(`Could not remove workspace ${task.workspacePath}: ${rmErr.message}`);
+    }
+  }
+
+  if (removed) {
+    store.updateTask(task.id, { workspacePath: null });
+  }
 }
 
 function buildManualPrGuidance(task, capabilities = getGithubCapabilities()) {
@@ -811,11 +817,13 @@ export async function startPlanning(task) {
   const cmd = buildAgentCommand(planner.cli, prompt, 'plan', planner.model);
   const plannerCwd = task.repoPath;
   if (!plannerCwd || !existsSync(plannerCwd)) {
+    const reason = `Task repo path is not a valid local directory: ${plannerCwd || '(empty)'}`;
     store.updateTask(task.id, {
       status: 'blocked',
-      blockedReason: `Task repo path is not a valid local directory: ${plannerCwd || '(empty)'}`,
+      blockedReason: reason,
       assignedTo: null,
     });
+    bus.emit('task:blocked', { taskId: task.id, reason });
     retireAgentSession(planner, { taskId: task.id, outcome: 'blocked' });
     return false;
   }

@@ -752,7 +752,7 @@ describe('worktree lifecycle helpers', () => {
     expect(rm).not.toHaveBeenCalled();
   });
 
-  test('prepareTaskWorktree reuses a registered worktree and recreates stale task directories', async () => {
+  test('prepareTaskWorktree tears down and recreates worktree when registered branch does not match', async () => {
     const repoGit = {
       fetch: vi.fn(),
       branchLocal: vi.fn(() => ({ all: ['main', 'feature/t-103-reuse'] })),

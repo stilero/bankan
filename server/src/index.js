@@ -130,20 +130,8 @@ export async function cleanupOrphanTaskWorktrees() {
     if (referencedWorkspacePaths.has(entryPath)) continue;
     if (registeredWorktrees.has(entryPath)) continue;
 
-    let removedByGit = false;
-    for (const repoPath of repoPaths) {
-      try {
-        await simpleGit(repoPath).raw(['worktree', 'remove', '--force', entryPath]);
-        removedByGit = true;
-        break;
-      } catch {
-        // Not a worktree for this repo or repo inaccessible.
-      }
-    }
     try {
-      if (!removedByGit || existsSync(entryPath)) {
-        rmSync(entryPath, { recursive: true, force: true });
-      }
+      rmSync(entryPath, { recursive: true, force: true });
       console.log(`Cleaned up orphan workspace: ${entry}`);
     } catch (err) {
       console.error(`Failed to cleanup workspace ${entry}:`, err.message);
@@ -564,7 +552,7 @@ wss.on('connection', (ws) => {
     ts: Date.now(),
   }));
 
-  ws.on('message', (raw) => {
+  ws.on('message', async (raw) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
 
@@ -682,7 +670,7 @@ wss.on('connection', (ws) => {
       }
       case 'APPROVE_MAX_REVIEW_BLOCKER': {
         const { taskId } = msg.payload || {};
-        if (taskId) approveMaxReviewBlocker(taskId);
+        if (taskId) await approveMaxReviewBlocker(taskId);
         break;
       }
       case 'EXTEND_MAX_REVIEW_BLOCKER': {
