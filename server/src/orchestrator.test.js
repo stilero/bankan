@@ -725,7 +725,7 @@ describe('worktree lifecycle helpers', () => {
       const actual = await vi.importActual('node:fs');
       return {
         ...actual,
-        existsSync: vi.fn((path) => path === '/tmp/worktrees'),
+        existsSync: vi.fn((path) => path === '/tmp/worktrees' || path === '/repo/main-checkout'),
         mkdirSync: vi.fn(),
         readFileSync: vi.fn(() => ''),
         readdirSync: vi.fn(() => []),
@@ -773,7 +773,7 @@ describe('worktree lifecycle helpers', () => {
       if (cwd === '/tmp/worktrees/T-103') return worktreeGit;
       throw new Error(`unexpected cwd ${cwd}`);
     });
-    const existsSync = vi.fn((path) => path === '/tmp/worktrees' || path === '/tmp/worktrees/T-103');
+    const existsSync = vi.fn((path) => path === '/tmp/worktrees' || path === '/tmp/worktrees/T-103' || path === '/repo/main-checkout');
     const rm = vi.fn();
 
     vi.doMock('./store.js', () => ({

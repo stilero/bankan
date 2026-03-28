@@ -652,6 +652,9 @@ export async function prepareTaskWorktree(task) {
   if (!task.branch || PROTECTED_BRANCHES.includes(task.branch)) {
     throw new Error(`Invalid task branch "${task.branch || ''}" — cannot use a protected or empty branch name for worktree setup`);
   }
+  if (!task.repoPath || !existsSync(task.repoPath)) {
+    throw new Error(`Invalid task repo path: ${task.repoPath || '(empty)'}`);
+  }
 
   const settings = loadSettings();
   const workspaceRoot = getWorkspacesDir(settings);
@@ -681,6 +684,11 @@ export async function prepareTaskWorktree(task) {
   if (existsSync(workspacePath)) {
     await rm(workspacePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
   }
+
+  // Prune stale worktree registrations (e.g., after rm deleted the directory
+  // but git worktree remove failed, leaving a dangling registration that
+  // would block deleteLocalBranch).
+  await repoGit.raw(['worktree', 'prune']);
 
   const branches = await repoGit.branchLocal();
   if (branches.all.includes(task.branch)) {
