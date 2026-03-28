@@ -243,6 +243,7 @@ class TaskStore {
       queued: 'queued',
       implementing: 'queued',
       review: 'review',
+      evaluating: 'review',
     };
     let changed = false;
     for (const task of this.tasks) {

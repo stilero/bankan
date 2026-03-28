@@ -38,9 +38,10 @@ function releaseSupervisorSlot() {
   if (supervisorQueue.length > 0) {
     const entry = supervisorQueue.shift();
     clearTimeout(entry.timer);
+    // Transfer the slot to the next waiter — don't decrement activeSupervisors
     entry.resolve();
   } else {
-    activeSupervisors--;
+    activeSupervisors = Math.max(0, activeSupervisors - 1);
   }
 }
 
@@ -86,12 +87,24 @@ function sanitizeStderr(stderr) {
   return stderr
     .replace(/sk-[a-zA-Z0-9_-]{10,}/g, 'sk-***')
     .replace(/key[=:]\s*\S+/gi, 'key=***')
+    .replace(/Bearer\s+\S+/gi, 'Bearer ***')
+    .replace(/ghp_[a-zA-Z0-9_]+/g, 'ghp_***')
+    .replace(/github_pat_[a-zA-Z0-9_]+/g, 'github_pat_***')
+    .replace(/AKIA[A-Z0-9]{16}/g, 'AKIA***')
+    .replace(/(token|password|secret)[=:]\s*\S+/gi, '$1=***')
     .slice(0, 500);
 }
 
+function stripDecisionMarkers(text) {
+  if (typeof text !== 'string') return text;
+  return text
+    .replaceAll(DECISION_START, '[MARKER STRIPPED]')
+    .replaceAll(DECISION_END, '[MARKER STRIPPED]');
+}
+
 async function runSupervisorQuery(cli, model, prompt, context = {}) {
-  await acquireSupervisorSlot();
   const startTime = Date.now();
+  await acquireSupervisorSlot();
   try {
     return await new Promise((resolve) => {
       let cliCmd, args;
@@ -138,12 +151,12 @@ export async function evaluatePlan(task, settings) {
 
   const prompt = `You are a supervisor agent evaluating a generated plan for quality and completeness.
 
-TASK: ${task.title}
-DESCRIPTION: ${task.description || 'No description provided.'}
+TASK: ${stripDecisionMarkers(task.title)}
+DESCRIPTION: ${stripDecisionMarkers(task.description || 'No description provided.')}
 PRIORITY: ${task.priority}
 
 GENERATED PLAN:
-${task.plan}
+${stripDecisionMarkers(task.plan)}
 
 Evaluate the plan on these criteria:
 1. Does it address the task requirements?
@@ -166,7 +179,7 @@ ${DECISION_END}
   const result = validateDecision(raw, PLAN_DECISIONS)
     || { decision: 'ESCALATE', feedback: `Invalid supervisor decision: ${raw?.decision || 'none'}` };
   const logMessage = `Supervisor evaluated plan: ${result.decision}${result.feedback ? ' — ' + result.feedback : ''}`;
-  return { ...result, logMessage };
+  return { decision: result.decision, feedback: result.feedback, logMessage };
 }
 
 export async function evaluateReviewFailure(task, reviewText, criticalIssues, settings) {
@@ -175,15 +188,15 @@ export async function evaluateReviewFailure(task, reviewText, criticalIssues, se
 
   const prompt = `You are a supervisor agent analyzing a failed code review to decide the next action.
 
-TASK: ${task.title}
-DESCRIPTION: ${task.description || 'No description provided.'}
+TASK: ${stripDecisionMarkers(task.title)}
+DESCRIPTION: ${stripDecisionMarkers(task.description || 'No description provided.')}
 REVIEW CYCLE: ${(task.reviewCycleCount || 0) + 1} of ${task.maxReviewCycles || 3}
 
 REVIEW OUTPUT:
-${reviewText}
+${stripDecisionMarkers(reviewText)}
 
 CRITICAL ISSUES:
-${criticalIssues}
+${stripDecisionMarkers(criticalIssues)}
 
 Decide whether the implementation should retry with enhanced guidance or if this needs human intervention.
 
@@ -205,4 +218,4 @@ ${DECISION_END}
 }
 
 // Exported for testing
-export { parseDecisionBlock, runSupervisorQuery, validateDecision, PLAN_DECISIONS, REVIEW_DECISIONS, MAX_CONCURRENT_SUPERVISORS, resetSupervisorState };
+export { parseDecisionBlock, runSupervisorQuery, validateDecision, stripDecisionMarkers, PLAN_DECISIONS, REVIEW_DECISIONS, MAX_CONCURRENT_SUPERVISORS, resetSupervisorState };

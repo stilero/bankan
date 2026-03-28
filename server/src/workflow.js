@@ -44,7 +44,10 @@ export function reviewShouldPass(reviewResult) {
 
 export function isMaxReviewCyclesBlocker(blockedReason) {
   if (typeof blockedReason !== 'string') return false;
-  return /^Reached maximum review cycles(?: \(\d+\))?/i.test(blockedReason.trim());
+  const trimmed = blockedReason.trim();
+  return /^Reached maximum review cycles(?: \(\d+\))?/i.test(trimmed)
+    || /^Supervisor exhausted \d+ extension/i.test(trimmed)
+    || /^Supervisor escalated/i.test(trimmed);
 }
 
 export function resolveTaskMaxReviewCycles(task, fallback = 3) {

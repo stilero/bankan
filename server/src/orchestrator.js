@@ -892,7 +892,9 @@ function onPlanComplete(agentId, taskId) {
   const settings = loadSettings();
   const mode = settings.autopilotMode || 'manual';
   if (mode === 'autopilot' || mode === 'hybrid') {
-    autoApprovePlan(taskId, settings, mode);
+    autoApprovePlan(taskId, settings, mode).catch((error) => {
+      logSupervisorFailure('Unhandled error in autoApprovePlan', taskId, mode, error);
+    });
   }
 }
 
