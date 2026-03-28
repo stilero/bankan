@@ -168,7 +168,8 @@ export default function ReportsModal({ tasks, repos, onClose }) {
       if (t.status === 'done') counts.done++;
       else if (t.status === 'implementing') counts.implementing++;
       else if (t.status === 'review' || t.status === 'awaiting_approval') counts.review++;
-      else if (t.status === 'planning' || t.status === 'workspace_setup') counts.planning++;
+      else if (t.status === 'planning') counts.planning++;
+      else if (t.status === 'workspace_setup') counts.implementing++;
       else if (t.status === 'blocked') counts.blocked++;
       else counts.other++;
     }

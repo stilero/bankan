@@ -10,8 +10,8 @@ const TASKS_FILE = runtimePaths.tasksFile;
 const PLANS_DIR = runtimePaths.plansDir;
 
 function statusToStage(status) {
-  if (['workspace_setup', 'planning', 'awaiting_approval'].includes(status)) return 'planning';
-  if (['queued', 'implementing'].includes(status)) return 'implementation';
+  if (['planning', 'awaiting_approval'].includes(status)) return 'planning';
+  if (['workspace_setup', 'queued', 'implementing'].includes(status)) return 'implementation';
   if (status === 'review') return 'review';
   if (status === 'done' || status === 'awaiting_manual_pr') return 'done';
   if (['backlog', 'aborted'].includes(status)) return 'backlog';
@@ -239,7 +239,7 @@ class TaskStore {
   restartRecovery() {
     const recoveryMap = {
       planning: 'backlog',
-      workspace_setup: 'backlog',
+      workspace_setup: 'queued',
       queued: 'queued',
       implementing: 'queued',
       review: 'review',

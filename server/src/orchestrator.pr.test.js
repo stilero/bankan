@@ -24,6 +24,7 @@ const fetchMock = vi.fn();
 const checkoutMock = vi.fn();
 const rebaseMock = vi.fn();
 const rawMock = vi.fn();
+const repoRawMock = vi.fn();
 const existsSyncMock = vi.fn();
 const execFileSyncMock = vi.fn();
 
@@ -66,12 +67,17 @@ vi.mock('./config.js', () => ({
 }));
 
 vi.mock('simple-git', () => ({
-  simpleGit: vi.fn(() => ({
-    fetch: fetchMock,
-    checkout: checkoutMock,
-    rebase: rebaseMock,
-    raw: rawMock,
-  })),
+  simpleGit: vi.fn((cwd) => {
+    if (cwd === '/repo') {
+      return { raw: repoRawMock };
+    }
+    return {
+      fetch: fetchMock,
+      checkout: checkoutMock,
+      rebase: rebaseMock,
+      raw: rawMock,
+    };
+  }),
 }));
 
 vi.mock('node:fs', async () => {
@@ -118,6 +124,7 @@ describe('createPR', () => {
     checkoutMock.mockReset();
     rebaseMock.mockReset();
     rawMock.mockReset();
+    repoRawMock.mockReset();
     existsSyncMock.mockReset();
     execFileSyncMock.mockReset();
 
@@ -173,5 +180,24 @@ describe('createPR', () => {
     expect(emit).not.toHaveBeenCalledWith('task:manual-pr-required', expect.anything());
 
     consoleError.mockRestore();
+  });
+
+  test('removes the task worktree after PR creation succeeds', async () => {
+    execFileSyncMock.mockImplementation((cmd) => {
+      if (cmd === 'gh') return 'https://github.com/example/repo/pull/42';
+      return '';
+    });
+
+    const { createPR } = await import('./orchestrator.js');
+
+    await createPR('T-42');
+
+    expect(rawMock).toHaveBeenCalledWith(['push', '--force-with-lease', 'origin', 'feature/t-42-manual-pr']);
+    expect(repoRawMock).toHaveBeenCalledWith(['worktree', 'remove', '--force', '/tmp/workspaces/T-42']);
+    expect(updateTask).toHaveBeenCalledWith('T-42', expect.objectContaining({
+      prUrl: 'https://github.com/example/repo/pull/42',
+    }));
+    expect(updateTask).toHaveBeenCalledWith('T-42', { workspacePath: null });
+    expect(updateTask).toHaveBeenCalledWith('T-42', expect.objectContaining({ status: 'done' }));
   });
 });

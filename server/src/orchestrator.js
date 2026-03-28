@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { simpleGit } from 'simple-git';
+import { parseWorktreeList } from './worktree.js';
 import { loadSettings, getWorkspacesDir } from './config.js';
 import { getGithubCapabilities, isManualPullRequestRequired } from './capabilities.js';
 import store from './store.js';
@@ -529,11 +530,11 @@ function getAuthBlockedReason(buffer, cli = '') {
   return null;
 }
 
-function buildPlannerPrompt(task) {
+export function buildPlannerPrompt(task) {
   const promptBody = getPromptBody('planning');
   let prompt = `You are a senior software architect. A task has been assigned to you.
 Repository: ${task.repoPath}
-Workspace: ${task.workspacePath}
+Workspace: planning runs in the repository checkout until implementation creates a task worktree.
 
 TASK ID: ${task.id}
 TITLE: ${task.title}
@@ -633,87 +634,96 @@ SUMMARY: 2-3 concrete sentences summarising the review, including changed files 
 
 // --- Workspace Helpers ---
 
-async function setupWorkspace(task) {
-  const settings = loadSettings();
-  const workspaceRoot = join(getWorkspacesDir(settings), task.id);
-  const existingWorkspace = task.workspacePath;
+function getTaskWorktreePath(task, settings = loadSettings()) {
+  return join(getWorkspacesDir(settings), task.id);
+}
 
-  if (existingWorkspace && existsSync(existingWorkspace)) {
-    return existingWorkspace;
+
+async function configureTaskWorktree(workspacePath) {
+  const worktreeGit = simpleGit(workspacePath);
+  await worktreeGit.addConfig('user.email', 'ai-factory@local');
+  await worktreeGit.addConfig('user.name', 'AI Factory');
+  return worktreeGit;
+}
+
+const PROTECTED_BRANCHES = ['main', 'master', 'develop'];
+
+export async function prepareTaskWorktree(task) {
+  if (!task.branch || PROTECTED_BRANCHES.includes(task.branch)) {
+    throw new Error(`Invalid task branch "${task.branch || ''}" — cannot use a protected or empty branch name for worktree setup`);
+  }
+  if (!task.repoPath || !existsSync(task.repoPath)) {
+    throw new Error(`Invalid task repo path: ${task.repoPath || '(empty)'}`);
   }
 
-  if (existsSync(workspaceRoot)) {
+  const settings = loadSettings();
+  const workspaceRoot = getWorkspacesDir(settings);
+  const workspacePath = getTaskWorktreePath(task, settings);
+  const repoGit = simpleGit(task.repoPath);
+
+  mkdirSync(workspaceRoot, { recursive: true });
+  await repoGit.fetch('origin', 'main');
+
+  const worktrees = parseWorktreeList(await repoGit.raw(['worktree', 'list', '--porcelain']));
+  const registeredWorktree = worktrees.find(entry => entry.path === workspacePath);
+  const expectedBranchRef = `refs/heads/${task.branch}`;
+
+  if (registeredWorktree?.branchRef === expectedBranchRef && existsSync(workspacePath)) {
+    await configureTaskWorktree(workspacePath);
+    return workspacePath;
+  }
+
+  if (registeredWorktree) {
     try {
-      const entries = readdirSync(workspaceRoot);
-      if (entries.length === 0) {
-        await rm(workspaceRoot, { recursive: true, force: true });
-      } else if (existsSync(join(workspaceRoot, '.git'))) {
-        try {
-          const wsGit = simpleGit(workspaceRoot);
-          const remotes = await wsGit.getRemotes(true);
-          const origin = remotes.find(remote => remote.name === 'origin');
-          const fetchUrl = origin?.refs?.fetch || '';
-          const pushUrl = origin?.refs?.push || '';
-
-          if ([fetchUrl, pushUrl].includes(task.repoPath)) {
-            await wsGit.addConfig('user.email', 'ai-factory@local');
-            await wsGit.addConfig('user.name', 'AI Factory');
-            try { await wsGit.fetch('origin'); } catch { /* ignore */ }
-            return workspaceRoot;
-          }
-        } catch {
-          // Fall through to remove and recreate the workspace.
-        }
-
-        await rm(workspaceRoot, { recursive: true, force: true });
-      } else {
-        await rm(workspaceRoot, { recursive: true, force: true });
-      }
-    } catch {
-      await rm(workspaceRoot, { recursive: true, force: true });
+      await repoGit.raw(['worktree', 'remove', '--force', workspacePath]);
+    } catch (err) {
+      console.warn(`Git worktree remove failed for ${workspacePath}, falling back to rm: ${err.message}`);
     }
   }
 
-  mkdirSync(workspaceRoot, { recursive: true });
-
-  await simpleGit().clone(task.repoPath, workspaceRoot);
-
-  const wsGit = simpleGit(workspaceRoot);
-  await wsGit.addConfig('user.email', 'ai-factory@local');
-  await wsGit.addConfig('user.name', 'AI Factory');
-  await wsGit.pull('origin', 'main');
-
-  return workspaceRoot;
-}
-
-async function prepareWorkspaceBranch(task) {
-  const workspacePath = await setupWorkspace(task);
-  const git = simpleGit(workspacePath);
-  const branches = await git.branchLocal();
-
-  if (!branches.current) {
-    await git.checkout('main');
+  if (existsSync(workspacePath)) {
+    await rm(workspacePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
   }
 
-  if (!branches.all.includes(task.branch)) {
-    await git.checkout('main');
-    await git.pull('origin', 'main');
-    try { await git.push('origin', `:${task.branch}`); } catch { /* ignore */ }
-    await git.checkoutLocalBranch(task.branch);
-  } else {
-    await git.checkout(task.branch);
+  // Prune stale worktree registrations (e.g., after rm deleted the directory
+  // but git worktree remove failed, leaving a dangling registration that
+  // would block deleteLocalBranch).
+  await repoGit.raw(['worktree', 'prune']);
+
+  const branches = await repoGit.branchLocal();
+  if (branches.all.includes(task.branch)) {
+    await repoGit.deleteLocalBranch(task.branch, true);
   }
 
+  await repoGit.raw(['worktree', 'add', '-b', task.branch, workspacePath, 'origin/main']);
+  await configureTaskWorktree(workspacePath);
   return workspacePath;
 }
 
-async function cleanupWorkspace(task) {
-  if (task.workspacePath) {
+export async function removeTaskWorktree(task) {
+  if (!task?.workspacePath) return;
+
+  let removed = false;
+
+  if (task.repoPath) {
+    try {
+      await simpleGit(task.repoPath).raw(['worktree', 'remove', '--force', task.workspacePath]);
+      removed = true;
+    } catch (err) {
+      console.warn(`Git worktree removal failed for ${task.workspacePath}: ${err.message}`);
+    }
+  }
+
+  if (!removed) {
     try {
       await rm(task.workspacePath, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
-    } catch (err) {
-      console.warn(`Could not remove workspace ${task.workspacePath}: ${err.message}`);
+      removed = true;
+    } catch (rmErr) {
+      console.warn(`Could not remove workspace ${task.workspacePath}: ${rmErr.message}`);
     }
+  }
+
+  if (removed) {
     store.updateTask(task.id, { workspacePath: null });
   }
 }
@@ -779,7 +789,7 @@ function retireAgentSession(agent, {
 
 // --- Stage Transitions ---
 
-async function startPlanning(task) {
+export async function startPlanning(task) {
   if (isStageDisabled('planning')) {
     const planText = buildSyntheticPlan(task);
     const branch = extractSingleLine(planText, 'BRANCH:') || generateBranchName(task);
@@ -801,37 +811,30 @@ async function startPlanning(task) {
   const planner = agentManager.getAvailablePlanner();
   if (!planner) return false;
 
-  store.updateTask(task.id, { status: 'workspace_setup', assignedTo: planner.id, blockedReason: null });
   planner.currentTask = task.id;
-  planner.taskLabel = `Preparing: ${task.title}`;
-  planner.status = 'active';
-  bus.emit('agent:updated', planner.getStatus());
-
-  let workspacePath;
-  try {
-    workspacePath = await setupWorkspace(task);
-  } catch (err) {
-    store.updateTask(task.id, {
-      status: 'blocked',
-      blockedReason: `Workspace setup failed: ${err.message}`,
-      assignedTo: null,
-    });
-    retireAgentSession(planner, { taskId: task.id, outcome: 'blocked' });
-    bus.emit('task:blocked', { taskId: task.id, reason: 'Workspace setup failed' });
-    return false;
-  }
-
   store.updateTask(task.id, {
     status: 'planning',
     assignedTo: planner.id,
-    workspacePath,
     blockedReason: null,
   });
   planner.taskLabel = `Planning: ${task.title}`;
+  planner.status = 'active';
+  bus.emit('agent:updated', planner.getStatus());
 
-  const prompt = buildPlannerPrompt({ ...task, workspacePath });
+  const prompt = buildPlannerPrompt(task);
   const cmd = buildAgentCommand(planner.cli, prompt, 'plan', planner.model);
-  const plannerCwd = workspacePath;
+  const plannerCwd = task.repoPath;
+  if (!plannerCwd || !existsSync(plannerCwd)) {
+    const reason = `Task repo path is not a valid local directory: ${plannerCwd || '(empty)'}`;
+    store.updateTask(task.id, {
+      status: 'blocked',
+      blockedReason: reason,
+      assignedTo: null,
+    });
+    bus.emit('task:blocked', { taskId: task.id, reason });
+    retireAgentSession(planner, { taskId: task.id, outcome: 'blocked' });
+    return false;
+  }
   const ok = planner.spawn(plannerCwd, cmd);
   if (!ok) {
     store.updateTask(task.id, {
@@ -919,7 +922,7 @@ async function startImplementation(task) {
 
   let workspacePath;
   try {
-    workspacePath = await prepareWorkspaceBranch(task);
+    workspacePath = await prepareTaskWorktree(task);
   } catch (err) {
     console.error(`Workspace setup failed for ${task.id}:`, err.message);
     store.updateTask(task.id, {
@@ -1123,7 +1126,7 @@ export async function createPR(taskId) {
     });
     bus.emit('pr:created', { taskId, prUrl });
 
-    await cleanupWorkspace(store.getTask(taskId));
+    await removeTaskWorktree(store.getTask(taskId));
     store.updateTask(taskId, { status: 'done', assignedTo: null });
   } catch (err) {
     if (isManualPrAutomationError(err)) {
@@ -1144,7 +1147,7 @@ async function completeManualPr(taskId) {
   const task = store.getTask(taskId);
   if (!task || task.status !== 'awaiting_manual_pr') return;
 
-  await cleanupWorkspace(task);
+  await removeTaskWorktree(task);
   store.updateTask(taskId, {
     status: 'done',
     assignedTo: null,
@@ -1163,12 +1166,11 @@ async function abortTask(taskId) {
     if (agent) retireAgentSession(agent, { taskId, outcome: 'aborted' });
   }
 
-  await cleanupWorkspace(task);
+  await removeTaskWorktree(task);
 
   store.updateTask(taskId, {
     status: 'aborted',
     assignedTo: null,
-    workspacePath: null,
     blockedReason: null,
     reviewFeedback: null,
     previousStatus: null,
@@ -1188,13 +1190,12 @@ async function resetTask(taskId) {
     if (agent) retireAgentSession(agent, { taskId, outcome: 'reset' });
   }
 
-  await cleanupWorkspace(task);
+  await removeTaskWorktree(task);
   store.removePlan(taskId);
 
   store.updateTask(taskId, {
     status: 'backlog',
     assignedTo: null,
-    workspacePath: null,
     branch: null,
     plan: null,
     review: null,
@@ -1222,7 +1223,7 @@ async function deleteTask(taskId) {
   if (!task || !['done', 'aborted'].includes(task.status)) return false;
 
   if (task.workspacePath) {
-    await cleanupWorkspace(task);
+    await removeTaskWorktree(task);
   }
 
   store.removePlan(taskId);
