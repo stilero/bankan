@@ -62,6 +62,7 @@ export function buildMaxReviewBlockerApprovalUpdate(task, now = new Date().toISO
     blockedReason: null,
     assignedTo: null,
     completedAt: task.completedAt || now,
+    workspacePath: null,
   };
 }
 

@@ -112,6 +112,7 @@ export async function cleanupOrphanTaskWorktrees() {
   const repoPaths = [...new Set(tasks.map(task => task?.repoPath).filter(Boolean))];
   const registeredWorktrees = new Set();
 
+  let repoInspectionFailed = false;
   for (const repoPath of repoPaths) {
     try {
       const output = await simpleGit(repoPath).raw(['worktree', 'list', '--porcelain']);
@@ -119,9 +120,12 @@ export async function cleanupOrphanTaskWorktrees() {
         registeredWorktrees.add(entry.path);
       }
     } catch {
-      // Ignore repo inspection failures and avoid deleting paths conservatively.
+      repoInspectionFailed = true;
+      console.warn(`Skipping orphan cleanup: failed to inspect worktrees for ${repoPath}`);
     }
   }
+
+  if (repoInspectionFailed) return;
 
   for (const entry of entries) {
     if (!entry.startsWith('T-')) continue;

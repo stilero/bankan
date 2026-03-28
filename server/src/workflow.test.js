@@ -295,7 +295,7 @@ describe('retry status resolution', () => {
       blockedReason: null,
       assignedTo: null,
     });
-    expect(approved).not.toHaveProperty('workspacePath');
+    expect(approved.workspacePath).toBeNull();
     expect(typeof approved.completedAt).toBe('string');
     expect(extended).toEqual({
       status: 'queued',
