@@ -1163,7 +1163,6 @@ async function abortTask(taskId) {
   store.updateTask(taskId, {
     status: 'aborted',
     assignedTo: null,
-    workspacePath: null,
     blockedReason: null,
     reviewFeedback: null,
     previousStatus: null,
@@ -1189,7 +1188,6 @@ async function resetTask(taskId) {
   store.updateTask(taskId, {
     status: 'backlog',
     assignedTo: null,
-    workspacePath: null,
     branch: null,
     plan: null,
     review: null,

@@ -239,7 +239,7 @@ class TaskStore {
   restartRecovery() {
     const recoveryMap = {
       planning: 'backlog',
-      workspace_setup: 'backlog',
+      workspace_setup: 'queued',
       queued: 'queued',
       implementing: 'queued',
       review: 'review',

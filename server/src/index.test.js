@@ -124,7 +124,6 @@ describe('approveMaxReviewBlocker', () => {
     expect(removeTaskWorktree).toHaveBeenCalledWith(task);
     expect(mockStore.updateTask).toHaveBeenCalledWith('T-1', expect.objectContaining({
       status: 'done',
-      workspacePath: null,
     }));
     expect(mockStore.appendLog).toHaveBeenCalledWith(
       'T-1',
