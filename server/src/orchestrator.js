@@ -1179,7 +1179,13 @@ async function onReviewComplete(agentId, taskId) {
       if (mode === 'autopilot') {
         // Prevent poll loop from re-spawning a reviewer during supervisor evaluation
         store.updateTask(taskId, { status: 'evaluating', assignedTo: null });
-        await handleSupervisorReviewDecision(taskId, reviewText, criticalIssues, nextReviewCycleCount, maxReviewCycles, settings, { allowExtension: true, snapshotConfiguredMax, mode });
+        try {
+          await handleSupervisorReviewDecision(taskId, reviewText, criticalIssues, nextReviewCycleCount, maxReviewCycles, settings, { allowExtension: true, snapshotConfiguredMax, mode });
+        } catch (error) {
+          logSupervisorFailure('Unhandled error in handleSupervisorReviewDecision', taskId, mode, error);
+          store.updateTask(taskId, { status: 'blocked', reviewFeedback: criticalIssues, reviewCycleCount: nextReviewCycleCount, blockedReason: 'Supervisor evaluation failed unexpectedly. Human input required.', assignedTo: null });
+          bus.emit('task:blocked', { taskId, reason: 'Supervisor evaluation failed' });
+        }
         return;
       }
 
@@ -1198,7 +1204,13 @@ async function onReviewComplete(agentId, taskId) {
     if (mode === 'autopilot') {
       // Prevent poll loop from re-spawning a reviewer during supervisor evaluation
       store.updateTask(taskId, { status: 'evaluating', assignedTo: null });
-      await handleSupervisorReviewDecision(taskId, reviewText, criticalIssues, nextReviewCycleCount, maxReviewCycles, settings, { allowExtension: false, snapshotConfiguredMax, mode });
+      try {
+        await handleSupervisorReviewDecision(taskId, reviewText, criticalIssues, nextReviewCycleCount, maxReviewCycles, settings, { allowExtension: false, snapshotConfiguredMax, mode });
+      } catch (error) {
+        logSupervisorFailure('Unhandled error in handleSupervisorReviewDecision', taskId, mode, error);
+        store.updateTask(taskId, { status: 'queued', reviewFeedback: criticalIssues, reviewCycleCount: nextReviewCycleCount, blockedReason: null, assignedTo: null });
+        bus.emit('review:failed', { taskId, issues: criticalIssues });
+      }
       return;
     }
 
@@ -1544,7 +1556,7 @@ function pollLoop() {
     if (agent.status === 'idle' && !agent.process && agent.currentTask) {
       const taskId = agent.currentTask;
       const task = store.getTask(taskId);
-      if (task && !['blocked', 'done', 'aborted', 'backlog', 'paused', 'workspace_setup'].includes(task.status)) {
+      if (task && !['blocked', 'done', 'aborted', 'backlog', 'paused', 'workspace_setup', 'evaluating'].includes(task.status)) {
         const isPlanner = agent.id.startsWith('plan-');
         const isImplementor = agent.id.startsWith('imp-');
         const isReviewer = agent.id.startsWith('rev-');

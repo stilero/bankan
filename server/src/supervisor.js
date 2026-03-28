@@ -104,44 +104,52 @@ function stripDecisionMarkers(text) {
 
 async function runSupervisorQuery(cli, model, prompt, context = {}) {
   const startTime = Date.now();
+  let slotAcquired = false;
   await acquireSupervisorSlot();
+  slotAcquired = true;
   try {
-    return await new Promise((resolve) => {
+    return await new Promise((resolve, reject) => {
       let cliCmd, args;
       if (cli === 'codex') {
         cliCmd = 'codex';
         args = ['exec', '--sandbox', 'read-only'];
         if (model) args.push('-m', model);
-        args.push(prompt);
+        args.push('-'); // read from stdin
       } else {
         cliCmd = 'claude';
         args = ['--print'];
         if (model) args.push('--model', model);
-        args.push(prompt);
+        args.push('-'); // read from stdin
       }
 
-      execFile(cliCmd, args, {
-        timeout: SUPERVISOR_TIMEOUT,
-        encoding: 'utf-8',
-        maxBuffer: 1024 * 1024,
-      }, (err, stdout, stderr) => {
-        const elapsed = Date.now() - startTime;
-        if (err) {
-          const safeStderr = sanitizeStderr(stderr);
-          const detail = safeStderr ? `${err.message}\nstderr: ${safeStderr}` : err.message;
-          console.error('Supervisor subprocess failed', { ...context, cli, elapsed, errorCode: err.code });
-          return resolve({ decision: 'ESCALATE', feedback: `Supervisor error: ${detail}`, _isError: true });
-        }
-        const parsed = parseDecisionBlock(stdout);
-        if (!parsed) {
-          console.error('Supervisor returned unparseable output', { ...context, cli, elapsed, output: stdout?.slice(0, 500) });
-          return resolve({ decision: 'ESCALATE', feedback: 'Supervisor returned unparseable output', _isError: true });
-        }
-        resolve(parsed);
-      });
+      try {
+        const child = execFile(cliCmd, args, {
+          timeout: SUPERVISOR_TIMEOUT,
+          encoding: 'utf-8',
+          maxBuffer: 1024 * 1024,
+        }, (err, stdout, stderr) => {
+          const elapsed = Date.now() - startTime;
+          if (err) {
+            const safeStderr = sanitizeStderr(stderr);
+            const detail = safeStderr ? `${err.message}\nstderr: ${safeStderr}` : err.message;
+            console.error('Supervisor subprocess failed', { ...context, cli, elapsed, errorCode: err.code });
+            return resolve({ decision: 'ESCALATE', feedback: `Supervisor error: ${detail}` });
+          }
+          const parsed = parseDecisionBlock(stdout);
+          if (!parsed) {
+            console.error('Supervisor returned unparseable output', { ...context, cli, elapsed, output: stdout?.slice(0, 500) });
+            return resolve({ decision: 'ESCALATE', feedback: 'Supervisor returned unparseable output' });
+          }
+          resolve(parsed);
+        });
+        child.stdin.write(prompt);
+        child.stdin.end();
+      } catch (err) {
+        reject(err);
+      }
     });
   } finally {
-    releaseSupervisorSlot();
+    if (slotAcquired) releaseSupervisorSlot();
   }
 }
 
