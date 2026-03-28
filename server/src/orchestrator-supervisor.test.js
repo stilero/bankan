@@ -253,7 +253,7 @@ SUMMARY: Needs one more pass.
     settingsState.autopilotMode = 'autopilot';
     evaluateReviewFailureMock.mockResolvedValue({
       decision: 'ESCALATE',
-      enhancedFeedback: 'Needs human judgement.',
+      feedback: 'Needs human judgement.',
     });
     taskState.set('T-REVIEW', {
       id: 'T-REVIEW',
@@ -271,7 +271,7 @@ SUMMARY: Needs one more pass.
     expect(evaluateReviewFailureMock).toHaveBeenCalledOnce();
     expect(emitMock).toHaveBeenCalledWith('supervisor:decision', {
       taskId: 'T-REVIEW',
-      stage: 'review-failure',
+      stage: 'review',
       decision: 'ESCALATE',
       feedback: 'Needs human judgement.',
     });
@@ -299,7 +299,7 @@ SUMMARY: Another retry would exceed the cap.
     settingsState.maxReviewCycles = 3;
     evaluateReviewFailureMock.mockResolvedValue({
       decision: 'RETRY',
-      enhancedFeedback: 'Try once more.',
+      feedback: 'Try once more.',
     });
     taskState.set('T-REVIEW', {
       id: 'T-REVIEW',
@@ -343,7 +343,7 @@ SUMMARY: Needs a fix.
     settingsState.maxReviewCycles = 3;
     evaluateReviewFailureMock.mockResolvedValue({
       decision: 'RETRY',
-      enhancedFeedback: 'Fix the edge case in parser.',
+      feedback: 'Fix the edge case in parser.',
       logMessage: 'Supervisor evaluated review failure: RETRY',
     });
     taskState.set('T-REVIEW', {
@@ -383,7 +383,7 @@ SUMMARY: One more try.
     settingsState.maxReviewCycles = 3;
     evaluateReviewFailureMock.mockResolvedValue({
       decision: 'RETRY',
-      enhancedFeedback: 'Try fixing the flaky test.',
+      feedback: 'Try fixing the flaky test.',
       logMessage: 'Supervisor evaluated review failure: RETRY',
     });
     taskState.set('T-REVIEW', {
@@ -526,7 +526,7 @@ SUMMARY: Race guard test.
     // Simulate human changing task status during supervisor evaluation
     taskState.set('T-REVIEW', { ...taskState.get('T-REVIEW'), status: 'queued' });
 
-    resolveReview({ decision: 'RETRY', enhancedFeedback: 'Late retry.', logMessage: 'log' });
+    resolveReview({ decision: 'RETRY', feedback: 'Late retry.', logMessage: 'log' });
     await promise;
     await flushPromises();
 

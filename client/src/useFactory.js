@@ -170,7 +170,7 @@ export default function useFactory() {
           } else if (decision === 'RETRY') {
             addNotification(`Supervisor retrying ${label} for ${sTaskId}`, 'info');
           } else if (decision === 'ESCALATE') {
-            addNotification(`Supervisor escalated ${sTaskId} — human input needed`, 'error');
+            addNotification(`Supervisor escalated ${label} for ${sTaskId} — human input needed`, 'error');
           }
           break;
         }

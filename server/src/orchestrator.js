@@ -31,7 +31,9 @@ function getMaxReviewCycles() {
 }
 
 function logSupervisorFailure(message, taskId, mode, error) {
-  console.error(message, { taskId, mode }, error);
+  const errorDetail = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? error.stack : undefined;
+  console.error(message, { taskId, mode, error: errorDetail, stack });
 }
 
 let pollTimer = null;
@@ -890,25 +892,31 @@ function onPlanComplete(agentId, taskId) {
   const settings = loadSettings();
   const mode = settings.autopilotMode || 'manual';
   if (mode === 'autopilot' || mode === 'hybrid') {
-    evaluatePlan(store.getTask(taskId), settings).then((result) => {
-      // Guard against race condition: user may have manually approved/rejected
-      const current = store.getTask(taskId);
-      if (!current || current.status !== 'awaiting_approval') return;
+    autoApprovePlan(taskId, settings, mode);
+  }
+}
 
-      if (result.logMessage) store.appendLog(taskId, result.logMessage);
-      bus.emit('supervisor:decision', { taskId, stage: 'plan', decision: result.decision, feedback: result.feedback });
+async function autoApprovePlan(taskId, settings, mode) {
+  try {
+    const result = await evaluatePlan(store.getTask(taskId), settings);
+    // Guard against race condition: user may have manually approved/rejected
+    const current = store.getTask(taskId);
+    if (!current || current.status !== 'awaiting_approval') return;
 
-      if (result.decision === 'APPROVE') {
-        approvePlan(taskId);
-      } else if (result.decision === 'REJECT') {
-        rejectPlan(taskId, result.feedback);
-      }
-      // ESCALATE: leave in awaiting_approval for human
-    }).catch((error) => {
-      logSupervisorFailure('Supervisor evaluation failed during plan auto-approval', taskId, mode, error);
-      store.appendLog(taskId, 'Supervisor failed during plan auto-approval. Task remains in awaiting_approval for human review.');
-      // On error, leave in awaiting_approval (fail-safe)
-    });
+    if (result.logMessage) store.appendLog(taskId, result.logMessage);
+    bus.emit('supervisor:decision', { taskId, stage: 'plan', decision: result.decision, feedback: result.feedback });
+
+    if (result.decision === 'APPROVE') {
+      approvePlan(taskId);
+    } else if (result.decision === 'REJECT') {
+      rejectPlan(taskId, result.feedback);
+    }
+    // ESCALATE: leave in awaiting_approval for human
+  } catch (error) {
+    const errorDetail = error instanceof Error ? error.message : String(error);
+    logSupervisorFailure('Supervisor evaluation failed during plan auto-approval', taskId, mode, error);
+    store.appendLog(taskId, `Supervisor failed during plan auto-approval: ${errorDetail}. Task remains in awaiting_approval for human review.`);
+    // On error, leave in awaiting_approval (fail-safe)
   }
 }
 
@@ -1057,13 +1065,12 @@ SUMMARY: Review skipped because reviewer max is set to 0.
 }
 
 async function handleSupervisorReviewDecision(taskId, reviewText, criticalIssues, nextReviewCycleCount, maxReviewCycles, settings, { allowExtension, snapshotConfiguredMax, mode }) {
-  const stage = allowExtension ? 'review-max-cycles' : 'review-failure';
   try {
     const result = await evaluateReviewFailure(store.getTask(taskId), reviewText, criticalIssues, settings);
     const current = store.getTask(taskId);
-    if (!current || current.status !== 'review') return;
+    if (!current || current.status !== 'evaluating') return;
     if (result.logMessage) store.appendLog(taskId, result.logMessage);
-    bus.emit('supervisor:decision', { taskId, stage, decision: result.decision, feedback: result.enhancedFeedback });
+    bus.emit('supervisor:decision', { taskId, stage: 'review', decision: result.decision, feedback: result.feedback });
 
     if (result.decision === 'RETRY') {
       if (allowExtension) {
@@ -1079,29 +1086,22 @@ async function handleSupervisorReviewDecision(taskId, reviewText, criticalIssues
           bus.emit('task:blocked', { taskId, reason: 'Supervisor exhausted cycle extensions' });
           return;
         }
-        store.updateTask(taskId, {
-          status: 'queued',
-          reviewFeedback: result.enhancedFeedback || criticalIssues,
-          reviewCycleCount: nextReviewCycleCount,
-          maxReviewCycles: maxReviewCycles + 1,
-          blockedReason: null,
-          assignedTo: null,
-        });
-      } else {
-        store.updateTask(taskId, {
-          status: 'queued',
-          reviewFeedback: result.enhancedFeedback || criticalIssues,
-          reviewCycleCount: nextReviewCycleCount,
-          blockedReason: null,
-          assignedTo: null,
-        });
       }
+      const update = {
+        status: 'queued',
+        reviewFeedback: result.feedback || criticalIssues,
+        reviewCycleCount: nextReviewCycleCount,
+        blockedReason: null,
+        assignedTo: null,
+      };
+      if (allowExtension) update.maxReviewCycles = maxReviewCycles + 1;
+      store.updateTask(taskId, update);
       bus.emit('review:failed', { taskId, issues: criticalIssues });
     } else {
       // ESCALATE
       const reason = allowExtension
-        ? `Supervisor escalated after max review cycles (${maxReviewCycles}): ${result.enhancedFeedback || 'Human input required.'}`
-        : `Supervisor escalated: ${result.enhancedFeedback || 'Human input required.'}`;
+        ? `Supervisor escalated after max review cycles (${maxReviewCycles}): ${result.feedback || 'Human input required.'}`
+        : `Supervisor escalated: ${result.feedback || 'Human input required.'}`;
       store.updateTask(taskId, {
         status: 'blocked',
         reviewFeedback: criticalIssues,
@@ -1125,7 +1125,8 @@ async function handleSupervisorReviewDecision(taskId, reviewText, criticalIssues
       bus.emit('task:blocked', { taskId, reason: 'Reached maximum review cycles' });
     } else {
       // Fail-safe: auto-retry with raw issues, but log that supervisor failed
-      store.appendLog(taskId, `Supervisor crashed during review routing. Falling back to auto-retry. Error: ${error.message}`);
+      const errorDetail = error instanceof Error ? error.message : String(error);
+      store.appendLog(taskId, `Supervisor crashed during review routing. Falling back to auto-retry. Error: ${errorDetail}`);
       store.updateTask(taskId, {
         status: 'queued',
         reviewFeedback: criticalIssues,
@@ -1174,6 +1175,8 @@ async function onReviewComplete(agentId, taskId) {
 
     if (nextReviewCycleCount >= maxReviewCycles) {
       if (mode === 'autopilot') {
+        // Prevent poll loop from re-spawning a reviewer during supervisor evaluation
+        store.updateTask(taskId, { status: 'evaluating', assignedTo: null });
         await handleSupervisorReviewDecision(taskId, reviewText, criticalIssues, nextReviewCycleCount, maxReviewCycles, settings, { allowExtension: true, snapshotConfiguredMax, mode });
         return;
       }
@@ -1191,6 +1194,8 @@ async function onReviewComplete(agentId, taskId) {
 
     // Review failed but cycles remain
     if (mode === 'autopilot') {
+      // Prevent poll loop from re-spawning a reviewer during supervisor evaluation
+      store.updateTask(taskId, { status: 'evaluating', assignedTo: null });
       await handleSupervisorReviewDecision(taskId, reviewText, criticalIssues, nextReviewCycleCount, maxReviewCycles, settings, { allowExtension: false, snapshotConfiguredMax, mode });
       return;
     }

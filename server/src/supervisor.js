@@ -1,6 +1,8 @@
 import { execFile } from 'node:child_process';
 
 const SUPERVISOR_TIMEOUT = 60_000;
+const SLOT_ACQUIRE_TIMEOUT = 30_000;
+const MAX_QUEUE_DEPTH = 20;
 
 const DECISION_START = '=== SUPERVISOR DECISION START ===';
 const DECISION_END = '=== SUPERVISOR DECISION END ===';
@@ -13,21 +15,41 @@ let activeSupervisors = 0;
 const supervisorQueue = [];
 
 function acquireSupervisorSlot() {
-  return new Promise((resolve) => {
+  if (supervisorQueue.length >= MAX_QUEUE_DEPTH) {
+    return Promise.reject(new Error(`Supervisor queue full (${MAX_QUEUE_DEPTH} pending). Try again later.`));
+  }
+  return new Promise((resolve, reject) => {
     if (activeSupervisors < MAX_CONCURRENT_SUPERVISORS) {
       activeSupervisors++;
       resolve();
     } else {
-      supervisorQueue.push(resolve);
+      const timer = setTimeout(() => {
+        const idx = supervisorQueue.indexOf(entry);
+        if (idx !== -1) supervisorQueue.splice(idx, 1);
+        reject(new Error(`Supervisor slot acquisition timed out after ${SLOT_ACQUIRE_TIMEOUT}ms`));
+      }, SLOT_ACQUIRE_TIMEOUT);
+      const entry = { resolve, reject, timer };
+      supervisorQueue.push(entry);
     }
   });
 }
 
 function releaseSupervisorSlot() {
-  activeSupervisors--;
   if (supervisorQueue.length > 0) {
-    activeSupervisors++;
-    supervisorQueue.shift()();
+    const entry = supervisorQueue.shift();
+    clearTimeout(entry.timer);
+    entry.resolve();
+  } else {
+    activeSupervisors--;
+  }
+}
+
+function resetSupervisorState() {
+  activeSupervisors = 0;
+  while (supervisorQueue.length > 0) {
+    const entry = supervisorQueue.shift();
+    clearTimeout(entry.timer);
+    entry.reject(new Error('Supervisor state reset'));
   }
 }
 
@@ -58,8 +80,18 @@ function validateDecision(result, validSet) {
   return result;
 }
 
-async function runSupervisorQuery(cli, model, prompt) {
+function sanitizeStderr(stderr) {
+  if (!stderr) return '';
+  // Strip potential secrets/internal details from stderr before storing
+  return stderr
+    .replace(/sk-[a-zA-Z0-9_-]{10,}/g, 'sk-***')
+    .replace(/key[=:]\s*\S+/gi, 'key=***')
+    .slice(0, 500);
+}
+
+async function runSupervisorQuery(cli, model, prompt, context = {}) {
   await acquireSupervisorSlot();
+  const startTime = Date.now();
   try {
     return await new Promise((resolve) => {
       let cliCmd, args;
@@ -80,14 +112,17 @@ async function runSupervisorQuery(cli, model, prompt) {
         encoding: 'utf-8',
         maxBuffer: 1024 * 1024,
       }, (err, stdout, stderr) => {
+        const elapsed = Date.now() - startTime;
         if (err) {
-          const detail = stderr ? `${err.message}\nstderr: ${stderr}` : err.message;
-          return resolve({ decision: 'ESCALATE', feedback: `Supervisor error: ${detail}` });
+          const safeStderr = sanitizeStderr(stderr);
+          const detail = safeStderr ? `${err.message}\nstderr: ${safeStderr}` : err.message;
+          console.error('Supervisor subprocess failed', { ...context, cli, elapsed, errorCode: err.code });
+          return resolve({ decision: 'ESCALATE', feedback: `Supervisor error: ${detail}`, _isError: true });
         }
         const parsed = parseDecisionBlock(stdout);
         if (!parsed) {
-          console.error('Supervisor returned unparseable output:', stdout?.slice(0, 500));
-          return resolve({ decision: 'ESCALATE', feedback: 'Supervisor returned unparseable output' });
+          console.error('Supervisor returned unparseable output', { ...context, cli, elapsed, output: stdout?.slice(0, 500) });
+          return resolve({ decision: 'ESCALATE', feedback: 'Supervisor returned unparseable output', _isError: true });
         }
         resolve(parsed);
       });
@@ -127,7 +162,7 @@ ${DECISION_END}
 - REJECT if the plan has clear deficiencies that can be fixed by re-planning
 - ESCALATE if you are uncertain or the task needs human judgement`;
 
-  const raw = await runSupervisorQuery(cli, model, prompt);
+  const raw = await runSupervisorQuery(cli, model, prompt, { taskId: task.id, stage: 'plan' });
   const result = validateDecision(raw, PLAN_DECISIONS)
     || { decision: 'ESCALATE', feedback: `Invalid supervisor decision: ${raw?.decision || 'none'}` };
   const logMessage = `Supervisor evaluated plan: ${result.decision}${result.feedback ? ' — ' + result.feedback : ''}`;
@@ -162,12 +197,12 @@ ${DECISION_END}
 - RETRY if the issues are fixable by an AI implementor with better instructions
 - ESCALATE if the issues require architectural decisions, clarification, or human judgement`;
 
-  const raw = await runSupervisorQuery(cli, model, prompt);
+  const raw = await runSupervisorQuery(cli, model, prompt, { taskId: task.id, stage: 'review' });
   const result = validateDecision(raw, REVIEW_DECISIONS)
     || { decision: 'ESCALATE', feedback: `Invalid supervisor decision: ${raw?.decision || 'none'}` };
   const logMessage = `Supervisor evaluated review failure: ${result.decision}${result.feedback ? ' — ' + result.feedback : ''}`;
-  return { decision: result.decision, enhancedFeedback: result.feedback, logMessage };
+  return { decision: result.decision, feedback: result.feedback, logMessage };
 }
 
 // Exported for testing
-export { parseDecisionBlock, runSupervisorQuery, validateDecision, PLAN_DECISIONS, REVIEW_DECISIONS, MAX_CONCURRENT_SUPERVISORS };
+export { parseDecisionBlock, runSupervisorQuery, validateDecision, PLAN_DECISIONS, REVIEW_DECISIONS, MAX_CONCURRENT_SUPERVISORS, resetSupervisorState };

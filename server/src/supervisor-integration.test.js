@@ -100,7 +100,7 @@ describe('supervisor integration — review failure', () => {
     mockExecFileResponse(supervisorOutput('RETRY', 'ENHANCED_FEEDBACK', 'Fix the null checks.'));
     const result = await evaluateReviewFailure(mockTask, 'review output', 'null pointer', mockSettings);
     expect(result.decision).toBe('RETRY');
-    expect(result.enhancedFeedback).toBe('Fix the null checks.');
+    expect(result.feedback).toBe('Fix the null checks.');
   });
 
   test('evaluateReviewFailure returns ESCALATE for valid ESCALATE', async () => {
@@ -113,14 +113,14 @@ describe('supervisor integration — review failure', () => {
     mockExecFileResponse(supervisorOutput('APPROVE', 'ENHANCED_FEEDBACK', 'Should not work.'));
     const result = await evaluateReviewFailure(mockTask, 'review output', 'issues', mockSettings);
     expect(result.decision).toBe('ESCALATE');
-    expect(result.enhancedFeedback).toContain('Invalid supervisor decision: APPROVE');
+    expect(result.feedback).toContain('Invalid supervisor decision: APPROVE');
   });
 
   test('evaluateReviewFailure falls back to ESCALATE for REJECT (not valid for reviews)', async () => {
     mockExecFileResponse(supervisorOutput('REJECT', 'ENHANCED_FEEDBACK', 'Should not work.'));
     const result = await evaluateReviewFailure(mockTask, 'review output', 'issues', mockSettings);
     expect(result.decision).toBe('ESCALATE');
-    expect(result.enhancedFeedback).toContain('Invalid supervisor decision: REJECT');
+    expect(result.feedback).toContain('Invalid supervisor decision: REJECT');
   });
 
   test('evaluateReviewFailure falls back to ESCALATE on CLI error', async () => {
@@ -178,14 +178,14 @@ describe('supervisor integration — result structure contract', () => {
     expect(typeof result.logMessage).toBe('string');
   });
 
-  test('evaluateReviewFailure always returns { decision, enhancedFeedback, logMessage } strings', async () => {
+  test('evaluateReviewFailure always returns { decision, feedback, logMessage } strings', async () => {
     mockExecFileResponse(supervisorOutput('RETRY', 'ENHANCED_FEEDBACK', 'Fix it.'));
     const result = await evaluateReviewFailure(mockTask, 'text', 'issues', mockSettings);
     expect(result).toHaveProperty('decision');
-    expect(result).toHaveProperty('enhancedFeedback');
+    expect(result).toHaveProperty('feedback');
     expect(result).toHaveProperty('logMessage');
     expect(typeof result.decision).toBe('string');
-    expect(typeof result.enhancedFeedback).toBe('string');
+    expect(typeof result.feedback).toBe('string');
     expect(typeof result.logMessage).toBe('string');
   });
 
