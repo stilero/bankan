@@ -103,6 +103,44 @@ describe('config settings lifecycle', () => {
     expect(configModule.loadSettings().maxReviewCycles).toBe(10);
   });
 
+  test('getDefaults includes maxPlanRejections and normalizeSettingsShape corrects invalid values', async () => {
+    harness = createRuntimeHarness();
+    const configModule = await harness.importModule('./src/config.js');
+
+    const defaults = configModule.getDefaults();
+    expect(defaults.maxPlanRejections).toBe(3);
+
+    configModule.saveSettings({ ...defaults, maxPlanRejections: -1 });
+    expect(configModule.loadSettings().maxPlanRejections).toBe(3);
+
+    configModule.saveSettings({ ...defaults, maxPlanRejections: 'bad' });
+    expect(configModule.loadSettings().maxPlanRejections).toBe(3);
+
+    configModule.saveSettings({ ...defaults, maxPlanRejections: 7 });
+    expect(configModule.loadSettings().maxPlanRejections).toBe(7);
+  });
+
+  test('validateSettings rejects out-of-range maxPlanRejections', async () => {
+    harness = createRuntimeHarness();
+    const { validateSettings, getDefaults } = await harness.importModule('./src/config.js');
+    const base = {
+      ...getDefaults(),
+      repos: ['/repo'],
+      defaultRepoPath: '/repo',
+      workspaceRoot: '/tmp/ws',
+    };
+
+    expect(validateSettings({ ...base, maxPlanRejections: 0 }))
+      .toContain('maxPlanRejections must be a number between 1 and 10');
+    expect(validateSettings({ ...base, maxPlanRejections: 11 }))
+      .toContain('maxPlanRejections must be a number between 1 and 10');
+    expect(validateSettings({ ...base, maxPlanRejections: 5 }))
+      .not.toContain('maxPlanRejections must be a number between 1 and 10');
+    // undefined is allowed (backward compat)
+    expect(validateSettings({ ...base, maxPlanRejections: undefined }))
+      .not.toContain('maxPlanRejections must be a number between 1 and 10');
+  });
+
   test('validateSettings rejects out-of-range maxReviewCycles', async () => {
     harness = createRuntimeHarness();
     const { validateSettings, getDefaults } = await harness.importModule('./src/config.js');
@@ -150,6 +188,83 @@ describe('config settings lifecycle', () => {
     }
   });
 
+  test('defaults include supervisor with cli and model but no max', async () => {
+    harness = createRuntimeHarness();
+    const { getDefaults } = await harness.importModule('./src/config.js');
+    const defaults = getDefaults();
+    expect(defaults.agents.supervisor).toEqual({ cli: 'claude', model: '' });
+    expect(defaults.agents.supervisor.max).toBeUndefined();
+  });
+
+  test('normalizeSettingsShape backfills missing supervisor entry', async () => {
+    harness = createRuntimeHarness();
+    const configModule = await harness.importModule('./src/config.js');
+
+    configModule.saveSettings({
+      repos: ['/repo-a'],
+      defaultRepoPath: '/repo-a',
+      workspaceRoot: '/tmp/ws',
+      agents: {
+        planners: { max: 2, cli: 'claude' },
+        implementors: { max: 4, cli: 'claude' },
+        reviewers: { max: 2, cli: 'claude' },
+      },
+      prompts: { planning: 'p', implementation: 'i', review: 'r' },
+    });
+
+    const loaded = configModule.loadSettings();
+    expect(loaded.agents.supervisor).toEqual({ cli: 'claude', model: '' });
+  });
+
+  test('validateSettings validates supervisor cli and model', async () => {
+    harness = createRuntimeHarness();
+    const { validateSettings, getDefaults } = await harness.importModule('./src/config.js');
+    const base = {
+      ...getDefaults(),
+      repos: ['/repo'],
+      defaultRepoPath: '/repo',
+      workspaceRoot: '/tmp/ws',
+    };
+
+    // Valid supervisor config passes
+    expect(validateSettings({
+      ...base,
+      agents: { ...base.agents, supervisor: { cli: 'claude', model: 'claude-haiku-4-5' } },
+    })).toEqual([]);
+
+    // Invalid CLI rejected
+    expect(validateSettings({
+      ...base,
+      agents: { ...base.agents, supervisor: { cli: 'bad', model: '' } },
+    })).toContain('supervisor.cli must be one of: claude, codex');
+
+    // Model mismatch rejected
+    expect(validateSettings({
+      ...base,
+      agents: { ...base.agents, supervisor: { cli: 'codex', model: 'claude-haiku-4-5' } },
+    })).toContain("supervisor.model 'claude-haiku-4-5' is not valid for the 'codex' CLI");
+
+    // Non-string model rejected
+    expect(validateSettings({
+      ...base,
+      agents: { ...base.agents, supervisor: { cli: 'claude', model: 42 } },
+    })).toContain('supervisor.model must be a string');
+  });
+
+  test('validateSettings accepts settings without supervisor entry (backward compat)', async () => {
+    harness = createRuntimeHarness();
+    const { validateSettings, getDefaults } = await harness.importModule('./src/config.js');
+    const base = {
+      ...getDefaults(),
+      repos: ['/repo'],
+      defaultRepoPath: '/repo',
+      workspaceRoot: '/tmp/ws',
+    };
+    const { supervisor: _supervisor, ...agentsWithoutSupervisor } = base.agents;
+    const errors = validateSettings({ ...base, agents: agentsWithoutSupervisor });
+    expect(errors).toEqual([]);
+  });
+
   test('normalizeSettingsShape backfills missing model field', async () => {
     harness = createRuntimeHarness();
     const configModule = await harness.importModule('./src/config.js');
@@ -172,6 +287,30 @@ describe('config settings lifecycle', () => {
     expect(loaded.agents.planners.model).toBe('');
     expect(loaded.agents.implementors.model).toBe('');
     expect(loaded.agents.reviewers.model).toBe('');
+  });
+
+  test('normalizeSettingsShape resets invalid model values to empty string', async () => {
+    harness = createRuntimeHarness();
+    const configModule = await harness.importModule('./src/config.js');
+
+    configModule.saveSettings({
+      repos: ['/repo-a'],
+      defaultRepoPath: '/repo-a',
+      workspaceRoot: '/tmp/ws',
+      agents: {
+        planners: { max: 2, cli: 'claude', model: 'haiku' },
+        implementors: { max: 4, cli: 'codex', model: 'claude-opus-4-6' },
+        reviewers: { max: 2, cli: 'claude', model: 'nonexistent' },
+        supervisor: { cli: 'claude', model: 'bad-model' },
+      },
+      prompts: { planning: 'p', implementation: 'i', review: 'r' },
+    });
+
+    const loaded = configModule.loadSettings();
+    expect(loaded.agents.planners.model).toBe('');
+    expect(loaded.agents.implementors.model).toBe('');
+    expect(loaded.agents.reviewers.model).toBe('');
+    expect(loaded.agents.supervisor.model).toBe('');
   });
 
   test('validateSettings accepts valid model strings and rejects non-strings', async () => {

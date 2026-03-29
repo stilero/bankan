@@ -183,4 +183,35 @@ describe('TaskDetailModal', () => {
     const deleteBtn = screen.getByRole('button', { name: 'Delete Task' });
     expect(deleteBtn).toBeTruthy();
   });
+
+  test('displays supervisor feedback with rejection count when planFeedback exists', () => {
+    render(
+      <TaskDetailModal
+        task={buildTask({
+          status: 'awaiting_approval',
+          plan: 'Some plan content',
+          planFeedback: 'Missing implementation steps for the auth module.',
+          planRejectionCount: 2,
+          maxPlanRejections: 3,
+        })}
+        repos={['/repo']}
+        onClose={vi.fn()}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+        onPause={vi.fn()}
+        onResume={vi.fn()}
+        onEdit={vi.fn()}
+        onAbort={vi.fn()}
+        onReset={vi.fn()}
+        onRetry={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenWorkspace={vi.fn()}
+        onCompleteManualPr={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Supervisor Feedback')).toBeTruthy();
+    expect(screen.getByText(/rejected 2\/3/)).toBeTruthy();
+    expect(screen.getByText('Missing implementation steps for the auth module.')).toBeTruthy();
+  });
 });

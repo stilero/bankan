@@ -74,6 +74,7 @@ describe('App', () => {
           planners: { max: 1, cli: 'claude', model: '' },
           implementors: { max: 2, cli: 'codex', model: '' },
           reviewers: { max: 1, cli: 'claude', model: '' },
+          supervisor: { cli: 'claude', model: '' },
         },
         prompts: {
           planning: 'Plan prompt',
@@ -210,6 +211,7 @@ describe('App', () => {
         planners: { max: 1, cli: 'claude', model: '' },
         implementors: { max: 2, cli: 'codex', model: '' },
         reviewers: { max: 1, cli: 'claude', model: '' },
+        supervisor: { cli: 'claude', model: '' },
       },
       prompts: {
         planning: 'Plan prompt',
@@ -250,6 +252,7 @@ describe('App', () => {
         planners: { max: 3, cli: 'codex', model: '' },
         implementors: { max: 2, cli: 'codex', model: '' },
         reviewers: { max: 1, cli: 'claude', model: '' },
+        supervisor: { cli: 'claude', model: '' },
       },
       prompts: {
         planning: 'Updated plan prompt',
@@ -295,6 +298,47 @@ describe('App', () => {
     expect(screen.getByRole('radio', { name: 'Manual' }).checked).toBe(false);
   });
 
+  test('supervisor model selector is hidden in manual mode and visible in autopilot/hybrid', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTitle('Settings'));
+
+    // Manual mode: no supervisor selector
+    expect(screen.queryByTestId('model-select-supervisor')).toBeNull();
+
+    // Switch to Hybrid: selector appears
+    fireEvent.click(screen.getByRole('radio', { name: 'Hybrid' }));
+    expect(screen.getByTestId('model-select-supervisor')).toBeTruthy();
+
+    // Switch to Autopilot: still visible
+    fireEvent.click(screen.getByRole('radio', { name: 'Autopilot' }));
+    expect(screen.getByTestId('model-select-supervisor')).toBeTruthy();
+
+    // Switch back to Manual: hidden again
+    fireEvent.click(screen.getByRole('radio', { name: 'Manual' }));
+    expect(screen.queryByTestId('model-select-supervisor')).toBeNull();
+  });
+
+  test('supervisor model change is included in Apply payload', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTitle('Settings'));
+    fireEvent.click(screen.getByRole('radio', { name: 'Autopilot' }));
+
+    fireEvent.change(screen.getByTestId('model-select-supervisor'), {
+      target: { value: 'claude:claude-haiku-4-5' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(factoryState.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agents: expect.objectContaining({
+          supervisor: { cli: 'claude', model: 'claude-haiku-4-5' },
+        }),
+      })
+    );
+  });
+
   test('Apply sends autopilotMode in updateSettings payload', () => {
     render(<App />);
 
@@ -304,6 +348,45 @@ describe('App', () => {
 
     expect(factoryState.updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({ autopilotMode: 'autopilot' })
+    );
+  });
+
+  test('shows mode badge in header when autopilot or hybrid is active', () => {
+    factoryState.settings.autopilotMode = 'autopilot';
+    render(<App />);
+    const badge = screen.getByTestId('mode-badge');
+    expect(badge.textContent).toBe('AUTOPILOT');
+
+    // Re-render with hybrid
+    factoryState.settings.autopilotMode = 'hybrid';
+    const { unmount } = render(<App />);
+    expect(screen.getAllByTestId('mode-badge')[1].textContent).toBe('HYBRID');
+    unmount();
+  });
+
+  test('hides mode badge in manual mode', () => {
+    factoryState.settings.autopilotMode = 'manual';
+    render(<App />);
+    expect(screen.queryByTestId('mode-badge')).toBeNull();
+  });
+
+  test('maxPlanRejections input appears in autopilot mode and is included in Apply', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTitle('Settings'));
+    // Not visible in manual mode
+    expect(screen.queryByTestId('max-plan-rejections')).toBeNull();
+
+    // Switch to Autopilot
+    fireEvent.click(screen.getByRole('radio', { name: 'Autopilot' }));
+    const input = screen.getByTestId('max-plan-rejections');
+    expect(input).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: '5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(factoryState.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ maxPlanRejections: 5 })
     );
   });
 });

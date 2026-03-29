@@ -135,6 +135,7 @@ class TaskStore {
       assignedTo: null,
       reviewFeedback: null,
       planFeedback: null,
+      planRejectionCount: 0,
       blockedReason: null,
       workspacePath: null,
       reviewCycleCount: 0,

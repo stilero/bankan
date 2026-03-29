@@ -161,12 +161,12 @@ export default function useFactory() {
           addNotification(`Task ${msg.payload.taskId} allowed one more review (${msg.payload.maxReviewCycles} max)`, 'info');
           break;
         case 'SUPERVISOR_DECISION': {
-          const { taskId: sTaskId, stage, decision, feedback } = msg.payload || {};
+          const { taskId: sTaskId, stage, decision } = msg.payload || {};
           const label = stage === 'plan' ? 'plan' : 'review';
           if (decision === 'APPROVE') {
             addNotification(`Supervisor auto-approved ${label} for ${sTaskId}`, 'success');
           } else if (decision === 'REJECT') {
-            addNotification(`Supervisor rejected ${label} for ${sTaskId}: ${feedback || ''}`, 'warning');
+            addNotification(`Supervisor rejected ${label} for ${sTaskId}`, 'warning');
           } else if (decision === 'RETRY') {
             addNotification(`Supervisor retrying ${label} for ${sTaskId}`, 'info');
           } else if (decision === 'ESCALATE') {

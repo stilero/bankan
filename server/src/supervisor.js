@@ -153,9 +153,17 @@ async function runSupervisorQuery(cli, model, prompt, context = {}) {
   }
 }
 
+function getSupervisorCliModel(settings) {
+  const sup = settings.agents?.supervisor;
+  const plan = settings.agents?.planners;
+  return {
+    cli: sup?.cli || plan?.cli || 'claude',
+    model: sup?.model ?? plan?.model ?? '',
+  };
+}
+
 export async function evaluatePlan(task, settings) {
-  const cli = settings.agents?.planners?.cli || 'claude';
-  const model = settings.agents?.planners?.model || '';
+  const { cli, model } = getSupervisorCliModel(settings);
 
   const prompt = `You are a supervisor agent evaluating a generated plan for quality and completeness.
 
@@ -191,8 +199,7 @@ ${DECISION_END}
 }
 
 export async function evaluateReviewFailure(task, reviewText, criticalIssues, settings) {
-  const cli = settings.agents?.planners?.cli || 'claude';
-  const model = settings.agents?.planners?.model || '';
+  const { cli, model } = getSupervisorCliModel(settings);
 
   const prompt = `You are a supervisor agent analyzing a failed code review to decide the next action.
 

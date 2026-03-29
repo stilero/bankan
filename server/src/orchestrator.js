@@ -911,7 +911,17 @@ async function autoApprovePlan(taskId, settings, mode) {
     if (result.decision === 'APPROVE') {
       approvePlan(taskId);
     } else if (result.decision === 'REJECT') {
-      rejectPlan(taskId, result.feedback);
+      const task = store.getTask(taskId);
+      const newCount = (task?.planRejectionCount || 0) + 1;
+      const maxRejections = settings.maxPlanRejections || 3;
+      if (newCount >= maxRejections) {
+        store.updateTask(taskId, { planRejectionCount: newCount, planFeedback: result.feedback });
+        store.appendLog(taskId, `Supervisor rejected plan ${newCount}/${maxRejections} times — escalating to human review.`);
+        bus.emit('supervisor:decision', { taskId, stage: 'plan', decision: 'ESCALATE', feedback: `Auto-escalated after ${newCount} rejections. Last: ${result.feedback}` });
+      } else {
+        store.updateTask(taskId, { planRejectionCount: newCount });
+        rejectPlan(taskId, result.feedback);
+      }
     }
     // ESCALATE: leave in awaiting_approval for human
   } catch (error) {
@@ -925,10 +935,11 @@ async function autoApprovePlan(taskId, settings, mode) {
 function approvePlan(taskId) {
   const task = store.getTask(taskId);
   if (!task || task.status !== 'awaiting_approval') return;
+  store.updateTask(taskId, { planRejectionCount: 0 });
   startImplementation(task);
 }
 
-function rejectPlan(taskId, feedback) {
+function rejectPlan(taskId, feedback, { resetRejectionCount = false } = {}) {
   const task = store.getTask(taskId);
   if (!task || task.status !== 'awaiting_approval') return;
 
@@ -937,6 +948,7 @@ function rejectPlan(taskId, feedback) {
     planFeedback: feedback,
     blockedReason: null,
     assignedTo: null,
+    ...(resetRejectionCount && { planRejectionCount: 0 }),
   });
 }
 
@@ -1631,7 +1643,7 @@ function pollLoop() {
 // --- Event Handlers ---
 
 bus.on('plan:approved', (taskId) => approvePlan(taskId));
-bus.on('plan:rejected', ({ taskId, feedback }) => rejectPlan(taskId, feedback));
+bus.on('plan:rejected', ({ taskId, feedback }) => rejectPlan(taskId, feedback, { resetRejectionCount: true }));
 
 bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
   const agent = agentManager.get(agentId);

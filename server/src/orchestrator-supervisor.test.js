@@ -492,6 +492,59 @@ RISKS:
     expect(appendLogMock).toHaveBeenCalledWith('T-PLAN', expect.stringContaining('Supervisor failed during plan auto-approval'));
   });
 
+  test('plan rejection escalates to human after maxPlanRejections', async () => {
+    const planText = `=== PLAN START ===
+SUMMARY: Rejection limit test.
+BRANCH: feature/t-plan-reject-limit
+FILES_TO_MODIFY:
+- server/src/orchestrator.js
+STEPS:
+1. Test rejection limit.
+TESTS_NEEDED:
+- npm run test:server
+RISKS:
+- none
+=== PLAN END ===`;
+
+    const { __test__ } = await import('./orchestrator.js');
+
+    settingsState.autopilotMode = 'autopilot';
+    settingsState.maxPlanRejections = 2;
+
+    // First rejection: should re-plan (go to backlog)
+    evaluatePlanMock.mockResolvedValue({ decision: 'REJECT', feedback: 'Missing steps.', logMessage: 'Rejected' });
+    const planner1 = makePlanner(planText);
+    agentState.set('plan-1', planner1);
+    taskState.set('T-PLAN', {
+      id: 'T-PLAN', title: 'Reject limit', priority: 'medium',
+      status: 'planning', planRejectionCount: 0,
+    });
+
+    __test__.onPlanComplete('plan-1', 'T-PLAN');
+    await flushPromises();
+
+    expect(taskState.get('T-PLAN').status).toBe('backlog');
+    expect(taskState.get('T-PLAN').planRejectionCount).toBe(1);
+
+    // Second rejection (at limit): should escalate, stay in awaiting_approval
+    const planner2 = makePlanner(planText);
+    agentState.set('plan-1', planner2);
+    taskState.set('T-PLAN', {
+      ...taskState.get('T-PLAN'),
+      status: 'planning', planRejectionCount: 1,
+    });
+
+    __test__.onPlanComplete('plan-1', 'T-PLAN');
+    await flushPromises();
+
+    expect(taskState.get('T-PLAN').status).toBe('awaiting_approval');
+    expect(taskState.get('T-PLAN').planRejectionCount).toBe(2);
+    expect(appendLogMock).toHaveBeenCalledWith('T-PLAN', expect.stringContaining('escalating to human review'));
+    expect(emitMock).toHaveBeenCalledWith('supervisor:decision', expect.objectContaining({
+      taskId: 'T-PLAN', stage: 'plan', decision: 'ESCALATE',
+    }));
+  });
+
   test('review callback does not clobber task when status changed during supervisor evaluation', async () => {
     const reviewText = `=== REVIEW START ===
 VERDICT: FAIL

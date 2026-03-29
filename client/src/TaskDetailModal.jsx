@@ -380,6 +380,37 @@ export default function TaskDetailModal({
               </div>
             )}
 
+            {/* Supervisor Feedback */}
+            {task.planFeedback && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{
+                  ...labelStyle, display: 'flex', alignItems: 'center', gap: 8,
+                }}>
+                  Supervisor Feedback
+                  {task.planRejectionCount > 0 && (
+                    <span style={{
+                      fontSize: 10, color: 'var(--amber)',
+                      fontWeight: 400,
+                    }}>
+                      (rejected {task.planRejectionCount}{task.maxPlanRejections ? `/${task.maxPlanRejections}` : ''})
+                    </span>
+                  )}
+                </div>
+                <pre style={{
+                  fontSize: 11, color: 'var(--text2)',
+                  background: 'var(--bg)', padding: 10, borderRadius: 4,
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                  maxHeight: 200, overflowY: 'auto',
+                  borderLeft: '3px solid var(--amber)',
+                  border: '1px solid var(--border)',
+                  borderLeftColor: 'var(--amber)',
+                  borderLeftWidth: 3,
+                }}>
+                  {task.planFeedback}
+                </pre>
+              </div>
+            )}
+
             {/* Review (collapsible) */}
             {task.review && (
               <div style={{ marginBottom: 14 }}>
