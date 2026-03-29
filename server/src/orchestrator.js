@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { simpleGit } from 'simple-git';
 import { loadSettings, getWorkspacesDir } from './config.js';
+import { evaluatePlan, evaluateReviewFailure } from './supervisor.js';
 import { getGithubCapabilities, isManualPullRequestRequired } from './capabilities.js';
 import store from './store.js';
 import agentManager from './agents.js';
@@ -24,8 +25,15 @@ const PLANNER_TIMEOUT = 5 * 60 * 1000;
 const IMPLEMENTOR_TIMEOUT = 60 * 60 * 1000;
 const REVIEWER_TIMEOUT = 30 * 60 * 1000;
 const STUCK_TIMEOUT = 10 * 60 * 1000;
+export const MAX_SUPERVISOR_EXTENSIONS = 2;
 function getMaxReviewCycles() {
   return loadSettings().maxReviewCycles || 3;
+}
+
+function logSupervisorFailure(message, taskId, mode, error) {
+  const errorDetail = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? error.stack : undefined;
+  console.error(message, { taskId, mode, error: errorDetail, stack });
 }
 
 let pollTimer = null;
@@ -879,15 +887,59 @@ function onPlanComplete(agentId, taskId) {
 
   retireAgentSession(planner, { taskId, outcome: 'completed', transcript: planText });
   bus.emit('plan:ready', { taskId, plan: planText });
+
+  // Supervisor auto-approval for autopilot and hybrid modes
+  const settings = loadSettings();
+  const mode = settings.autopilotMode || 'manual';
+  if (mode === 'autopilot' || mode === 'hybrid') {
+    autoApprovePlan(taskId, settings, mode).catch((error) => {
+      logSupervisorFailure('Unhandled error in autoApprovePlan', taskId, mode, error);
+    });
+  }
+}
+
+async function autoApprovePlan(taskId, settings, mode) {
+  try {
+    const result = await evaluatePlan(store.getTask(taskId), settings);
+    // Guard against race condition: user may have manually approved/rejected
+    const current = store.getTask(taskId);
+    if (!current || current.status !== 'awaiting_approval') return;
+
+    if (result.logMessage) store.appendLog(taskId, result.logMessage);
+    bus.emit('supervisor:decision', { taskId, stage: 'plan', decision: result.decision, feedback: result.feedback });
+
+    if (result.decision === 'APPROVE') {
+      approvePlan(taskId);
+    } else if (result.decision === 'REJECT') {
+      const task = store.getTask(taskId);
+      const newCount = (task?.planRejectionCount || 0) + 1;
+      const maxRejections = settings.maxPlanRejections || 3;
+      if (newCount >= maxRejections) {
+        store.updateTask(taskId, { planRejectionCount: newCount, planFeedback: result.feedback });
+        store.appendLog(taskId, `Supervisor rejected plan ${newCount}/${maxRejections} times — escalating to human review.`);
+        bus.emit('supervisor:decision', { taskId, stage: 'plan', decision: 'ESCALATE', feedback: `Auto-escalated after ${newCount} rejections. Last: ${result.feedback}` });
+      } else {
+        store.updateTask(taskId, { planRejectionCount: newCount });
+        rejectPlan(taskId, result.feedback);
+      }
+    }
+    // ESCALATE: leave in awaiting_approval for human
+  } catch (error) {
+    const errorDetail = error instanceof Error ? error.message : String(error);
+    logSupervisorFailure('Supervisor evaluation failed during plan auto-approval', taskId, mode, error);
+    store.appendLog(taskId, `Supervisor failed during plan auto-approval: ${errorDetail}. Task remains in awaiting_approval for human review.`);
+    // On error, leave in awaiting_approval (fail-safe)
+  }
 }
 
 function approvePlan(taskId) {
   const task = store.getTask(taskId);
   if (!task || task.status !== 'awaiting_approval') return;
+  store.updateTask(taskId, { planRejectionCount: 0 });
   startImplementation(task);
 }
 
-function rejectPlan(taskId, feedback) {
+function rejectPlan(taskId, feedback, { resetRejectionCount = false } = {}) {
   const task = store.getTask(taskId);
   if (!task || task.status !== 'awaiting_approval') return;
 
@@ -896,6 +948,7 @@ function rejectPlan(taskId, feedback) {
     planFeedback: feedback,
     blockedReason: null,
     assignedTo: null,
+    ...(resetRejectionCount && { planRejectionCount: 0 }),
   });
 }
 
@@ -1025,6 +1078,81 @@ SUMMARY: Review skipped because reviewer max is set to 0.
   bus.emit('agent:updated', reviewer.getStatus());
 }
 
+async function handleSupervisorReviewDecision(taskId, reviewText, criticalIssues, nextReviewCycleCount, maxReviewCycles, settings, { allowExtension, snapshotConfiguredMax, mode }) {
+  try {
+    const current = store.getTask(taskId);
+    if (!current || current.status !== 'evaluating') return;
+    const result = await evaluateReviewFailure(current, reviewText, criticalIssues, settings);
+    if (result.logMessage) store.appendLog(taskId, result.logMessage);
+    bus.emit('supervisor:decision', { taskId, stage: 'review', decision: result.decision, feedback: result.feedback });
+
+    if (result.decision === 'RETRY') {
+      if (allowExtension) {
+        const extensionsSoFar = maxReviewCycles - snapshotConfiguredMax;
+        if (extensionsSoFar >= MAX_SUPERVISOR_EXTENSIONS) {
+          store.updateTask(taskId, {
+            status: 'blocked',
+            reviewFeedback: criticalIssues,
+            reviewCycleCount: nextReviewCycleCount,
+            blockedReason: `Supervisor exhausted ${MAX_SUPERVISOR_EXTENSIONS} extension(s) beyond max review cycles (${snapshotConfiguredMax}). Human input required.`,
+            assignedTo: null,
+          });
+          bus.emit('task:blocked', { taskId, reason: 'Supervisor exhausted cycle extensions' });
+          return;
+        }
+      }
+      const update = {
+        status: 'queued',
+        reviewFeedback: result.feedback || criticalIssues,
+        reviewCycleCount: nextReviewCycleCount,
+        blockedReason: null,
+        assignedTo: null,
+      };
+      if (allowExtension) update.maxReviewCycles = maxReviewCycles + 1;
+      store.updateTask(taskId, update);
+      bus.emit('review:failed', { taskId, issues: criticalIssues });
+    } else {
+      // ESCALATE
+      const reason = allowExtension
+        ? `Supervisor escalated after max review cycles (${maxReviewCycles}): ${result.feedback || 'Human input required.'}`
+        : `Supervisor escalated: ${result.feedback || 'Human input required.'}`;
+      store.updateTask(taskId, {
+        status: 'blocked',
+        reviewFeedback: criticalIssues,
+        reviewCycleCount: nextReviewCycleCount,
+        blockedReason: reason,
+        assignedTo: null,
+      });
+      bus.emit('task:blocked', { taskId, reason: 'Supervisor escalated review failure' });
+    }
+  } catch (error) {
+    logSupervisorFailure('Supervisor evaluation failed during review', taskId, mode, error);
+    if (allowExtension) {
+      // Fail-safe: block as normal
+      store.updateTask(taskId, {
+        status: 'blocked',
+        reviewFeedback: criticalIssues,
+        reviewCycleCount: nextReviewCycleCount,
+        blockedReason: `Reached maximum review cycles (${maxReviewCycles}). Human input required.`,
+        assignedTo: null,
+      });
+      bus.emit('task:blocked', { taskId, reason: 'Reached maximum review cycles' });
+    } else {
+      // Fail-safe: auto-retry with raw issues, but log that supervisor failed
+      const errorDetail = error instanceof Error ? error.message : String(error);
+      store.appendLog(taskId, `Supervisor crashed during review routing. Falling back to auto-retry. Error: ${errorDetail}`);
+      store.updateTask(taskId, {
+        status: 'queued',
+        reviewFeedback: criticalIssues,
+        reviewCycleCount: nextReviewCycleCount,
+        blockedReason: null,
+        assignedTo: null,
+      });
+      bus.emit('review:failed', { taskId, issues: criticalIssues });
+    }
+  }
+}
+
 async function onReviewComplete(agentId, taskId) {
   const reviewer = agentManager.get(agentId);
   if (!reviewer) return;
@@ -1055,7 +1183,24 @@ async function onReviewComplete(agentId, taskId) {
     const nextReviewCycleCount = (task?.reviewCycleCount || 0) + 1;
     const maxReviewCycles = Math.max(1, task?.maxReviewCycles || getMaxReviewCycles());
 
+    const settings = loadSettings();
+    const mode = settings.autopilotMode || 'manual';
+    const snapshotConfiguredMax = settings.maxReviewCycles || 3;
+
     if (nextReviewCycleCount >= maxReviewCycles) {
+      if (mode === 'autopilot') {
+        // Prevent poll loop from re-spawning a reviewer during supervisor evaluation
+        store.updateTask(taskId, { status: 'evaluating', assignedTo: null });
+        try {
+          await handleSupervisorReviewDecision(taskId, reviewText, criticalIssues, nextReviewCycleCount, maxReviewCycles, settings, { allowExtension: true, snapshotConfiguredMax, mode });
+        } catch (error) {
+          logSupervisorFailure('Unhandled error in handleSupervisorReviewDecision', taskId, mode, error);
+          store.updateTask(taskId, { status: 'blocked', reviewFeedback: criticalIssues, reviewCycleCount: nextReviewCycleCount, blockedReason: 'Supervisor evaluation failed unexpectedly. Human input required.', assignedTo: null });
+          bus.emit('task:blocked', { taskId, reason: 'Supervisor evaluation failed' });
+        }
+        return;
+      }
+
       store.updateTask(taskId, {
         status: 'blocked',
         reviewFeedback: criticalIssues,
@@ -1067,6 +1212,21 @@ async function onReviewComplete(agentId, taskId) {
       return;
     }
 
+    // Review failed but cycles remain
+    if (mode === 'autopilot') {
+      // Prevent poll loop from re-spawning a reviewer during supervisor evaluation
+      store.updateTask(taskId, { status: 'evaluating', assignedTo: null });
+      try {
+        await handleSupervisorReviewDecision(taskId, reviewText, criticalIssues, nextReviewCycleCount, maxReviewCycles, settings, { allowExtension: false, snapshotConfiguredMax, mode });
+      } catch (error) {
+        logSupervisorFailure('Unhandled error in handleSupervisorReviewDecision', taskId, mode, error);
+        store.updateTask(taskId, { status: 'queued', reviewFeedback: criticalIssues, reviewCycleCount: nextReviewCycleCount, blockedReason: null, assignedTo: null });
+        bus.emit('review:failed', { taskId, issues: criticalIssues });
+      }
+      return;
+    }
+
+    // Manual and hybrid: auto-retry with raw critical issues
     store.updateTask(taskId, {
       status: 'queued',
       reviewFeedback: criticalIssues,
@@ -1408,7 +1568,7 @@ function pollLoop() {
     if (agent.status === 'idle' && !agent.process && agent.currentTask) {
       const taskId = agent.currentTask;
       const task = store.getTask(taskId);
-      if (task && !['blocked', 'done', 'aborted', 'backlog', 'paused', 'workspace_setup'].includes(task.status)) {
+      if (task && !['blocked', 'done', 'aborted', 'backlog', 'paused', 'workspace_setup', 'evaluating'].includes(task.status)) {
         const isPlanner = agent.id.startsWith('plan-');
         const isImplementor = agent.id.startsWith('imp-');
         const isReviewer = agent.id.startsWith('rev-');
@@ -1483,7 +1643,7 @@ function pollLoop() {
 // --- Event Handlers ---
 
 bus.on('plan:approved', (taskId) => approvePlan(taskId));
-bus.on('plan:rejected', ({ taskId, feedback }) => rejectPlan(taskId, feedback));
+bus.on('plan:rejected', ({ taskId, feedback }) => rejectPlan(taskId, feedback, { resetRejectionCount: true }));
 
 bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
   const agent = agentManager.get(agentId);
@@ -1568,3 +1728,7 @@ const orchestrator = {
 };
 
 export default orchestrator;
+export const __test__ = {
+  onPlanComplete,
+  onReviewComplete,
+};

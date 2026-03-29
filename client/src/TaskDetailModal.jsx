@@ -70,7 +70,10 @@ function formatTotalTime(startedAt, completedAt) {
 
 function isMaxReviewCyclesBlocker(blockedReason) {
   if (typeof blockedReason !== 'string') return false;
-  return /^Reached maximum review cycles(?: \(\d+\))?/i.test(blockedReason.trim());
+  const trimmed = blockedReason.trim();
+  return /^Reached maximum review cycles(?: \(\d+\))?/i.test(trimmed)
+    || /^Supervisor exhausted \d+ extension/i.test(trimmed)
+    || /^Supervisor escalated/i.test(trimmed);
 }
 
 export default function TaskDetailModal({
@@ -374,6 +377,37 @@ export default function TaskDetailModal({
                     {cleanTerminalArtifacts(task.plan)}
                   </pre>
                 )}
+              </div>
+            )}
+
+            {/* Supervisor Feedback */}
+            {task.planFeedback && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{
+                  ...labelStyle, display: 'flex', alignItems: 'center', gap: 8,
+                }}>
+                  Supervisor Feedback
+                  {task.planRejectionCount > 0 && (
+                    <span style={{
+                      fontSize: 10, color: 'var(--amber)',
+                      fontWeight: 400,
+                    }}>
+                      (rejected {task.planRejectionCount}{task.maxPlanRejections ? `/${task.maxPlanRejections}` : ''})
+                    </span>
+                  )}
+                </div>
+                <pre style={{
+                  fontSize: 11, color: 'var(--text2)',
+                  background: 'var(--bg)', padding: 10, borderRadius: 4,
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                  maxHeight: 200, overflowY: 'auto',
+                  borderLeft: '3px solid var(--amber)',
+                  border: '1px solid var(--border)',
+                  borderLeftColor: 'var(--amber)',
+                  borderLeftWidth: 3,
+                }}>
+                  {task.planFeedback}
+                </pre>
               </div>
             )}
 

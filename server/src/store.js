@@ -12,7 +12,7 @@ const PLANS_DIR = runtimePaths.plansDir;
 function statusToStage(status) {
   if (['workspace_setup', 'planning', 'awaiting_approval'].includes(status)) return 'planning';
   if (['queued', 'implementing'].includes(status)) return 'implementation';
-  if (status === 'review') return 'review';
+  if (status === 'review' || status === 'evaluating') return 'review';
   if (status === 'done' || status === 'awaiting_manual_pr') return 'done';
   if (['backlog', 'aborted'].includes(status)) return 'backlog';
   return null;
@@ -135,6 +135,7 @@ class TaskStore {
       assignedTo: null,
       reviewFeedback: null,
       planFeedback: null,
+      planRejectionCount: 0,
       blockedReason: null,
       workspacePath: null,
       reviewCycleCount: 0,
@@ -243,6 +244,7 @@ class TaskStore {
       queued: 'queued',
       implementing: 'queued',
       review: 'review',
+      evaluating: 'review',
     };
     let changed = false;
     for (const task of this.tasks) {

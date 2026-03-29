@@ -188,6 +188,18 @@ export default function App() {
         >
           {'\u2699'}
         </button>
+        {(settings?.autopilotMode === 'autopilot' || settings?.autopilotMode === 'hybrid') && (
+          <span
+            data-testid="mode-badge"
+            style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: 0.5,
+              padding: '2px 6px', borderRadius: 3,
+              background: 'var(--amber)', color: '#000',
+            }}
+          >
+            {settings.autopilotMode.toUpperCase()}
+          </span>
+        )}
 
         {/* Add Task */}
         <button
@@ -579,11 +591,15 @@ function SettingsModal({ settings, onClose, onApply }) {
   };
 
   const isValid = Boolean(local.workspaceRoot?.trim()) &&
-    Object.entries(local.agents || {}).every(([role, cfg]) => {
-      const range = maxRules[role] || { min: 1, max: 10 };
-      return cfg.max >= range.min && cfg.max <= range.max;
-    }) &&
+    Object.entries(local.agents || {})
+      .filter(([role]) => role !== 'supervisor')
+      .every(([role, cfg]) => {
+        const range = maxRules[role] || { min: 1, max: 10 };
+        return cfg.max >= range.min && cfg.max <= range.max;
+      }) &&
     typeof local.maxReviewCycles === 'number' && local.maxReviewCycles >= 1 && local.maxReviewCycles <= 20 &&
+    (local.maxPlanRejections === undefined || (typeof local.maxPlanRejections === 'number' && local.maxPlanRejections >= 1 && local.maxPlanRejections <= 10)) &&
+    ['manual', 'autopilot', 'hybrid'].includes(local.autopilotMode || 'manual') &&
     ['planning', 'implementation', 'review'].every(stage => typeof local.prompts?.[stage] === 'string');
 
   const tabs = [
@@ -914,6 +930,122 @@ function SettingsModal({ settings, onClose, onApply }) {
                   </div>
                 </div>
               )}
+
+              <div style={{ marginBottom: 20 }}>
+                <div style={{
+                  fontSize: 11, fontWeight: 600, color: 'var(--text2)',
+                  letterSpacing: 1, marginBottom: 8,
+                }}>
+                  EXECUTION MODE
+                </div>
+                <div role="radiogroup" aria-label="Execution mode" style={{ display: 'flex', gap: 0, marginBottom: 8 }}>
+                  {[
+                    { value: 'manual', label: 'Manual' },
+                    { value: 'hybrid', label: 'Hybrid' },
+                    { value: 'autopilot', label: 'Autopilot' },
+                  ].map((opt, i, arr) => {
+                    const isSelected = (local.autopilotMode || 'manual') === opt.value;
+                    return (
+                      <label
+                        key={opt.value}
+                        style={{
+                          flex: 1,
+                          padding: '7px 10px',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          background: isSelected ? 'var(--amber)' : 'var(--bg2)',
+                          color: isSelected ? '#000' : 'var(--text2)',
+                          borderStyle: 'solid',
+                          borderWidth: 1,
+                          borderColor: isSelected ? 'var(--amber)' : 'var(--border)',
+                          borderRadius: i === 0 ? '4px 0 0 4px' : i === arr.length - 1 ? '0 4px 4px 0' : 0,
+                          cursor: 'pointer',
+                          borderRightWidth: i < arr.length - 1 ? 0 : 1,
+                          textAlign: 'center',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="executionMode"
+                          value={opt.value}
+                          checked={isSelected}
+                          onChange={() => setLocal(prev => ({ ...prev, autopilotMode: opt.value }))}
+                          style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+                        />
+                        {opt.label}
+                      </label>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+                  {(local.autopilotMode || 'manual') === 'manual' && 'Human approves all plans and handles review failures.'}
+                  {local.autopilotMode === 'hybrid' && 'AI supervisor auto-approves plans. Review failures use standard auto-retry.'}
+                  {local.autopilotMode === 'autopilot' && 'Fully automated: AI supervisor approves plans and makes smart retry decisions on review failures. Escalates only when stuck.'}
+                </div>
+                {(local.autopilotMode === 'hybrid' || local.autopilotMode === 'autopilot') && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 12, color: 'var(--text2)', width: 100 }}>Supervisor model:</span>
+                      <select
+                        data-testid="model-select-supervisor"
+                        value={encodeCliModel(
+                          local.agents?.supervisor?.cli || 'claude',
+                          local.agents?.supervisor?.model || ''
+                        )}
+                        onChange={e => {
+                          const { cli, model } = decodeCliModel(e.target.value);
+                          setLocal(prev => {
+                            const next = JSON.parse(JSON.stringify(prev));
+                            next.agents.supervisor = { cli, model };
+                            return next;
+                          });
+                        }}
+                        style={{
+                          flex: 1, padding: '4px 8px', fontSize: 12,
+                          background: 'var(--bg)', border: '1px solid var(--border)',
+                          borderRadius: 4,
+                        }}
+                      >
+                        {Object.entries(CLI_MODEL_MAP).map(([cli, models]) => (
+                          <optgroup key={cli} label={`${cli} CLI`}>
+                            {models.map(opt => (
+                              <option key={encodeCliModel(cli, opt.value)} value={encodeCliModel(cli, opt.value)}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
+                      CLI and model used by the AI supervisor for plan evaluation and review-failure triage.
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+                      <span style={{ fontSize: 12, color: 'var(--text2)', width: 100 }}>Max rejections:</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        data-testid="max-plan-rejections"
+                        value={local.maxPlanRejections ?? 3}
+                        onChange={e => {
+                          const parsed = parseInt(e.target.value, 10);
+                          const val = Number.isNaN(parsed) ? 3 : Math.max(1, Math.min(10, parsed));
+                          setLocal(prev => ({ ...prev, maxPlanRejections: val }));
+                        }}
+                        style={{
+                          width: 60, padding: '4px 6px', fontSize: 12,
+                          background: 'var(--bg)', border: '1px solid var(--border)',
+                          borderRadius: 4, textAlign: 'center',
+                        }}
+                      />
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
+                      Plans rejected more than this many times are escalated to human review.
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 16, fontStyle: 'italic' }}>
                 Orchestrator scales agents up on demand, up to the max per role. Planning and Review can be disabled by setting max to 0.

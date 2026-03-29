@@ -4,6 +4,7 @@ import { getRuntimePaths } from './paths.js';
 const runtimePaths = getRuntimePaths();
 
 export const DEFAULT_WORKSPACES_DIR = runtimePaths.workspacesDir;
+export const VALID_AUTOPILOT_MODES = ['manual', 'autopilot', 'hybrid'];
 
 let envVars = {};
 try {
@@ -162,8 +163,11 @@ export function getDefaults() {
       planners:     { max: 4, cli: 'claude', model: '' },
       implementors: { max: 8, cli: getLegacyImplementorCli(), model: '' },
       reviewers:    { max: 4, cli: 'claude', model: '' },
+      supervisor:   { cli: 'claude', model: '' },
     },
     maxReviewCycles: 3,
+    maxPlanRejections: 3,
+    autopilotMode: 'manual',
     prompts: { ...DEFAULT_PROMPTS },
   };
 }
@@ -191,8 +195,10 @@ function normalizeSettingsShape(data) {
       data.agents = data.agents || {};
       data.agents[role] = defaults.agents[role];
     } else {
-      delete data.agents[role].count;
+      if (role !== 'supervisor') delete data.agents[role].count;
       if (typeof data.agents[role].model !== 'string') {
+        data.agents[role].model = '';
+      } else if (data.agents[role].model && !isValidModelForCli(data.agents[role].cli, data.agents[role].model)) {
         data.agents[role].model = '';
       }
     }
@@ -200,6 +206,14 @@ function normalizeSettingsShape(data) {
 
   if (typeof data.maxReviewCycles !== 'number' || data.maxReviewCycles < 1) {
     data.maxReviewCycles = defaults.maxReviewCycles;
+  }
+
+  if (typeof data.maxPlanRejections !== 'number' || data.maxPlanRejections < 1) {
+    data.maxPlanRejections = defaults.maxPlanRejections;
+  }
+
+  if (!VALID_AUTOPILOT_MODES.includes(data.autopilotMode)) {
+    data.autopilotMode = defaults.autopilotMode;
   }
 
   data.prompts = {
@@ -271,8 +285,30 @@ export function validateSettings(settings) {
     }
   }
 
+  const supervisorCfg = settings.agents.supervisor;
+  if (supervisorCfg) {
+    if (!validClis.includes(supervisorCfg.cli)) {
+      errors.push(`supervisor.cli must be one of: ${validClis.join(', ')}`);
+    }
+    if (supervisorCfg.model !== undefined && typeof supervisorCfg.model !== 'string') {
+      errors.push('supervisor.model must be a string');
+    } else if (typeof supervisorCfg.model === 'string' && validClis.includes(supervisorCfg.cli) && !isValidModelForCli(supervisorCfg.cli, supervisorCfg.model)) {
+      errors.push(`supervisor.model '${supervisorCfg.model}' is not valid for the '${supervisorCfg.cli}' CLI`);
+    }
+  }
+
   if (typeof settings.maxReviewCycles !== 'number' || settings.maxReviewCycles < 1 || settings.maxReviewCycles > 20) {
     errors.push('maxReviewCycles must be a number between 1 and 20');
+  }
+
+  if (settings.maxPlanRejections !== undefined) {
+    if (typeof settings.maxPlanRejections !== 'number' || settings.maxPlanRejections < 1 || settings.maxPlanRejections > 10) {
+      errors.push('maxPlanRejections must be a number between 1 and 10');
+    }
+  }
+
+  if (settings.autopilotMode !== undefined && !VALID_AUTOPILOT_MODES.includes(settings.autopilotMode)) {
+    errors.push('autopilotMode must be one of: manual, autopilot, hybrid');
   }
 
   if (!settings.prompts || typeof settings.prompts !== 'object') {
