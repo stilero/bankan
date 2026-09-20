@@ -46,4 +46,11 @@ describe('linting integration', () => {
       expect(configuredNode, `${workflow} Node version`).toBeGreaterThanOrEqual(minimumNode);
     }
   });
+
+  test('publishes the bankan executable from a valid package-relative path', () => {
+    const packageJson = JSON.parse(readFileSync(resolve(repoRoot, 'package.json'), 'utf-8'));
+
+    expect(packageJson.bin?.bankan).toBe('bin/bankan.js');
+    expect(existsSync(resolve(repoRoot, packageJson.bin.bankan))).toBe(true);
+  });
 });
