@@ -90,6 +90,7 @@ export default function TaskDetailModal({
   onAllowMoreReview,
   onDelete,
   onOpenWorkspace,
+  onOpenWorkflow,
 }) {
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
@@ -496,6 +497,18 @@ export default function TaskDetailModal({
               marginTop: 8,
               flexWrap: 'wrap',
             }}>
+              {task.executionMode === 'workflow' && onOpenWorkflow && (
+                <button
+                  onClick={() => onOpenWorkflow(task.id)}
+                  style={{
+                    padding: '6px 14px', fontSize: 12,
+                    background: 'var(--bg2)', border: '1px solid var(--steel2)',
+                    borderRadius: 4, color: 'var(--steel2)',
+                  }}
+                >
+                  Open Workflow
+                </button>
+              )}
               <button
                 onClick={() => {
                   setEditTitle(task.title);

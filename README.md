@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-Plan → Implement → Review → Pull Request
+Design → Publish → Run → Inspect
 </p>
 
 <p align="center">
@@ -76,14 +76,14 @@ Contributor workflow, TDD expectations, pull request testing guidance, and verif
 
 ## Requirements
 
-- [Node.js](https://nodejs.org/) >= 18
+- [Node.js](https://nodejs.org/) >= 22
 - [git](https://git-scm.com/)
 - At least one AI CLI tool:
   - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`npm install -g @anthropic-ai/claude-code`)
   - [Codex CLI](https://github.com/openai/codex) (`npm install -g @openai/codex`)
 - [GitHub CLI](https://cli.github.com/) (`gh`) — required only for automatic pull request creation
 
-Native build tools may be needed only if `node-pty` has to compile during install.
+Native build tools may be needed if `node-pty` or `better-sqlite3` has to compile during install.
 
 macOS: `xcode-select --install`
 Linux: `sudo apt-get install build-essential`
@@ -114,11 +114,11 @@ bankan
 
 4. Add one or more repositories in `Settings -> General -> Repositories`
 
-5. Create a task in the dashboard
+5. Review or customize the published workflow under `Workflows`
 
-6. Approve the generated plan
+6. Create a task and select a published workflow version
 
-7. Watch agents implement and review the change
+7. Use the live task graph for interviews, approvals, artifacts, budgets, and run controls
 
 8. Optionally create a pull request
 
@@ -128,11 +128,15 @@ bankan
 
 Ban Kan is a **local control center for AI coding agents** that work across real repositories.
 
-Instead of one long AI chat trying to do everything, tasks move through a structured pipeline inspired by a Kanban board:
+Instead of one long AI chat trying to do everything, every new task snapshots an immutable, published workflow version. Phase nodes move its card through the Kanban board:
 
 Backlog → Planning → Implementation → Review → Done
 
-Each stage can use different agents, prompts, and concurrency settings. Developers keep full visibility and control over what is happening at every step.
+Each workflow can combine interviews, configurable agents, approvals, conditions, bounded loops, forks, joins, phases, actions, and terminal outcomes. Drafts may be incomplete, while publication requires deterministic routes, bounded cycles, executable-node policies, and provider-compatible model and permission settings.
+
+Ban Kan ships four published workflows: **Standard Development** (the default), **Simple Linear**, **Security Focused**, and **Legacy Pipeline**. The workflow editor supports version history and secret-free JSON import/export. Existing nonterminal tasks loaded from `tasks.json` remain on the legacy executor; newly created tasks use the graph engine.
+
+Workflow definitions and execution state are stored transactionally in `.data/workflows.sqlite`. Large transcripts and workspace contents remain filesystem-backed. A task snapshot never changes when its source workflow draft or later published versions change.
 
 Ban Kan combines:
 

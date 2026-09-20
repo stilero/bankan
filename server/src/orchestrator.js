@@ -1360,7 +1360,7 @@ function pollLoop() {
 
   // Assign backlog → available planners (loop to fill multiple planners)
   const backlogTasks = tasks
-    .filter(t => t.status === 'backlog')
+    .filter(t => t.status === 'backlog' && t.executionMode !== 'workflow')
     .sort((a, b) => {
       const prio = { critical: 0, high: 1, medium: 2, low: 3 };
       return (prio[a.priority] ?? 2) - (prio[b.priority] ?? 2);
@@ -1379,7 +1379,7 @@ function pollLoop() {
   }
 
   // Assign queued → implementor
-  const queuedTasks = tasks.filter(t => t.status === 'queued');
+  const queuedTasks = tasks.filter(t => t.status === 'queued' && t.executionMode !== 'workflow');
   for (const task of queuedTasks) {
     if (!agentManager.getAvailableImplementor()) {
       agentManager.scaleUp('implementors');
@@ -1393,7 +1393,7 @@ function pollLoop() {
   }
 
   // Assign review tasks with no assignee → available reviewers
-  const reviewTasks = tasks.filter(t => t.status === 'review' && !t.assignedTo);
+  const reviewTasks = tasks.filter(t => t.status === 'review' && !t.assignedTo && t.executionMode !== 'workflow');
   for (const task of reviewTasks) {
     if (!agentManager.getAvailableReviewer()) {
       agentManager.scaleUp('reviewers');

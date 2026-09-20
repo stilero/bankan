@@ -172,6 +172,7 @@ async function main() {
 
   // Step 5: Write .env.local
   mkdirSync(runtimePaths.dataDir, { recursive: true });
+  console.log(`  ${dim('Workflow definitions and durable run state will be initialized in workflows.sqlite on first launch.')}`);
   const envLines = [
     `PORT=${config.PORT}`,
   ];

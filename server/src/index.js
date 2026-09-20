@@ -19,6 +19,13 @@ import {
   stageToRetryStatus,
 } from './workflow.js';
 import { createSessionEntry } from './sessionHistory.js';
+import {
+  controlWorkflowRun,
+  createWorkflowTask,
+  getWorkflowRepository,
+  getWorkflowRun,
+  appendWorkflowExchange,
+} from './workflowRuntime.js';
 
 const app = express();
 app.use(cors());
@@ -133,10 +140,110 @@ app.get('/api/browse-dir', (req, res) => {
 });
 
 app.post('/api/tasks', (req, res) => {
-  const { title, priority, description, repoPath } = req.body;
+  const { title, priority, description, repoPath, workflowId, workflowVersion } = req.body;
   if (!title) return res.status(400).json({ error: 'Title is required' });
-  const task = store.addTask({ title, priority, description, repoPath });
-  res.status(201).json(task);
+  try {
+    const task = createWorkflowTask({ title, priority, description, repoPath, workflowId, workflowVersion });
+    res.status(201).json(task);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get('/api/workflows', (req, res) => {
+  res.json({ workflows: getWorkflowRepository().listWorkflows(), defaultWorkflow: getWorkflowRepository().getDefault() });
+});
+
+app.post('/api/workflows', (req, res) => {
+  const { name, description, definition } = req.body || {};
+  if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
+  res.status(201).json(getWorkflowRepository().createDraft({ name: name.trim(), description, definition }));
+});
+
+app.get('/api/workflows/:id', (req, res) => {
+  const workflow = getWorkflowRepository().getWorkflow(req.params.id);
+  if (!workflow) return res.status(404).json({ error: 'Workflow not found' });
+  res.json(workflow);
+});
+
+app.put('/api/workflows/:id/draft', (req, res) => {
+  try {
+    res.json(getWorkflowRepository().updateDraft(req.params.id, req.body.definition, req.body));
+  } catch (error) {
+    res.status(404).json({ error: error.message });
+  }
+});
+
+app.post('/api/workflows/:id/validate', (req, res) => {
+  try {
+    const errors = getWorkflowRepository().validate(req.params.id);
+    res.status(errors.length > 0 ? 422 : 200).json({ valid: errors.length === 0, errors });
+  } catch (error) {
+    res.status(404).json({ error: error.message });
+  }
+});
+
+app.post('/api/workflows/:id/publish', (req, res) => {
+  try {
+    const published = getWorkflowRepository().publish(req.params.id);
+    broadcast('WORKFLOW_PUBLISHED', published);
+    res.status(201).json(published);
+  } catch (error) {
+    res.status(/validation/i.test(error.message) ? 422 : 404).json({ error: error.message });
+  }
+});
+
+app.get('/api/workflows/:id/versions', (req, res) => {
+  res.json({ versions: getWorkflowRepository().listVersions(req.params.id) });
+});
+
+app.put('/api/workflows/default', (req, res) => {
+  try {
+    const selected = getWorkflowRepository().setDefault(req.body.workflowId, req.body.version);
+    broadcast('WORKFLOW_DEFAULT_UPDATED', selected);
+    res.json(selected);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get('/api/workflows/:id/export', (req, res) => {
+  try {
+    res.json(getWorkflowRepository().exportWorkflow(req.params.id));
+  } catch (error) {
+    res.status(404).json({ error: error.message });
+  }
+});
+
+app.post('/api/workflows/import', (req, res) => {
+  try {
+    res.status(201).json(getWorkflowRepository().importWorkflow(req.body));
+  } catch (error) {
+    res.status(422).json({ error: error.message });
+  }
+});
+
+app.get('/api/tasks/:id/workflow-run', (req, res) => {
+  const run = getWorkflowRun(req.params.id);
+  if (!run) return res.status(404).json({ error: 'Workflow execution not found' });
+  res.json(run);
+});
+
+app.post('/api/tasks/:id/workflow-run/:command', (req, res) => {
+  try {
+    const run = controlWorkflowRun(req.params.id, req.params.command, req.body || {});
+    res.json(run);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/tasks/:id/workflow-run-exchanges', (req, res) => {
+  try {
+    res.status(201).json(appendWorkflowExchange(req.params.id, req.body));
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 app.patch('/api/tasks/:id/approve', (req, res) => {
@@ -497,6 +604,8 @@ wss.on('connection', (ws) => {
       repos: loadSettings().repos || [],
       settings: loadSettings(),
       capabilities: getGithubCapabilities(),
+      workflows: getWorkflowRepository().listWorkflows(),
+      defaultWorkflow: getWorkflowRepository().getDefault(),
     },
     ts: Date.now(),
   }));
@@ -507,8 +616,24 @@ wss.on('connection', (ws) => {
 
     switch (msg.type) {
       case 'ADD_TASK': {
-        const { title, priority, description, repoPath } = msg.payload || {};
-        if (title) store.addTask({ title, priority, description, repoPath });
+        const { title, priority, description, repoPath, workflowId, workflowVersion } = msg.payload || {};
+        if (title) {
+          try {
+            createWorkflowTask({ title, priority, description, repoPath, workflowId, workflowVersion });
+          } catch (error) {
+            sendToClient(ws, 'WORKFLOW_ERROR', { message: error.message });
+          }
+        }
+        break;
+      }
+      case 'WORKFLOW_CONTROL': {
+        const { taskId, command, ...payload } = msg.payload || {};
+        try {
+          const run = controlWorkflowRun(taskId, command, payload);
+          sendToClient(ws, 'WORKFLOW_RUN_UPDATED', run);
+        } catch (error) {
+          sendToClient(ws, 'WORKFLOW_ERROR', { message: error.message });
+        }
         break;
       }
       case 'APPROVE_PLAN': {
@@ -543,6 +668,10 @@ wss.on('connection', (ws) => {
       case 'PAUSE_TASK': {
         const { taskId } = msg.payload || {};
         const task = store.getTask(taskId);
+        if (task?.executionMode === 'workflow') {
+          try { controlWorkflowRun(taskId, 'pause'); } catch (error) { sendToClient(ws, 'WORKFLOW_ERROR', { message: error.message }); }
+          break;
+        }
         if (task && !['done', 'paused', 'aborted'].includes(task.status)) {
           const previousStatus = task.status;
           // Kill assigned agent if any
@@ -563,6 +692,10 @@ wss.on('connection', (ws) => {
       case 'RESUME_TASK': {
         const { taskId } = msg.payload || {};
         const task = store.getTask(taskId);
+        if (task?.executionMode === 'workflow') {
+          try { controlWorkflowRun(taskId, 'resume'); } catch (error) { sendToClient(ws, 'WORKFLOW_ERROR', { message: error.message }); }
+          break;
+        }
         if (task && task.status === 'paused') {
           const resumeTo = stageToResumeStatus(task);
           store.updateTask(taskId, {
@@ -574,7 +707,10 @@ wss.on('connection', (ws) => {
       }
       case 'ABORT_TASK': {
         const { taskId } = msg.payload || {};
-        if (taskId) orchestrator.abortTask(taskId);
+        const task = store.getTask(taskId);
+        if (task?.executionMode === 'workflow') {
+          try { controlWorkflowRun(taskId, 'cancel'); } catch (error) { sendToClient(ws, 'WORKFLOW_ERROR', { message: error.message }); }
+        } else if (taskId) orchestrator.abortTask(taskId);
         break;
       }
       case 'RESET_TASK': {
@@ -753,6 +889,7 @@ wss.on('connection', (ws) => {
 // Event bus → WS broadcast
 bus.on('tasks:changed', (tasks) => broadcast('TASKS_UPDATED', { tasks }));
 bus.on('task:added', (task) => broadcast('TASK_ADDED', { task }));
+bus.on('workflow:run-updated', (run) => broadcast('WORKFLOW_RUN_UPDATED', run));
 bus.on('agents:updated', (agents) => broadcast('AGENTS_UPDATED', { agents }));
 bus.on('agent:removed', (data) => broadcast('AGENT_REMOVED', data));
 bus.on('plan:ready', (data) => broadcast('PLAN_READY', data));

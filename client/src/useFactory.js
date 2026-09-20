@@ -15,6 +15,8 @@ export default function useFactory() {
   const [repos, setRepos] = useState([]);
   const [settings, setSettings] = useState(null);
   const [capabilities, setCapabilities] = useState(null);
+  const [workflows, setWorkflows] = useState([]);
+  const [defaultWorkflow, setDefaultWorkflow] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const wsRef = useRef(null);
   const termSubsRef = useRef(new Map()); // agentId → callback
@@ -69,6 +71,8 @@ export default function useFactory() {
               addNotification('GitHub CLI pull request automation is unavailable. PRs will need to be created manually.', 'warning');
             }
           }
+          setWorkflows(msg.payload.workflows || []);
+          setDefaultWorkflow(msg.payload.defaultWorkflow || null);
           setIsInitialized(true);
           break;
         case 'TASKS_UPDATED':
@@ -163,6 +167,15 @@ export default function useFactory() {
         case 'SETTINGS_ERROR':
           addNotification((msg.payload?.errors || []).join(', ') || 'Settings update failed', 'error');
           break;
+        case 'WORKFLOW_PUBLISHED':
+          addNotification(`Workflow version ${msg.payload.version} published`, 'success');
+          break;
+        case 'WORKFLOW_DEFAULT_UPDATED':
+          setDefaultWorkflow(msg.payload);
+          break;
+        case 'WORKFLOW_ERROR':
+          addNotification(msg.payload?.message || 'Workflow action failed', 'error');
+          break;
       }
     };
 
@@ -187,8 +200,8 @@ export default function useFactory() {
     };
   }, [connect]);
 
-  const addTask = useCallback((title, priority, description, repoPath) => {
-    send('ADD_TASK', { title, priority, description, repoPath });
+  const addTask = useCallback((title, priority, description, repoPath, workflowId, workflowVersion) => {
+    send('ADD_TASK', { title, priority, description, repoPath, workflowId, workflowVersion });
   }, [send]);
 
   const approvePlan = useCallback((taskId) => {
@@ -292,6 +305,8 @@ export default function useFactory() {
     repos,
     settings,
     capabilities,
+    workflows,
+    defaultWorkflow,
     notifications,
     addTask,
     approvePlan,

@@ -64,6 +64,7 @@ class TaskStore {
         this.tasks = JSON.parse(readFileSync(TASKS_FILE, 'utf-8'));
         this.tasks = this.tasks.map(task => {
           const normalized = {
+            executionMode: 'legacy',
             reviewCycleCount: 0,
             maxReviewCycles: getDefaultMaxReviewCycles(),
             lastActiveStage: statusToStage(task.status) || 'backlog',
@@ -119,13 +120,18 @@ class TaskStore {
     writeFileSync(TASKS_FILE, JSON.stringify(this.tasks, null, 2));
   }
 
-  addTask({ title, priority = 'medium', description = '', repoPath = '' }) {
+  addTask({ title, priority = 'medium', description = '', repoPath = '', executionMode = 'legacy' }) {
     const task = {
       id: 'T-' + uuidv4().slice(0, 6).toUpperCase(),
       title,
       priority,
       description,
       repoPath,
+      executionMode,
+      workflowRunId: null,
+      workflowId: null,
+      workflowVersion: null,
+      currentPhase: executionMode === 'workflow' ? 'Intake' : null,
       status: 'backlog',
       branch: null,
       plan: null,
