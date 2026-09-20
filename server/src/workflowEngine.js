@@ -116,17 +116,34 @@ export class WorkflowEngine {
     }
     for (const edge of selected) {
       let target = edge.target;
+      let activation = null;
       if (edge.loop) {
+        const abandoned = [...run.activeNodes];
+        for (const activeNodeId of abandoned) this.repository.updateActiveNodeRun(run.id, activeNodeId, 'cancelled', { reason: 'Feedback loop returned to an earlier Step' });
+        run = this.repository.updateExecution(run.id, { activeNodes: [], joinArrivals: {} });
+        if (abandoned.length > 0) {
+          this.repository.recordAudit(run.id, 'loop.branches-cancelled', { edgeId: edge.id, nodeIds: abandoned });
+        }
         const count = (run.loopCounters[edge.id] || 0) + 1;
         run = this.repository.updateExecution(run.id, { loopCounters: { ...run.loopCounters, [edge.id]: count } });
-        if (count > edge.loop.maxIterations) target = edge.loop.exhaustionTarget;
+        if (count > edge.loop.maxIterations) {
+          target = edge.loop.exhaustionTarget;
+          activation = { exhaustion: { edgeId: edge.id, iteration: count, limit: edge.loop.maxIterations } };
+          this.repository.recordAudit(run.id, 'loop.exhausted', { edgeId: edge.id, iteration: count, limit: edge.loop.maxIterations, target });
+        } else {
+          const feedback = edge.loop.feedbackArtifact
+            ? this.repository.listArtifacts(run.id).filter(artifact => artifact.type === edge.loop.feedbackArtifact).at(-1)
+            : null;
+          activation = { feedback, loop: { edgeId: edge.id, iteration: count, limit: edge.loop.maxIterations } };
+          this.repository.recordAudit(run.id, 'loop.returned', { edgeId: edge.id, iteration: count, limit: edge.loop.maxIterations, feedbackArtifact: edge.loop.feedbackArtifact || null });
+        }
       }
-      run = this.#activate(run, target, sourceId);
+      run = this.#activate(run, target, sourceId, activation);
     }
     return run;
   }
 
-  #activate(run, nodeId, sourceId = null) {
+  #activate(run, nodeId, sourceId = null, activation = null) {
     if (['succeeded', 'failed', 'cancelled'].includes(run.status)) return run;
     const node = run.workflowSnapshot.nodes.find(candidate => candidate.id === nodeId);
     if (!node) throw new Error(`Node ${nodeId} not found`);
@@ -162,7 +179,7 @@ export class WorkflowEngine {
       return this.#route(run, node.id, rule?.outcome || '__fallback__');
     }
     if (!run.activeNodes.includes(nodeId)) {
-      this.repository.createNodeRun(run.id, nodeId, { artifacts: this.repository.listArtifacts(run.id) });
+      this.repository.createNodeRun(run.id, nodeId, { artifacts: this.repository.listArtifacts(run.id), ...(activation || {}) });
       run = this.repository.updateExecution(run.id, { activeNodes: [...run.activeNodes, nodeId] });
       this.repository.recordAudit(run.id, 'node.started', { nodeId, type: node.type });
     }

@@ -55,6 +55,7 @@ import App from './App.jsx';
 
 describe('App', () => {
   beforeEach(() => {
+    window.history.replaceState({}, '', '/');
     terminalDrawerMock.mockReset();
     taskDetailModalMock.mockReset();
     boardMock.mockReset();
@@ -63,7 +64,7 @@ describe('App', () => {
       connected: true,
       isInitialized: true,
       agents: [{ id: 'imp-1', status: 'active' }, { id: 'orch', status: 'active' }],
-      tasks: [{ id: 'T-1', status: 'blocked', title: 'Add tests', totalTokens: 1400 }],
+      tasks: [{ id: 'T-1', status: 'blocked', title: 'Add tests', totalTokens: 1400, executionMode: 'workflow' }],
       repos: ['/repo-a', '/repo-b'],
       settings: {
         defaultRepoPath: '/repo-b',
@@ -161,11 +162,26 @@ describe('App', () => {
     expect(screen.getByTitle('Settings')).toBeTruthy();
 
     fireEvent.click(screen.getByTitle('Settings'));
-    fireEvent.click(screen.getByText('Implementation'));
-    fireEvent.click(screen.getByText('Review'));
     fireEvent.click(screen.getByText('Cancel'));
 
     expect(factoryState.updateSettings).not.toHaveBeenCalled();
+  });
+
+  test('keeps application settings focused on repositories, shared capacity, and the default workflow', () => {
+    factoryState.workflows = [{ id: 'standard', name: 'Standard Development', latestVersion: 3 }];
+    factoryState.defaultWorkflow = { workflowId: 'standard', version: 2 };
+
+    render(<App />);
+    fireEvent.click(screen.getByTitle('Settings'));
+
+    expect(screen.getByText('Shared capacity')).toBeTruthy();
+    expect(screen.getByText(/Standard Development v2/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Planning' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Implementation' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Review' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Configure Standard Development/ }));
+    expect(screen.getByRole('heading', { name: 'Workflows' })).toBeTruthy();
   });
 
   test('supports add-task cancel and enter-key submission', () => {
@@ -199,6 +215,22 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add Task' }));
 
     expect(factoryState.addTask).toHaveBeenCalledWith('Pinned task', 'medium', '', '/repo-b', 'standard', 2);
+  });
+
+  test('resolves the workflow display name for task details', () => {
+    factoryState.tasks[0] = {
+      ...factoryState.tasks[0],
+      workflowId: 'standard',
+      workflowVersion: 2,
+    };
+    factoryState.workflows = [{ id: 'standard', name: 'Standard Development', latestVersion: 3 }];
+
+    render(<App />);
+    fireEvent.click(screen.getByText('Open task'));
+
+    expect(taskDetailModalMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      task: expect.objectContaining({ workflowName: 'Standard Development', workflowVersion: 2 }),
+    }));
   });
 
   test('keeps settings open and shows an acknowledged save error', async () => {
@@ -257,11 +289,8 @@ describe('App', () => {
     fireEvent.click(screen.getByText('Add Repo'));
     fireEvent.click(screen.getAllByText('×')[0]);
 
-    fireEvent.click(screen.getByText('Planning'));
-    const maxInput = screen.getByDisplayValue('1');
+    const maxInput = screen.getByLabelText('planning provider capacity');
     fireEvent.change(maxInput, { target: { value: '3' } });
-    fireEvent.change(screen.getByTestId('model-select-planners'), { target: { value: 'codex:' } });
-    fireEvent.change(screen.getByDisplayValue('Plan prompt'), { target: { value: 'Updated plan prompt' } });
 
     fireEvent.click(screen.getByText('Apply'));
 
@@ -271,23 +300,27 @@ describe('App', () => {
       repos: ['/repo-b', '/repo-c'],
       maxReviewCycles: 3,
       agents: {
-        planners: { max: 3, cli: 'codex', model: '' },
+        planners: { max: 3, cli: 'claude', model: '' },
         implementors: { max: 2, cli: 'codex', model: '' },
         reviewers: { max: 1, cli: 'claude', model: '' },
       },
       prompts: {
-        planning: 'Updated plan prompt',
+        planning: 'Plan prompt',
         implementation: 'Implement prompt',
         review: 'Review prompt',
       },
     });
   });
 
-  test('renders max review cycles input in Review tab and updates local state', () => {
+  test('shows preserved legacy behavior controls only while a legacy task needs them', () => {
+    factoryState.tasks = [{ id: 'legacy-1', status: 'review', title: 'Legacy task', executionMode: 'legacy' }];
     render(<App />);
 
     fireEvent.click(screen.getByTitle('Settings'));
-    fireEvent.click(screen.getByText('Review'));
+    fireEvent.click(screen.getByRole('button', { name: 'Legacy compatibility' }));
+
+    expect(screen.getByText('Compatibility configuration')).toBeTruthy();
+    expect(screen.getByText(/New tasks do not/)).toBeTruthy();
 
     const cyclesInput = screen.getByTestId('max-review-cycles');
     expect(cyclesInput).toBeTruthy();

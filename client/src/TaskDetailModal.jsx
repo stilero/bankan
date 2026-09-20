@@ -310,6 +310,18 @@ export default function TaskDetailModal({
               </div>
             )}
 
+            {task.executionMode === 'workflow' && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={labelStyle}>Workflow Version</div>
+                <div style={{ fontSize: 12, color: 'var(--text)', marginBottom: 4 }}>
+                  {task.workflowName || task.workflowId || 'Workflow'} v{task.workflowVersion}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text2)' }}>
+                  {task.currentPhase || 'Intake'} · {task.status.replace(/_/g, ' ')}
+                </div>
+              </div>
+            )}
+
             <div style={{ marginBottom: 14 }}>
               <div style={labelStyle}>Review Cycles</div>
               <div style={{ fontSize: 12, color: 'var(--text2)' }}>
@@ -506,7 +518,7 @@ export default function TaskDetailModal({
                     borderRadius: 4, color: 'var(--steel2)',
                   }}
                 >
-                  Open Workflow
+                  Open Workflow Details
                 </button>
               )}
               <button

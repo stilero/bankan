@@ -3,22 +3,44 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-import { createBuiltinWorkflows, createWorkflowId, validateWorkflowDefinition } from './workflowDefinitions.js';
+import { createBuiltinWorkflows, createWorkflowId, normalizeWorkflowDefinition, validateWorkflowDefinition } from './workflowDefinitions.js';
 
 const parse = (value, fallback = null) => value ? JSON.parse(value) : fallback;
 const stringify = value => JSON.stringify(value ?? null);
 const now = () => new Date().toISOString();
 
+function materializeLegacySettings(definition, settings) {
+  if (!settings) return definition;
+  const next = structuredClone(definition);
+  const roles = {
+    planner: ['planners', 'planning'],
+    implementer: ['implementors', 'implementation'],
+    'general-review': ['reviewers', 'review'],
+    'security-review': ['reviewers', 'review'],
+  };
+  for (const node of next.nodes || []) {
+    const mapping = roles[node.config?.preset];
+    if (!mapping) continue;
+    const [role, prompt] = mapping;
+    node.config.provider = settings.agents?.[role]?.cli || node.config.provider;
+    node.config.model = settings.agents?.[role]?.model ?? node.config.model;
+    node.config.agentInstructions = settings.prompts?.[prompt] || node.config.agentInstructions;
+  }
+  return next;
+}
+
 export class WorkflowRepository {
-  constructor({ databasePath, capabilities } = {}) {
+  constructor({ databasePath, capabilities, legacySettings } = {}) {
     if (!databasePath) throw new Error('databasePath is required');
     mkdirSync(dirname(databasePath), { recursive: true });
     this.capabilities = capabilities;
+    this.legacySettings = legacySettings;
     this.db = new Database(databasePath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
     this.#migrate();
     this.#seed();
+    this.#upgradeDrafts();
   }
 
   #migrate() {
@@ -76,9 +98,24 @@ export class WorkflowRepository {
     const timestamp = now();
     this.db.transaction(() => {
       for (const template of createBuiltinWorkflows()) {
-        insertWorkflow.run(template.id, template.name, template.description, stringify(template.definition), 1, timestamp, timestamp);
-        insertVersion.run(template.id, 1, stringify(template.definition), timestamp);
+        const definition = template.id === 'legacy-pipeline' ? materializeLegacySettings(template.definition, this.legacySettings) : template.definition;
+        insertWorkflow.run(template.id, template.name, template.description, stringify(definition), 1, timestamp, timestamp);
+        insertVersion.run(template.id, 1, stringify(definition), timestamp);
         if (template.isDefault) this.db.prepare('INSERT INTO workflow_settings VALUES (?, ?)').run('defaultWorkflow', stringify({ workflowId: template.id, version: 1 }));
+      }
+    })();
+  }
+
+  #upgradeDrafts() {
+    const rows = this.db.prepare('SELECT id, draft_json FROM workflows').all();
+    const update = this.db.prepare('UPDATE workflows SET draft_json = ?, updated_at = ? WHERE id = ?');
+    this.db.transaction(() => {
+      for (const row of rows) {
+        const definition = parse(row.draft_json);
+        const needsUpgrade = definition?.schemaVersion !== 2;
+        let upgraded = needsUpgrade ? normalizeWorkflowDefinition(definition) : definition;
+        if (row.id === 'legacy-pipeline' && needsUpgrade) upgraded = materializeLegacySettings(upgraded, this.legacySettings);
+        if (stringify(upgraded) !== row.draft_json) update.run(stringify(upgraded), now(), row.id);
       }
     })();
   }
@@ -99,7 +136,8 @@ export class WorkflowRepository {
         summary: {
           nodeCount: definition.nodes.length,
           phases: definition.nodes.filter(node => node.type === 'Phase').map(node => node.config?.phase).filter(Boolean),
-          agentPresets: definition.nodes.filter(node => node.type === 'Agent').map(node => node.config?.preset).filter(Boolean),
+          agentPresets: definition.nodes.filter(node => node.type === 'Agent').map(node => node.config?.preset || node.id).filter(Boolean),
+          agentSteps: definition.nodes.filter(node => node.type === 'Agent').map(node => node.config?.name || node.id),
         },
         updatedAt: row.updated_at,
       };
@@ -112,17 +150,17 @@ export class WorkflowRepository {
     return { id: row.id, name: row.name, description: row.description, definition: parse(row.draft_json), latestVersion: row.latest_version };
   }
 
-  createDraft({ name, description = '', definition = { schemaVersion: 1, nodes: [], edges: [] } }) {
+  createDraft({ name, description = '', definition = { schemaVersion: 2, nodes: [], edges: [] } }) {
     const id = createWorkflowId();
     const timestamp = now();
-    this.db.prepare('INSERT INTO workflows VALUES (?, ?, ?, ?, 0, ?, ?)').run(id, name, description, stringify(definition), timestamp, timestamp);
+    this.db.prepare('INSERT INTO workflows VALUES (?, ?, ?, ?, 0, ?, ?)').run(id, name, description, stringify(normalizeWorkflowDefinition(definition)), timestamp, timestamp);
     return this.getWorkflow(id);
   }
 
   updateDraft(id, definition, metadata = {}) {
     const result = this.db.prepare(`UPDATE workflows SET draft_json = ?, name = COALESCE(?, name),
       description = COALESCE(?, description), updated_at = ? WHERE id = ?`)
-      .run(stringify(definition), metadata.name ?? null, metadata.description ?? null, now(), id);
+      .run(stringify(normalizeWorkflowDefinition(definition)), metadata.name ?? null, metadata.description ?? null, now(), id);
     if (!result.changes) throw new Error('Workflow not found');
     return this.getWorkflow(id);
   }
@@ -172,7 +210,7 @@ export class WorkflowRepository {
     const workflow = this.getWorkflow(workflowId);
     if (!workflow) throw new Error('Workflow not found');
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       name: workflow.name,
       description: workflow.description,
       draft: workflow.definition,
