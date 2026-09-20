@@ -10,6 +10,20 @@ afterEach(() => {
 });
 
 describe('workflow task migration boundary', () => {
+  test('materializes persisted legacy settings when the runtime creates its repository', async () => {
+    harness = createRuntimeHarness();
+    const runtime = await harness.importModule('./src/workflowRuntime.js');
+    const { loadSettings } = await harness.importModule('./src/config.js');
+    const settings = loadSettings();
+    const planner = runtime.getWorkflowRepository().getWorkflow('legacy-pipeline').definition.nodes.find(node => node.id === 'planner');
+
+    expect(planner.config).toMatchObject({
+      provider: settings.agents.planners.cli,
+      model: settings.agents.planners.model,
+      agentInstructions: settings.prompts.planning,
+    });
+    runtime.resetWorkflowRuntimeForTests();
+  });
   test('new tasks snapshot the default workflow while pre-existing tasks remain legacy', async () => {
     harness = createRuntimeHarness();
     const store = (await harness.importModule('./src/store.js')).default;
@@ -70,6 +84,32 @@ describe('workflow task migration boundary', () => {
     expect(runtime.getWorkflowRun(task.id).actionableNodes).toEqual([
       expect.objectContaining({ nodeId: 'planner', type: 'Agent', action: 'awaitingExecution' }),
     ]);
+    runtime.resetWorkflowRuntimeForTests();
+  });
+
+  test('exposes named Human Decision choices and persists optional decision feedback', async () => {
+    harness = createRuntimeHarness();
+    const runtime = await harness.importModule('./src/workflowRuntime.js');
+    const task = runtime.createWorkflowTask({ title: 'Decision task' });
+    runtime.controlWorkflowRun(task.id, 'submitInput', { nodeId: 'interview', answers: { goal: 'Ship' } });
+    runtime.controlWorkflowRun(task.id, 'completeNode', { nodeId: 'planner', outcome: 'success' });
+
+    expect(runtime.getWorkflowRun(task.id).actionableNodes).toEqual([
+      expect.objectContaining({
+        nodeId: 'approval', type: 'HumanDecision', action: 'decide', actor: 'human', acceptsFeedback: true,
+        choices: [{ outcome: 'approve', label: 'Approve plan' }, { outcome: 'reject', label: 'Request changes' }],
+      }),
+    ]);
+
+    runtime.controlWorkflowRun(task.id, 'decide', { nodeId: 'approval', outcome: 'reject', feedback: 'Address rollback risk' });
+    expect(runtime.getWorkflowRun(task.id).artifacts).toContainEqual(expect.objectContaining({
+      nodeId: 'approval', type: 'human-feedback', data: { outcome: 'reject', feedback: 'Address rollback risk' },
+    }));
+    runtime.controlWorkflowRun(task.id, 'completeNode', { nodeId: 'planner', outcome: 'success' });
+    runtime.controlWorkflowRun(task.id, 'completeNode', { nodeId: 'approval', outcome: 'approve', feedback: 'Accepted after revision' });
+    expect(runtime.getWorkflowRun(task.id).artifacts).toContainEqual(expect.objectContaining({
+      nodeId: 'approval', type: 'human-feedback', data: { outcome: 'approve', feedback: 'Accepted after revision' },
+    }));
     runtime.resetWorkflowRuntimeForTests();
   });
 

@@ -69,6 +69,9 @@ export default function App() {
   const hasRepos = repos.length > 0;
   const canCreateTask = hasRepos;
   const showStartupGreeting = isInitialized && !hasRepos && tasks.length === 0;
+  const hasLegacyTasks = tasks.some(task =>
+    task.executionMode !== 'workflow' && !['done', 'aborted'].includes(task.status)
+  );
 
   // Derived values
   const needAttention = useMemo(() =>
@@ -90,6 +93,12 @@ export default function App() {
     agents.find(a => a.id === selectedAgent),
     [agents, selectedAgent]
   );
+  const selectedTaskData = useMemo(() => {
+    if (!selectedTask) return null;
+    const task = tasks.find(candidate => candidate.id === selectedTask.id) || selectedTask;
+    const workflow = workflows.find(candidate => candidate.id === task.workflowId);
+    return workflow ? { ...task, workflowName: workflow.name } : task;
+  }, [selectedTask, tasks, workflows]);
 
   useEffect(() => {
     if (!canCreateTask && showAddModal) {
@@ -320,9 +329,9 @@ export default function App() {
       )}
 
       {/* TASK DETAIL MODAL */}
-      {selectedTask && (
+      {selectedTaskData && (
         <TaskDetailModal
-          task={tasks.find(t => t.id === selectedTask.id) || selectedTask}
+          task={selectedTaskData}
           repos={repos}
           onClose={() => setSelectedTask(null)}
           onApprove={(id) => { approvePlan(id); setSelectedTask(null); }}
@@ -372,6 +381,9 @@ export default function App() {
       {showSettingsModal && settings && (
         <SettingsModal
           settings={settings}
+          workflows={workflows}
+          defaultWorkflow={defaultWorkflow}
+          hasLegacyTasks={hasLegacyTasks}
           onClose={() => setShowSettingsModal(false)}
           onManageWorkflows={() => { setShowSettingsModal(false); navigate('/workflows'); }}
           onApply={async (newSettings) => {
@@ -578,7 +590,7 @@ function decodeCliModel(encoded) {
 }
 
 // --- Settings Modal ---
-function SettingsModal({ settings, onClose, onApply, onManageWorkflows }) {
+function SettingsModal({ settings, workflows, defaultWorkflow, hasLegacyTasks, onClose, onApply, onManageWorkflows }) {
   const [local, setLocal] = useState(() => JSON.parse(JSON.stringify(settings)));
   const [newRepoPath, setNewRepoPath] = useState('');
   const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
@@ -646,15 +658,20 @@ function SettingsModal({ settings, onClose, onApply, onManageWorkflows }) {
       const range = maxRules[role] || { min: 1, max: 10 };
       return cfg.max >= range.min && cfg.max <= range.max;
     }) &&
-    typeof local.maxReviewCycles === 'number' && local.maxReviewCycles >= 1 && local.maxReviewCycles <= 20 &&
-    ['planning', 'implementation', 'review'].every(stage => typeof local.prompts?.[stage] === 'string');
+    (!hasLegacyTasks || (
+      typeof local.maxReviewCycles === 'number' && local.maxReviewCycles >= 1 && local.maxReviewCycles <= 20 &&
+      ['planning', 'implementation', 'review'].every(stage => typeof local.prompts?.[stage] === 'string')
+    ));
 
   const tabs = [
     { key: 'general', label: 'General' },
-    { key: 'planning', label: 'Planning' },
-    { key: 'implementation', label: 'Implementation' },
-    { key: 'review', label: 'Review' },
+    ...(hasLegacyTasks ? [{ key: 'legacy', label: 'Legacy compatibility' }] : []),
   ];
+
+  const defaultWorkflowDefinition = workflows.find(workflow => workflow.id === defaultWorkflow?.workflowId);
+  const defaultWorkflowLabel = defaultWorkflowDefinition
+    ? `${defaultWorkflowDefinition.name} v${defaultWorkflow.version}`
+    : 'the default workflow';
 
   const stageConfig = {
     planning: {
@@ -813,6 +830,38 @@ function SettingsModal({ settings, onClose, onApply, onManageWorkflows }) {
     );
   };
 
+  const renderCapacity = () => (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text2)', letterSpacing: 1, marginBottom: 10 }}>
+        Shared capacity
+      </div>
+      {Object.entries(stageConfig).map(([stage, cfgMeta]) => {
+        const cfg = local.agents[cfgMeta.roleKey];
+        const range = maxRules[cfgMeta.roleKey];
+        return (
+          <label key={stage} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, fontSize: 12, color: 'var(--text2)' }}>
+            <span style={{ width: 140, textTransform: 'capitalize' }}>{stage} providers</span>
+            <input
+              aria-label={`${stage} provider capacity`}
+              type="number"
+              min={range.min}
+              max={range.max}
+              value={cfg.max}
+              onChange={event => {
+                const parsed = parseInt(event.target.value, 10);
+                updateRole(cfgMeta.roleKey, 'max', Number.isNaN(parsed) ? range.min : Math.max(range.min, Math.min(range.max, parsed)));
+              }}
+              style={{ width: 60, padding: '4px 6px', fontSize: 12, textAlign: 'center' }}
+            />
+          </label>
+        );
+      })}
+      <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+        Installation-wide limits for concurrent provider sessions. Workflow behavior is configured in Workflow Studio.
+      </div>
+    </div>
+  );
+
   return (
     <div
       onClick={onClose}
@@ -868,10 +917,11 @@ function SettingsModal({ settings, onClose, onApply, onManageWorkflows }) {
           {activeTab === 'general' && (
             <>
               <div className="settings-scope-note">
-                <strong>Workflow tasks use their published node settings.</strong>
-                <span>Agent models, prompts, and access are configured in each workflow. The limits here control available capacity; the legacy tabs below only affect legacy pipeline tasks.</span>
-                <button onClick={onManageWorkflows}>Manage workflows</button>
+                <strong>Task behavior comes from {defaultWorkflowLabel}.</strong>
+                <span>Agent instructions, models, access, and execution policy belong to the immutable workflow version selected by each task.</span>
+                <button onClick={onManageWorkflows}>Configure {defaultWorkflowDefinition?.name || 'default workflow'}</button>
               </div>
+              {renderCapacity()}
               <div style={{ marginBottom: 20 }}>
                 <div style={{
                   fontSize: 11, fontWeight: 600, color: 'var(--text2)',
@@ -983,13 +1033,23 @@ function SettingsModal({ settings, onClose, onApply, onManageWorkflows }) {
                 </div>
               )}
 
-              <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 16, fontStyle: 'italic' }}>
-                Orchestrator scales agents up on demand, up to the max per role. Planning and Review can be disabled by setting max to 0.
-              </div>
             </>
           )}
 
-          {activeTab !== 'general' && renderStageTab(activeTab)}
+          {activeTab === 'legacy' && (
+            <>
+              <div className="settings-scope-note">
+                <strong>Compatibility configuration</strong>
+                <span>Active tasks created before workflow ownership still use these preserved model, prompt, and review-loop settings. New tasks do not.</span>
+              </div>
+              {['planning', 'implementation', 'review'].map(stage => (
+                <div key={stage}>
+                  <h3 style={{ fontSize: 13, textTransform: 'capitalize', marginBottom: 10 }}>{stage}</h3>
+                  {renderStageTab(stage)}
+                </div>
+              ))}
+            </>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

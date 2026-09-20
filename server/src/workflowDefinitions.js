@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
-export const WORKFLOW_SCHEMA_VERSION = 1;
+export const WORKFLOW_SCHEMA_VERSION = 2;
 export const KANBAN_PHASES = ['Intake', 'Planning', 'Implementation', 'Review', 'Delivery'];
-export const NODE_TYPES = ['Interview', 'Agent', 'Approval', 'Condition', 'Fork', 'Join', 'Phase', 'Action', 'Terminal'];
+export const NODE_TYPES = ['Interview', 'Agent', 'Check', 'Approval', 'HumanDecision', 'Condition', 'Fork', 'Join', 'Phase', 'Action', 'Terminal'];
 
 export const PROVIDER_CAPABILITIES = {
   codex: {
@@ -17,7 +17,81 @@ export const PROVIDER_CAPABILITIES = {
   },
 };
 
-const EXECUTABLE_TYPES = new Set(['Interview', 'Agent', 'Approval', 'Action']);
+const EXECUTABLE_TYPES = new Set(['Interview', 'Agent', 'Check', 'Approval', 'HumanDecision', 'Action']);
+const DEFAULT_RETRY = { maxAttempts: 2, backoffMs: 1000 };
+const DEFAULTS = {
+  provider: 'codex', model: '', effort: 'medium', timeoutMs: 30 * 60 * 1000,
+  retry: DEFAULT_RETRY, budgets: { tokens: 500000, costUsd: 100 },
+};
+const LEGACY_AGENT_CONFIG = {
+  planner: {
+    instructions: 'Create a concrete implementation plan for the task.',
+    contract: { resultType: 'plan', outcomes: ['success', 'failure'] },
+  },
+  implementer: {
+    instructions: 'Implement the approved plan and verify the result.',
+    contract: { resultType: 'implementation', outcomes: ['success', 'failure'] },
+  },
+  'general-review': {
+    instructions: 'Review the implementation and provide actionable feedback.',
+    contract: { resultType: 'review', outcomes: ['pass', 'fail', 'failure'] },
+  },
+  'security-review': {
+    instructions: 'Review the implementation for security risks and provide actionable feedback.',
+    contract: { resultType: 'review', outcomes: ['pass', 'fail', 'failure'] },
+  },
+};
+
+export function normalizeWorkflowDefinition(definition) {
+  const source = structuredClone(definition || {});
+  const defaults = source.defaults || {};
+  if (source.schemaVersion === WORKFLOW_SCHEMA_VERSION) {
+    source.defaults = {
+      ...DEFAULTS,
+      ...defaults,
+      retry: { ...DEFAULT_RETRY, ...(defaults.retry || {}) },
+      budgets: { ...DEFAULTS.budgets, ...(defaults.budgets || {}) },
+    };
+    source.nodes ||= [];
+    source.edges ||= [];
+    return source;
+  }
+  source.compatibility = { ...(source.compatibility || {}), sourceSchemaVersion: source.schemaVersion || 1 };
+  source.schemaVersion = WORKFLOW_SCHEMA_VERSION;
+  source.defaults = {
+    ...DEFAULTS,
+    ...defaults,
+    retry: { ...DEFAULT_RETRY, ...(defaults.retry || {}) },
+    budgets: { ...DEFAULTS.budgets, ...(defaults.budgets || {}) },
+  };
+  source.nodes = (source.nodes || []).map(node => {
+    const config = { ...(node.config || {}) };
+    if (node.type === 'Agent') {
+      const legacy = LEGACY_AGENT_CONFIG[config.preset] || {
+        instructions: `Complete the ${node.id} step.`,
+        contract: { resultType: 'agent-result', outcomes: ['success', 'failure'] },
+      };
+      config.agentInstructions ||= legacy.instructions;
+      config.artifactBindings ||= [];
+      config.executionContract ||= legacy.contract;
+      config.accessMode ||= 'read';
+    }
+    return { ...node, config };
+  });
+  source.edges = source.edges || [];
+  const failureTarget = source.nodes.find(node => node.type === 'Terminal' && node.config?.outcome === 'Failure')?.id;
+  if (failureTarget) {
+    for (const node of source.nodes.filter(candidate => candidate.type === 'Agent')) {
+      const outcomes = node.config.executionContract?.outcomes || [];
+      for (const outcome of outcomes) {
+        if (!source.edges.some(edge => edge.source === node.id && edge.outcome === outcome)) {
+          source.edges.push({ id: `migrated-${node.id}-${outcome}`, source: node.id, target: failureTarget, outcome });
+        }
+      }
+    }
+  }
+  return source;
+}
 
 function reaches(edges, start, wanted, visited = new Set()) {
   if (start === wanted) return true;
@@ -53,22 +127,45 @@ export function validateWorkflowDefinition(definition, capabilities = PROVIDER_C
       errors.push(`Terminal node ${node.id} requires Success, Failure, or Cancelled outcome`);
     }
     if (EXECUTABLE_TYPES.has(node.type)) {
-      if (!Number.isFinite(config.timeoutMs) || config.timeoutMs <= 0) {
+      const timeoutMs = config.timeoutMs ?? definition.defaults?.timeoutMs;
+      const retry = config.retry ?? definition.defaults?.retry;
+      if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
         errors.push(`${node.type} node ${node.id} requires a positive timeoutMs`);
       }
-      if (!Number.isInteger(config.retry?.maxAttempts) || config.retry.maxAttempts < 1 || !Number.isFinite(config.retry?.backoffMs)) {
+      if (!Number.isInteger(retry?.maxAttempts) || retry.maxAttempts < 1 || !Number.isFinite(retry?.backoffMs)) {
         errors.push(`${node.type} node ${node.id} requires a retry policy`);
       }
     }
     if (node.type === 'Agent') {
-      const provider = capabilities[config.provider];
+      if (!definition.compatibility?.sourceSchemaVersion) {
+        if (!String(config.name || config.label || '').trim()) errors.push(`Agent node ${node.id} requires a display name`);
+        if (!String(config.purpose || '').trim()) errors.push(`Agent node ${node.id} requires a purpose`);
+      }
+      if (!String(config.agentInstructions || '').trim()) errors.push(`Agent node ${node.id} requires Agent Instructions`);
+      if (!Array.isArray(config.artifactBindings)) errors.push(`Agent node ${node.id} requires Artifact bindings`);
+      if (!config.executionContract?.resultType || !Array.isArray(config.executionContract?.outcomes) || config.executionContract.outcomes.length === 0) {
+        errors.push(`Agent node ${node.id} requires an Execution Contract`);
+      }
+      const providerName = config.provider ?? definition.defaults?.provider;
+      const provider = capabilities[providerName];
       if (!provider) {
-        errors.push(`Agent node ${node.id} uses unsupported provider ${config.provider}`);
+        errors.push(`Agent node ${node.id} uses unsupported provider ${providerName}`);
       } else {
-        if (!provider.models.includes(config.model ?? '')) errors.push(`Agent node ${node.id} uses unsupported ${config.provider} model ${config.model}`);
-        if (!provider.efforts.includes(config.effort)) errors.push(`Agent node ${node.id} uses unsupported effort ${config.effort}`);
+        const model = config.model ?? definition.defaults?.model ?? '';
+        const effort = config.effort ?? definition.defaults?.effort;
+        if (!provider.models.includes(model)) errors.push(`Agent node ${node.id} uses unsupported ${providerName} model ${model}`);
+        if (!provider.efforts.includes(effort)) errors.push(`Agent node ${node.id} uses unsupported effort ${effort}`);
         if (!provider.accessModes.includes(config.accessMode)) errors.push(`Agent node ${node.id} uses unsupported access mode ${config.accessMode}`);
       }
+    }
+    if (node.type === 'Check' && !['test', 'lint', 'build', 'coverage', 'custom'].includes(config.adapter)) {
+      errors.push(`Check node ${node.id} requires a supported adapter`);
+    }
+    if (node.type === 'Check' && config.adapter === 'custom') {
+      if (!Array.isArray(config.command) || config.command.length === 0 || !config.command.every(part => typeof part === 'string' && part.trim())) {
+        errors.push(`Custom Check node ${node.id} requires a non-empty command`);
+      }
+      if (!['read', 'write'].includes(config.accessMode)) errors.push(`Custom Check node ${node.id} requires explicit read or write access`);
     }
   }
   const edgeIds = new Set();
@@ -85,6 +182,19 @@ export function validateWorkflowDefinition(definition, capabilities = PROVIDER_C
     const hasInvalidLoop = edge.loop && (!Number.isInteger(edge.loop.maxIterations) || edge.loop.maxIterations < 1 || !nodeIds.has(edge.loop.exhaustionTarget));
     if (isUnboundedCycle || hasInvalidLoop) {
       errors.push(`Cycle edge ${edge.id} requires maxIterations and exhaustionTarget`);
+    }
+    if (edge.loop?.feedbackArtifact && !nodes.some(node => node.id === edge.source && (
+      node.config?.executionContract?.resultType === edge.loop.feedbackArtifact || node.config?.produces?.includes(edge.loop.feedbackArtifact)
+    ))) {
+      errors.push(`Loop edge ${edge.id} references incompatible feedback Artifact ${edge.loop.feedbackArtifact}`);
+    }
+  }
+  for (const node of nodes.filter(candidate => candidate.config?.executionContract?.outcomes && !definition.compatibility?.sourceSchemaVersion)) {
+    const routed = new Set(edges.filter(edge => edge.source === node.id).map(edge => edge.outcome));
+    for (const outcome of node.config.executionContract.outcomes) {
+      if (!routed.has(outcome) && !edges.some(edge => edge.source === node.id && edge.fallback)) {
+        errors.push(`Node ${node.id} outcome ${outcome} has no Route`);
+      }
     }
   }
   for (const node of nodes.filter(candidate => candidate.type === 'Condition')) {
@@ -142,29 +252,89 @@ function linearDefinition({ security = false, legacy = false } = {}) {
 }
 
 function standardDefinition() {
-  const definition = linearDefinition();
-  const reviewerIndex = definition.nodes.findIndex(node => node.id === 'reviewer');
-  definition.nodes.splice(reviewerIndex, 1,
-    { id: 'fork-reviews', type: 'Fork', position: { x: 1760, y: 0 }, config: {} },
-    { id: 'general-review', type: 'Agent', position: { x: 1960, y: -100 }, config: agent('general-review') },
-    { id: 'security-review', type: 'Agent', position: { x: 1960, y: 100 }, config: agent('security-review') },
-    { id: 'join-reviews', type: 'Join', position: { x: 2180, y: 0 }, config: { policy: 'all', remainingBranches: 'cancel' } },
-  );
-  definition.nodes.find(node => node.id === 'delivery-phase').position.x = 2400;
-  definition.nodes.find(node => node.id === 'delivery').position.x = 2620;
-  definition.nodes.find(node => node.id === 'success').position.x = 2840;
-  definition.edges = definition.edges.filter(candidate => !['e-8', 'e-9', 'review-fix'].includes(candidate.id));
-  definition.edges.push(
+  const v2Agent = (id, name, instructions, accessMode, resultType, outcomes) => ({
+    id, type: 'Agent', config: {
+      name, label: name, purpose: instructions, agentInstructions: instructions, accessMode,
+      artifactBindings: id === 'planner' ? ['interview-answers'] : ['plan', 'implementation', 'check-result', 'review-feedback'],
+      executionContract: { resultType, outcomes },
+    },
+  });
+  const decision = (id, label) => ({
+    id, type: 'HumanDecision', config: {
+      label,
+      outcomes: ['accept', 'extend', 'cancel'],
+      choices: [
+        { outcome: 'accept', label: 'Accept current work' },
+        { outcome: 'extend', label: 'Add feedback and extend loop' },
+        { outcome: 'cancel', label: 'Cancel' },
+      ],
+      produces: ['human-feedback'],
+      ...executable,
+    },
+  });
+  const nodes = [
+    { id: 'intake', type: 'Phase', config: { phase: 'Intake' } },
+    { id: 'interview', type: 'Interview', config: { label: 'Gather input', requiredFields: ['goal', 'acceptanceCriteria'], requiresApproval: true, ...executable } },
+    { id: 'planning-phase', type: 'Phase', config: { phase: 'Planning' } },
+    v2Agent('planner', 'Plan', 'Create a concrete implementation plan from the gathered input.', 'read', 'plan', ['success', 'failure']),
+    { id: 'approval', type: 'HumanDecision', config: {
+      label: 'Approve plan', outcomes: ['approve', 'reject'],
+      choices: [{ outcome: 'approve', label: 'Approve plan' }, { outcome: 'reject', label: 'Request changes' }],
+      produces: ['human-feedback'], ...executable,
+    } },
+    { id: 'implementation-phase', type: 'Phase', config: { phase: 'Implementation' } },
+    v2Agent('implementer', 'Implement', 'Implement the approved plan and verify the change.', 'write', 'implementation', ['success', 'failure']),
+    { id: 'run-checks', type: 'Check', config: { label: 'Run checks', adapter: 'test', produces: ['check-result'], executionContract: { resultType: 'check-result', outcomes: ['pass', 'fail'] }, ...executable } },
+    { id: 'review-phase', type: 'Phase', config: { phase: 'Review' } },
+    { id: 'fork-reviews', type: 'Fork', config: {} },
+    v2Agent('general-review', 'Code Review', 'Review correctness and return actionable feedback when changes are needed.', 'read', 'review-feedback', ['pass', 'changes', 'failure']),
+    v2Agent('security-review', 'Security Review', 'Review security risks and return actionable feedback when changes are needed.', 'read', 'review-feedback', ['pass', 'changes', 'failure']),
+    { id: 'join-reviews', type: 'Join', config: { policy: 'all', remainingBranches: 'cancel' } },
+    { id: 'delivery-phase', type: 'Phase', config: { phase: 'Delivery' } },
+    { id: 'delivery', type: 'Action', config: { label: 'Deliver', action: 'create-pr', skippable: true, substituteArtifact: 'manual-pr', ...executable } },
+    decision('plan-exhausted', 'Plan feedback loop exhausted'),
+    decision('check-exhausted', 'Check feedback loop exhausted'),
+    decision('review-exhausted', 'Review feedback loop exhausted'),
+    { id: 'success', type: 'Terminal', config: { outcome: 'Success' } },
+    { id: 'cancelled', type: 'Terminal', config: { outcome: 'Cancelled' } },
+  ];
+  const loop = (maxIterations, feedbackArtifact, exhaustionTarget) => ({ maxIterations, feedbackArtifact, exhaustionTarget });
+  const edges = [
+    edge('intake-gather', 'intake', 'interview'),
+    edge('gather-plan-phase', 'interview', 'planning-phase'),
+    edge('phase-plan', 'planning-phase', 'planner'),
+    edge('plan-approval', 'planner', 'approval'),
+    edge('plan-failed', 'planner', 'plan-exhausted', 'failure'),
+    edge('plan-approved', 'approval', 'implementation-phase', 'approve'),
+    edge('plan-rejected', 'approval', 'planner', 'reject', { loop: loop(3, 'human-feedback', 'plan-exhausted') }),
+    edge('phase-implement', 'implementation-phase', 'implementer'),
+    edge('implemented-checks', 'implementer', 'run-checks'),
+    edge('implementation-failed', 'implementer', 'check-exhausted', 'failure'),
+    edge('checks-passed', 'run-checks', 'review-phase', 'pass'),
+    edge('checks-failed', 'run-checks', 'implementer', 'fail', { loop: loop(3, 'check-result', 'check-exhausted') }),
     edge('review-start', 'review-phase', 'fork-reviews'),
     edge('review-general', 'fork-reviews', 'general-review'),
     edge('review-security', 'fork-reviews', 'security-review'),
-    edge('general-done', 'general-review', 'join-reviews', 'pass'),
-    edge('security-done', 'security-review', 'join-reviews', 'pass'),
+    edge('general-passed', 'general-review', 'join-reviews', 'pass'),
+    edge('security-passed', 'security-review', 'join-reviews', 'pass'),
+    edge('general-changes', 'general-review', 'implementer', 'changes', { loop: loop(3, 'review-feedback', 'review-exhausted') }),
+    edge('security-changes', 'security-review', 'implementer', 'changes', { loop: loop(3, 'review-feedback', 'review-exhausted') }),
+    edge('general-failed', 'general-review', 'review-exhausted', 'failure'),
+    edge('security-failed', 'security-review', 'review-exhausted', 'failure'),
     edge('reviews-done', 'join-reviews', 'delivery-phase'),
-    edge('general-fix', 'general-review', 'implementer', 'fail', { loop: { maxIterations: 3, exhaustionTarget: 'failure' } }),
-    edge('security-fix', 'security-review', 'implementer', 'fail', { loop: { maxIterations: 3, exhaustionTarget: 'failure' } }),
-  );
-  return definition;
+    edge('delivery-action', 'delivery-phase', 'delivery'),
+    edge('delivered', 'delivery', 'success'),
+    edge('plan-accept', 'plan-exhausted', 'implementation-phase', 'accept'),
+    edge('plan-extend', 'plan-exhausted', 'planner', 'extend', { loop: loop(3, 'human-feedback', 'cancelled') }),
+    edge('plan-cancel', 'plan-exhausted', 'cancelled', 'cancel'),
+    edge('check-accept', 'check-exhausted', 'review-phase', 'accept'),
+    edge('check-extend', 'check-exhausted', 'implementer', 'extend', { loop: loop(3, 'human-feedback', 'cancelled') }),
+    edge('check-cancel', 'check-exhausted', 'cancelled', 'cancel'),
+    edge('review-accept', 'review-exhausted', 'delivery-phase', 'accept'),
+    edge('review-extend', 'review-exhausted', 'implementer', 'extend', { loop: loop(3, 'human-feedback', 'cancelled') }),
+    edge('review-cancel', 'review-exhausted', 'cancelled', 'cancel'),
+  ];
+  return { schemaVersion: 2, defaults: structuredClone(DEFAULTS), nodes, edges };
 }
 
 export function createBuiltinWorkflows() {
@@ -173,7 +343,7 @@ export function createBuiltinWorkflows() {
     { id: 'simple-linear', name: 'Simple Linear', description: 'A compact sequential development workflow.', definition: linearDefinition() },
     { id: 'security-focused', name: 'Security Focused', description: 'A sequential workflow with a security review gate.', definition: linearDefinition({ security: true }) },
     { id: 'legacy-pipeline', name: 'Legacy Pipeline', description: 'Imported planner, implementer, reviewer behavior for migration.', definition: linearDefinition({ legacy: true }) },
-  ];
+  ].map(workflow => ({ ...workflow, definition: normalizeWorkflowDefinition(workflow.definition) }));
 }
 
 export function createWorkflowId() {

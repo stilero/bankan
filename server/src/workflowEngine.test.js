@@ -75,6 +75,38 @@ describe('deterministic workflow engine', () => {
     repository.close();
   });
 
+  test('delivers the configured feedback Artifact on loop re-entry and exposes exhaustion as a Human Decision', () => {
+    const { repository, engine, run } = setup({
+      schemaVersion: 2,
+      defaults: { provider: 'codex', model: '', effort: 'medium', timeoutMs: 1000, retry: { maxAttempts: 1, backoffMs: 0 } },
+      nodes: [
+        { id: 'implement', type: 'Approval', config: { outcomes: ['done'], timeoutMs: 1000, retry: { maxAttempts: 1, backoffMs: 0 } } },
+        { id: 'review', type: 'Approval', config: { outcomes: ['changes'], produces: ['review-feedback'], timeoutMs: 1000, retry: { maxAttempts: 1, backoffMs: 0 } } },
+        { id: 'decision', type: 'HumanDecision', config: { label: 'Review loop exhausted', outcomes: ['accept', 'extend', 'cancel'], timeoutMs: 1000, retry: { maxAttempts: 1, backoffMs: 0 } } },
+        { id: 'done', type: 'Terminal', config: { outcome: 'Success' } },
+      ],
+      edges: [
+        { id: 'to-review', source: 'implement', target: 'review', outcome: 'done' },
+        { id: 'changes', source: 'review', target: 'implement', outcome: 'changes', loop: { maxIterations: 1, feedbackArtifact: 'review-feedback', exhaustionTarget: 'decision' } },
+        { id: 'accepted', source: 'decision', target: 'done', outcome: 'accept' },
+      ],
+    });
+
+    engine.start(run.id);
+    engine.completeNode(run.id, 'implement', { outcome: 'done' });
+    engine.completeNode(run.id, 'review', { outcome: 'changes', artifacts: [{ type: 'review-feedback', data: { summary: 'Add a test' } }] });
+
+    expect(repository.listNodeRuns(run.id).find(nodeRun => nodeRun.nodeId === 'implement' && nodeRun.attempt === 2).input)
+      .toMatchObject({ feedback: { type: 'review-feedback', data: { summary: 'Add a test' } }, loop: { edgeId: 'changes', iteration: 1, limit: 1 } });
+
+    engine.completeNode(run.id, 'implement', { outcome: 'done' });
+    const exhausted = engine.completeNode(run.id, 'review', { outcome: 'changes', artifacts: [{ type: 'review-feedback', data: { summary: 'Still failing' } }] });
+    expect(exhausted.activeNodes).toEqual(['decision']);
+    expect(repository.listNodeRuns(run.id).find(nodeRun => nodeRun.nodeId === 'decision').input)
+      .toMatchObject({ exhaustion: { edgeId: 'changes', iteration: 2, limit: 1 } });
+    repository.close();
+  });
+
   test('fails visibly when a node returns an outcome with no route', () => {
     const { repository, engine, run } = setup({
       schemaVersion: 1,

@@ -28,6 +28,34 @@ function buildTask(overrides = {}) {
 }
 
 describe('TaskDetailModal', () => {
+  test('summarizes the pinned workflow run and opens its structured details', () => {
+    const onOpenWorkflow = vi.fn();
+    render(
+      <TaskDetailModal
+        task={buildTask({
+          status: 'implementing',
+          executionMode: 'workflow',
+          workflowName: 'Standard Development',
+          workflowId: 'standard-development',
+          workflowVersion: 2,
+          currentPhase: 'Implementation',
+          blockedReason: null,
+        })}
+        onClose={vi.fn()}
+        onPause={vi.fn()}
+        onAbort={vi.fn()}
+        onReset={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenWorkflow={onOpenWorkflow}
+      />
+    );
+
+    expect(screen.getByText('Standard Development v2')).toBeTruthy();
+    expect(screen.getByText('Implementation · implementing')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Workflow Details' }));
+    expect(onOpenWorkflow).toHaveBeenCalledWith('T-1');
+  });
+
   test('shows manual PR guidance and lets the user mark the task done', () => {
     const onCompleteManualPr = vi.fn();
 

@@ -36,6 +36,7 @@ function harness({ max = 1, spawn = true } = {}) {
     resolveWorkspace: vi.fn(async () => '/workspace'),
     buildCommand: vi.fn(() => 'agent command'),
     executeAction: vi.fn(async () => ({ ok: true })),
+    executeCheck: vi.fn(async () => ({ passed: true, summary: 'All tests passed' })),
   });
   const execution = {
     id: 'run-1', taskId: 'T-1', status: 'running', activeNodes: ['planner'],
@@ -47,6 +48,36 @@ function harness({ max = 1, spawn = true } = {}) {
 }
 
 describe('workflow agent dispatcher', () => {
+  test('dispatches schema v2 agents from snapshot instructions, selected Artifacts, defaults, and the system-owned contract', async () => {
+    const state = harness();
+    state.execution.workflowSnapshot = {
+      schemaVersion: 2,
+      defaults: { provider: 'codex', model: 'gpt-5.4', effort: 'high', timeoutMs: 1000, retry: { maxAttempts: 1, backoffMs: 0 } },
+      nodes: [{ id: 'planner', type: 'Agent', config: {
+        name: 'Release plan', agentInstructions: 'Use the approved release policy.', accessMode: 'read',
+        artifactBindings: ['interview-answers'], executionContract: { resultType: 'plan', outcomes: ['ready', 'blocked'] },
+      } }],
+    };
+    state.repository.listArtifacts.mockReturnValue([
+      { type: 'interview-answers', data: { goal: 'Ship safely' } },
+      { type: 'secret-notes', data: { text: 'must not leak' } },
+    ]);
+
+    await state.dispatcher.dispatch(state.execution, { id: 'T-1', title: 'Plan release' });
+    const prompt = state.dispatcher.buildCommand.mock.calls[0][1];
+
+    expect(prompt).toContain('Use the approved release policy.');
+    expect(prompt).toContain('Ship safely');
+    expect(prompt).not.toContain('must not leak');
+    expect(prompt.indexOf('Use the approved release policy.')).toBeLessThan(prompt.indexOf('SYSTEM-OWNED EXECUTION CONTRACT'));
+    expect(state.dispatcher.buildCommand).toHaveBeenCalledWith('codex', expect.any(String), 'plan', 'gpt-5.4');
+
+    state.agent.getBufferString.mockReturnValue('work\n<workflow-result>{"outcome":"ready","artifacts":[{"type":"plan","data":{"summary":"Safe rollout"}}]}</workflow-result>');
+    await state.listeners.get('agent:unexpected-exit')({ agentId: 'plan-1', taskId: 'T-1', exitCode: 0, signal: 0 });
+    expect(state.completeNode).toHaveBeenCalledWith('T-1', 'planner', expect.objectContaining({
+      outcome: 'ready', artifacts: [{ type: 'plan', data: { summary: 'Safe rollout' } }],
+    }));
+  });
   test('claims an agent node once and launches with immutable snapshot configuration', async () => {
     const state = harness();
     await state.dispatcher.dispatch(state.execution, { id: 'T-1', title: 'Plan release' });
@@ -105,6 +136,21 @@ describe('workflow agent dispatcher', () => {
 
     expect(state.completeNode).toHaveBeenCalledTimes(1);
     expect(state.completeNode).toHaveBeenCalledWith('T-1', 'delivery', expect.objectContaining({ outcome: 'success' }));
+  });
+
+  test('turns a Check adapter result into a structured Artifact and outcome', async () => {
+    const state = harness();
+    state.execution.activeNodes = ['checks'];
+    state.execution.workflowSnapshot.nodes = [{ id: 'checks', type: 'Check', config: { adapter: 'test', command: 'npm test' } }];
+
+    await state.dispatcher.dispatch(state.execution, { id: 'T-1' });
+
+    expect(state.dispatcher.executeCheck).toHaveBeenCalledWith(expect.objectContaining({ id: 'T-1' }), expect.objectContaining({ id: 'checks' }));
+    expect(state.completeNode).toHaveBeenCalledWith('T-1', 'checks', {
+      outcome: 'pass',
+      output: { passed: true, summary: 'All tests passed' },
+      artifacts: [{ type: 'check-result', data: { adapter: 'test', passed: true, summary: 'All tests passed' } }],
+    });
   });
 
   test('routes reviewer output using its explicit verdict', async () => {
