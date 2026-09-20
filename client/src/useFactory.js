@@ -276,9 +276,17 @@ export default function useFactory() {
     send('OPEN_TASK_WORKSPACE', { taskId });
   }, [send]);
 
-  const updateSettings = useCallback((newSettings) => {
-    send('UPDATE_SETTINGS', newSettings);
-  }, [send]);
+  const updateSettings = useCallback(async (newSettings) => {
+    const response = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newSettings),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error((payload.errors || []).join(', ') || payload.error || 'Settings update failed');
+    setSettings(payload);
+    return payload;
+  }, []);
 
   const openAgentTerminal = useCallback((agentId) => {
     send('OPEN_AGENT_TERMINAL', { agentId });

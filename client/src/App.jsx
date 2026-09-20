@@ -358,6 +358,7 @@ export default function App() {
           settings={settings}
           workflows={workflows}
           defaultWorkflow={defaultWorkflow}
+          onManageWorkflows={() => { setShowAddModal(false); navigate('/workflows'); }}
           onClose={() => setShowAddModal(false)}
           onSubmit={(title, priority, description, repoPath, workflowId, workflowVersion) => {
             if (workflowId) addTask(title, priority, description, repoPath, workflowId, workflowVersion);
@@ -372,8 +373,9 @@ export default function App() {
         <SettingsModal
           settings={settings}
           onClose={() => setShowSettingsModal(false)}
-          onApply={(newSettings) => {
-            updateSettings(newSettings);
+          onManageWorkflows={() => { setShowSettingsModal(false); navigate('/workflows'); }}
+          onApply={async (newSettings) => {
+            await updateSettings(newSettings);
             setShowSettingsModal(false);
           }}
         />
@@ -405,17 +407,20 @@ export default function App() {
 }
 
 // --- Add Task Modal ---
-function AddTaskModal({ repos, settings, workflows = [], defaultWorkflow, onClose, onSubmit }) {
+function AddTaskModal({ repos, settings, workflows = [], defaultWorkflow, onClose, onSubmit, onManageWorkflows }) {
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('medium');
   const [description, setDescription] = useState('');
   const [repoPath, setRepoPath] = useState(() => getDefaultRepo(repos, settings));
   const [workflowId, setWorkflowId] = useState(defaultWorkflow?.workflowId || workflows.find(workflow => workflow.isDefault)?.id || '');
   const selectedWorkflow = workflows.find(workflow => workflow.id === workflowId);
+  const selectedVersion = defaultWorkflow?.workflowId === workflowId
+    ? defaultWorkflow.version
+    : selectedWorkflow?.latestVersion;
 
   const handleSubmit = () => {
     if (!title.trim()) return;
-    onSubmit(title.trim(), priority, description.trim(), repoPath, workflowId || undefined, selectedWorkflow?.latestVersion);
+    onSubmit(title.trim(), priority, description.trim(), repoPath, workflowId || undefined, selectedVersion);
   };
 
   return (
@@ -459,11 +464,15 @@ function AddTaskModal({ repos, settings, workflows = [], defaultWorkflow, onClos
         )}
 
         {workflows.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 11, color: 'var(--text2)', display: 'block', marginBottom: 6 }}>Workflow</label>
-            <select value={workflowId} onChange={event => setWorkflowId(event.target.value)} style={{ width: '100%', fontSize: 12, padding: '6px 8px' }}>
-              {workflows.map(workflow => <option key={workflow.id} value={workflow.id}>{workflow.name} · v{workflow.latestVersion}</option>)}
+          <div className="task-workflow-choice">
+            <div className="task-workflow-heading"><label htmlFor="task-workflow">Execution workflow</label><button onClick={onManageWorkflows}>Manage</button></div>
+            <select id="task-workflow" value={workflowId} onChange={event => setWorkflowId(event.target.value)} style={{ width: '100%', fontSize: 12, padding: '6px 8px' }}>
+              {workflows.map(workflow => {
+                const version = defaultWorkflow?.workflowId === workflow.id ? defaultWorkflow.version : workflow.latestVersion;
+                return <option key={workflow.id} value={workflow.id}>{workflow.name} · v{version}{defaultWorkflow?.workflowId === workflow.id ? ' · Default' : ''}</option>;
+              })}
             </select>
+            {selectedWorkflow && <div className="task-workflow-summary"><strong>{selectedWorkflow.description || 'No workflow description.'}</strong><span>New task will snapshot {selectedWorkflow.name} v{selectedVersion}. Later workflow edits will not change this run.</span></div>}
           </div>
         )}
 
@@ -569,11 +578,18 @@ function decodeCliModel(encoded) {
 }
 
 // --- Settings Modal ---
-function SettingsModal({ settings, onClose, onApply }) {
+function SettingsModal({ settings, onClose, onApply, onManageWorkflows }) {
   const [local, setLocal] = useState(() => JSON.parse(JSON.stringify(settings)));
   const [newRepoPath, setNewRepoPath] = useState('');
   const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
   const [activeTab, setActiveTab] = useState('general');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  const apply = async () => {
+    setSaving(true); setSaveError('');
+    try { await onApply(local); } catch (error) { setSaveError(error.message); } finally { setSaving(false); }
+  };
 
   const updateRole = (role, field, value) => {
     setLocal(prev => {
@@ -644,17 +660,17 @@ function SettingsModal({ settings, onClose, onApply }) {
     planning: {
       roleKey: 'planners',
       promptKey: 'planning',
-      description: 'Set max agents to 0 to disable planning and skip directly into implementation.',
+      description: 'This capacity is shared by all tasks. In the legacy pipeline, 0 also skips planning.',
     },
     implementation: {
       roleKey: 'implementors',
       promptKey: 'implementation',
-      description: 'Implementation cannot be disabled. The prompt body customizes the engineer instructions only.',
+      description: 'This capacity is shared by all tasks and cannot be disabled.',
     },
     review: {
       roleKey: 'reviewers',
       promptKey: 'review',
-      description: 'Set max agents to 0 to disable review and create the PR immediately after implementation.',
+      description: 'This capacity is shared by all tasks. In the legacy pipeline, 0 also skips review.',
     },
   };
 
@@ -670,7 +686,7 @@ function SettingsModal({ settings, onClose, onApply }) {
             fontSize: 11, fontWeight: 600, color: 'var(--text2)',
             letterSpacing: 1, marginBottom: 10,
           }}>
-            AGENTS
+            AGENT CAPACITY · ALL TASKS
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
@@ -770,7 +786,7 @@ function SettingsModal({ settings, onClose, onApply }) {
             fontSize: 11, fontWeight: 600, color: 'var(--text2)',
             letterSpacing: 1, marginBottom: 8,
           }}>
-            PROMPT BODY
+            PROMPT BODY · LEGACY PIPELINE ONLY
           </div>
           <textarea
             value={local.prompts?.[cfgMeta.promptKey] || ''}
@@ -851,6 +867,11 @@ function SettingsModal({ settings, onClose, onApply }) {
         <div style={{ maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }}>
           {activeTab === 'general' && (
             <>
+              <div className="settings-scope-note">
+                <strong>Workflow tasks use their published node settings.</strong>
+                <span>Agent models, prompts, and access are configured in each workflow. The limits here control available capacity; the legacy tabs below only affect legacy pipeline tasks.</span>
+                <button onClick={onManageWorkflows}>Manage workflows</button>
+              </div>
               <div style={{ marginBottom: 20 }}>
                 <div style={{
                   fontSize: 11, fontWeight: 600, color: 'var(--text2)',
@@ -978,9 +999,10 @@ function SettingsModal({ settings, onClose, onApply }) {
           >
             Cancel
           </button>
+          {saveError && <div className="workflow-error" role="alert">{saveError}</div>}
           <button
-            onClick={() => onApply(local)}
-            disabled={!isValid}
+            onClick={apply}
+            disabled={!isValid || saving}
             style={{
               padding: '8px 20px',
               background: isValid ? 'var(--amber)' : 'var(--border)',
@@ -990,7 +1012,7 @@ function SettingsModal({ settings, onClose, onApply }) {
               fontSize: 12,
             }}
           >
-            Apply
+            {saving ? 'Saving…' : 'Apply'}
           </button>
         </div>
       </div>

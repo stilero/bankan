@@ -24,6 +24,7 @@ const fetchMock = vi.fn();
 const checkoutMock = vi.fn();
 const rebaseMock = vi.fn();
 const rawMock = vi.fn();
+const statusMock = vi.fn();
 const existsSyncMock = vi.fn();
 const execFileSyncMock = vi.fn();
 
@@ -71,6 +72,7 @@ vi.mock('simple-git', () => ({
     checkout: checkoutMock,
     rebase: rebaseMock,
     raw: rawMock,
+    status: statusMock,
   })),
 }));
 
@@ -118,11 +120,13 @@ describe('createPR', () => {
     checkoutMock.mockReset();
     rebaseMock.mockReset();
     rawMock.mockReset();
+    statusMock.mockReset();
     existsSyncMock.mockReset();
     execFileSyncMock.mockReset();
 
     getTask.mockReturnValue(task);
     existsSyncMock.mockReturnValue(true);
+    statusMock.mockResolvedValue({ isClean: () => true });
     execFileSyncMock.mockImplementation((cmd) => {
       if (cmd === 'gh') {
         const error = new Error('spawn gh ENOENT');
@@ -172,6 +176,22 @@ describe('createPR', () => {
     expect(emit).toHaveBeenCalledWith('task:blocked', { taskId: 'T-42', reason: 'PR finalization failed' });
     expect(emit).not.toHaveBeenCalledWith('task:manual-pr-required', expect.anything());
 
+    consoleError.mockRestore();
+  });
+
+  test('blocks and preserves uncommitted implementation output', async () => {
+    statusMock.mockResolvedValue({ isClean: () => false });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { createPR } = await import('./orchestrator.js');
+
+    await createPR('T-42');
+
+    expect(rawMock).not.toHaveBeenCalledWith(['checkout', '--', '.']);
+    expect(rawMock).not.toHaveBeenCalledWith(['clean', '-fd']);
+    expect(updateTask).toHaveBeenCalledWith('T-42', expect.objectContaining({
+      status: 'blocked',
+      blockedReason: expect.stringContaining('uncommitted changes'),
+    }));
     consoleError.mockRestore();
   });
 });

@@ -633,7 +633,7 @@ SUMMARY: 2-3 concrete sentences summarising the review, including changed files 
 
 // --- Workspace Helpers ---
 
-async function setupWorkspace(task) {
+export async function setupWorkspace(task) {
   const settings = loadSettings();
   const workspaceRoot = join(getWorkspacesDir(settings), task.id);
   const existingWorkspace = task.workspacePath;
@@ -686,7 +686,7 @@ async function setupWorkspace(task) {
   return workspaceRoot;
 }
 
-async function prepareWorkspaceBranch(task) {
+export async function prepareWorkspaceBranch(task) {
   const workspacePath = await setupWorkspace(task);
   const git = simpleGit(workspacePath);
   const branches = await git.branchLocal();
@@ -1089,10 +1089,10 @@ export async function createPR(taskId) {
     await git.fetch('origin', 'main');
     await git.checkout(task.branch);
 
-    // Discard any uncommitted changes left by the agent (e.g. package-lock.json
-    // from npm installs during review) so they don't block the rebase.
-    await git.raw(['checkout', '--', '.']);
-    await git.raw(['clean', '-fd']);
+    const status = await git.status();
+    if (!status.isClean()) {
+      throw new Error('Workspace has uncommitted changes; refusing to discard implementation output');
+    }
 
     try {
       await git.rebase(['origin/main']);
@@ -1486,6 +1486,7 @@ bus.on('plan:approved', (taskId) => approvePlan(taskId));
 bus.on('plan:rejected', ({ taskId, feedback }) => rejectPlan(taskId, feedback));
 
 bus.on('agent:unexpected-exit', ({ agentId, taskId }) => {
+  if (store.getTask(taskId)?.executionMode === 'workflow') return;
   const agent = agentManager.get(agentId);
   let authBlockedReason = null;
   if (agent) {

@@ -188,6 +188,30 @@ describe('App', () => {
     );
   });
 
+  test('creates a task with the exact pinned default workflow version', () => {
+    factoryState.workflows = [{ id: 'standard', name: 'Standard', description: 'Plan, build, review.', latestVersion: 3 }];
+    factoryState.defaultWorkflow = { workflowId: 'standard', version: 2 };
+    render(<App />);
+
+    fireEvent.click(screen.getByText('+ ADD TASK'));
+    expect(screen.getByText(/snapshot Standard v2/)).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText('What needs to be built?'), { target: { value: 'Pinned task' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Task' }));
+
+    expect(factoryState.addTask).toHaveBeenCalledWith('Pinned task', 'medium', '', '/repo-b', 'standard', 2);
+  });
+
+  test('keeps settings open and shows an acknowledged save error', async () => {
+    factoryState.updateSettings.mockRejectedValueOnce(new Error('Settings could not be saved'));
+    render(<App />);
+
+    fireEvent.click(screen.getByTitle('Settings'));
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Settings could not be saved');
+    expect(screen.getByText('Settings')).toBeTruthy();
+  });
+
   test('keeps settings invalid until workspace root is restored and updates default repo after removal', () => {
     render(<App />);
 

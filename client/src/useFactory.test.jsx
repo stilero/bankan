@@ -47,6 +47,7 @@ describe('useFactory', () => {
     vi.useFakeTimers();
     WebSocketMock.instances = [];
     global.WebSocket = WebSocketMock;
+    global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ repos: ['/repo'] }) }));
   });
 
   afterEach(() => {
@@ -56,7 +57,7 @@ describe('useFactory', () => {
     delete global.WebSocket;
   });
 
-  test('connects, initializes state, and dispatches task commands', () => {
+  test('connects, initializes state, and dispatches task commands', async () => {
     const { result } = renderHook(() => useFactory());
     const socket = WebSocketMock.instances[0];
 
@@ -85,17 +86,17 @@ describe('useFactory', () => {
       canCreatePullRequests: true,
     });
 
-    act(() => {
+    await act(async () => {
       result.current.addTask('Add tests', 'high', 'Critical path', '/repo');
       result.current.approvePlan('T-1');
-      result.current.updateSettings({ repos: ['/repo'] });
+      await result.current.updateSettings({ repos: ['/repo'] });
     });
 
     expect(socket.sent.map(message => message.type)).toEqual([
       'ADD_TASK',
       'APPROVE_PLAN',
-      'UPDATE_SETTINGS',
     ]);
+    expect(global.fetch).toHaveBeenCalledWith('/api/settings', expect.objectContaining({ method: 'PUT' }));
   });
 
   test('tracks agent updates, notifications, and terminal subscriptions', () => {
