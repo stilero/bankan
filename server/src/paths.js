@@ -39,6 +39,7 @@ export function getRuntimePaths() {
     envFile: packaged ? join(dataDir, '.env.local') : join(ROOT_DIR, '.env.local'),
     settingsFile: join(dataDir, 'config.json'),
     tasksFile: join(dataDir, 'tasks.json'),
+    workflowDatabase: join(dataDir, 'workflows.sqlite'),
     plansDir: join(dataDir, 'plans'),
     workspacesDir: join(dataDir, 'workspaces'),
     bridgesDir: join(tempRoot, 'terminal-bridges'),

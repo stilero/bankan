@@ -5,6 +5,8 @@ import TerminalDrawer from './TerminalDrawer.jsx';
 import DirectoryPicker from './DirectoryPicker.jsx';
 import TaskDetailModal from './TaskDetailModal.jsx';
 import ReportsModal from './ReportsModal.jsx';
+import WorkflowStudio from './WorkflowStudio.jsx';
+import LiveWorkflowGraph from './LiveWorkflowGraph.jsx';
 import logoUrl from './assets/ban_kan_logo.svg';
 
 const PRIORITY_COLORS = {
@@ -51,6 +53,7 @@ function Logo() {
 export default function App() {
   const {
     connected, isInitialized, agents, tasks, repos, settings, notifications,
+    workflows = [], defaultWorkflow = null,
     addTask, approvePlan, rejectPlan,
     pauseTask, resumeTask, editTask, abortTask, resetTask, retryTask, approveMaxReviewBlocker, extendMaxReviewBlocker, completeManualPr, deleteTask, openTaskWorkspace,
     injectMessage, sendRaw, resizeTerminal,
@@ -62,6 +65,7 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showReportsModal, setShowReportsModal] = useState(false);
+  const [route, setRoute] = useState(() => window.location.pathname);
   const hasRepos = repos.length > 0;
   const canCreateTask = hasRepos;
   const showStartupGreeting = isInitialized && !hasRepos && tasks.length === 0;
@@ -93,6 +97,17 @@ export default function App() {
     }
   }, [canCreateTask, showAddModal]);
 
+  useEffect(() => {
+    const onPopState = () => setRoute(window.location.pathname);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  const navigate = (path) => {
+    window.history.pushState({}, '', path);
+    setRoute(path);
+  };
+
   const handleAgentClick = (agentId) => {
     if (agentId === 'orch') return;
     setSelectedAgent(prev => prev === agentId ? null : agentId);
@@ -102,6 +117,12 @@ export default function App() {
     if (!canCreateTask) return;
     setShowAddModal(true);
   };
+
+  if (route === '/workflows') return <WorkflowStudio onBack={() => navigate('/')} />;
+  const workflowTaskMatch = route.match(/^\/tasks\/([^/]+)\/workflow$/);
+  if (workflowTaskMatch) {
+    return <LiveWorkflowGraph taskId={decodeURIComponent(workflowTaskMatch[1])} onBack={() => navigate('/')} />;
+  }
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -154,6 +175,17 @@ export default function App() {
           width: 6, height: 6, borderRadius: '50%',
           background: connected ? 'var(--green)' : 'var(--red)',
         }} />
+
+        <button
+          onClick={() => navigate('/workflows')}
+          style={{
+            padding: '6px 10px', background: 'var(--bg2)', border: '1px solid var(--border)',
+            borderRadius: 4, fontSize: 12, color: 'var(--text2)', cursor: 'pointer',
+          }}
+          title="Workflows"
+        >
+          Workflows
+        </button>
 
         {/* Reports */}
         <button
@@ -306,6 +338,7 @@ export default function App() {
           onAllowMoreReview={(id) => { extendMaxReviewBlocker(id); setSelectedTask(null); }}
           onDelete={(id) => { deleteTask(id); setSelectedTask(null); }}
           onOpenWorkspace={(id) => { openTaskWorkspace(id); }}
+          onOpenWorkflow={(id) => { setSelectedTask(null); navigate(`/tasks/${encodeURIComponent(id)}/workflow`); }}
         />
       )}
 
@@ -323,9 +356,12 @@ export default function App() {
         <AddTaskModal
           repos={repos}
           settings={settings}
+          workflows={workflows}
+          defaultWorkflow={defaultWorkflow}
           onClose={() => setShowAddModal(false)}
-          onSubmit={(title, priority, description, repoPath) => {
-            addTask(title, priority, description, repoPath);
+          onSubmit={(title, priority, description, repoPath, workflowId, workflowVersion) => {
+            if (workflowId) addTask(title, priority, description, repoPath, workflowId, workflowVersion);
+            else addTask(title, priority, description, repoPath);
             setShowAddModal(false);
           }}
         />
@@ -369,15 +405,17 @@ export default function App() {
 }
 
 // --- Add Task Modal ---
-function AddTaskModal({ repos, settings, onClose, onSubmit }) {
+function AddTaskModal({ repos, settings, workflows = [], defaultWorkflow, onClose, onSubmit }) {
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('medium');
   const [description, setDescription] = useState('');
   const [repoPath, setRepoPath] = useState(() => getDefaultRepo(repos, settings));
+  const [workflowId, setWorkflowId] = useState(defaultWorkflow?.workflowId || workflows.find(workflow => workflow.isDefault)?.id || '');
+  const selectedWorkflow = workflows.find(workflow => workflow.id === workflowId);
 
   const handleSubmit = () => {
     if (!title.trim()) return;
-    onSubmit(title.trim(), priority, description.trim(), repoPath);
+    onSubmit(title.trim(), priority, description.trim(), repoPath, workflowId || undefined, selectedWorkflow?.latestVersion);
   };
 
   return (
@@ -416,6 +454,15 @@ function AddTaskModal({ repos, settings, onClose, onSubmit }) {
               {repos.map(r => (
                 <option key={r} value={r}>{r}</option>
               ))}
+            </select>
+          </div>
+        )}
+
+        {workflows.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 11, color: 'var(--text2)', display: 'block', marginBottom: 6 }}>Workflow</label>
+            <select value={workflowId} onChange={event => setWorkflowId(event.target.value)} style={{ width: '100%', fontSize: 12, padding: '6px 8px' }}>
+              {workflows.map(workflow => <option key={workflow.id} value={workflow.id}>{workflow.name} · v{workflow.latestVersion}</option>)}
             </select>
           </div>
         )}

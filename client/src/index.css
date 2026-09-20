@@ -38,6 +38,51 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.workflow-page {
+  height: 100vh;
+  padding: 20px;
+  background: var(--bg);
+  color: var(--text);
+  overflow: auto;
+}
+
+.workflow-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 64px;
+  margin-bottom: 16px;
+}
+
+.workflow-header h1 { margin: 0; font-family: var(--font-head); font-size: 22px; }
+.workflow-header p { margin: 4px 0 0; color: var(--text2); font-size: 12px; }
+.workflow-actions { display: flex; gap: 8px; margin-left: auto; }
+.workflow-actions button, .workflow-header button, .workflow-panel button {
+  padding: 7px 11px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg2); color: var(--text2); cursor: pointer;
+}
+.workflow-actions .primary { background: var(--amber); color: #111; border-color: var(--amber); }
+.workflow-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.workflow-list-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px;
+  background: var(--bg1); border: 1px solid var(--border); border-radius: 8px; color: var(--text); cursor: pointer;
+}
+.workflow-list-card span { color: var(--text2); font-size: 11px; }
+.workflow-editor-page, .workflow-live-page { display: flex; flex-direction: column; overflow: hidden; }
+.workflow-editor-grid { display: grid; grid-template-columns: 180px 1fr 260px; gap: 1px; flex: 1; min-height: 0; background: var(--border); }
+.workflow-live-grid { display: grid; grid-template-columns: 1fr 300px; gap: 1px; flex: 1; min-height: 0; background: var(--border); }
+.workflow-panel { padding: 14px; background: var(--bg1); overflow: auto; }
+.workflow-panel h2 { margin: 8px 0 12px; font-size: 12px; text-transform: uppercase; color: var(--text3); }
+.workflow-panel > button { display: block; width: 100%; margin-bottom: 6px; text-align: left; }
+.workflow-panel pre { overflow: auto; padding: 8px; background: var(--bg); font-size: 10px; }
+.workflow-canvas { min-height: 400px; background: var(--bg); }
+.workflow-valid { color: var(--green); }
+.workflow-error { color: var(--red); margin-bottom: 6px; font-size: 11px; }
+.workflow-message { color: var(--amber); margin: 8px 0; font-size: 11px; }
+.workflow-active-node { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.workflow-node-running { border: 2px solid var(--amber) !important; }
+.workflow-node-succeeded { border: 2px solid var(--green) !important; }
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
