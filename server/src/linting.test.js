@@ -34,4 +34,16 @@ describe('linting integration', () => {
     expect(taskCompletedHooks[0].hooks[0].command).toContain('.claude/hooks/run-lint-on-task-complete.sh');
     expect(taskCompletedHooks[0].hooks[0].timeout).toBe(300);
   });
+
+  test('runs automation on a Node version supported by the package', () => {
+    const packageJson = JSON.parse(readFileSync(resolve(repoRoot, 'package.json'), 'utf-8'));
+    const minimumNode = Number(packageJson.engines.node.match(/\d+/)?.[0]);
+
+    for (const workflow of ['ci.yml', 'publish.yml']) {
+      const content = readFileSync(resolve(repoRoot, '.github', 'workflows', workflow), 'utf-8');
+      const configuredNode = Number(content.match(/node-version:\s*(\d+)/)?.[1]);
+
+      expect(configuredNode, `${workflow} Node version`).toBeGreaterThanOrEqual(minimumNode);
+    }
+  });
 });
