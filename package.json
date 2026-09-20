@@ -1,6 +1,6 @@
 {
   "name": "@stilero/bankan",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "type": "module",
   "description": "Run AI coding agents like a Kanban board. Plan, implement, review and ship code using parallel AI agents across your local repositories.",
   "license": "MIT",
@@ -28,7 +28,7 @@
     "orchestration"
   ],
   "bin": {
-    "bankan": "./bin/bankan.js"
+    "bankan": "bin/bankan.js"
   },
   "files": [
     "bin",
