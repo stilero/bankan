@@ -194,12 +194,12 @@ class Agent {
       }
     });
 
-    this.process.onExit(() => {
+    this.process.onExit(({ exitCode, signal }) => {
       this.process = null;
       if (this.status === 'active') {
         this.status = 'idle';
         if (this.currentTask) {
-          bus.emit('agent:unexpected-exit', { agentId: this.id, taskId: this.currentTask });
+          bus.emit('agent:unexpected-exit', { agentId: this.id, taskId: this.currentTask, exitCode, signal });
         }
       }
     });

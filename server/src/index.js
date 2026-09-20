@@ -25,6 +25,7 @@ import {
   getWorkflowRepository,
   getWorkflowRun,
   appendWorkflowExchange,
+  recoverWorkflowExecutions,
 } from './workflowRuntime.js';
 
 const app = express();
@@ -729,7 +730,23 @@ wss.on('connection', (ws) => {
       }
       case 'COMPLETE_MANUAL_PR': {
         const { taskId } = msg.payload || {};
-        if (taskId) orchestrator.completeManualPr(taskId);
+        if (taskId) {
+          const task = store.getTask(taskId);
+          Promise.resolve(orchestrator.completeManualPr(taskId)).then(() => {
+            if (task?.executionMode !== 'workflow' || task.status !== 'awaiting_manual_pr') return;
+            if (store.getTask(taskId)?.status !== 'done') return;
+            const run = getWorkflowRun(taskId);
+            const actionNode = run?.activeNodes.find(nodeId => {
+              const node = run.workflowSnapshot.nodes.find(candidate => candidate.id === nodeId);
+              return node?.type === 'Action' && node.config?.action === 'create-pr';
+            });
+            if (actionNode) controlWorkflowRun(taskId, 'completeNode', {
+              nodeId: actionNode,
+              outcome: 'success',
+              artifacts: [{ type: 'manual-pr', data: { confirmed: true } }],
+            });
+          }).catch(error => sendToClient(ws, 'WORKFLOW_ERROR', { message: error.message }));
+        }
         break;
       }
       case 'RETRY_TASK': {
@@ -944,6 +961,7 @@ async function ensureAppStarted() {
     const imported = await import('./orchestrator.js');
     orchestrator = imported.default;
     orchestrator.start();
+    recoverWorkflowExecutions();
   })();
 
   return startupPromise;

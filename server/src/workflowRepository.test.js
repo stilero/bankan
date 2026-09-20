@@ -26,6 +26,7 @@ describe('workflow repository', () => {
     expect(workflows).toHaveLength(4);
     expect(standard.isDefault).toBe(true);
     expect(standard.latestVersion).toBe(1);
+    expect(standard.summary).toMatchObject({ phases: expect.arrayContaining(['Intake', 'Planning']), agentPresets: expect.arrayContaining(['planner']) });
 
     const draft = repository.createDraft({ name: 'Release Flow' });
     repository.updateDraft(draft.id, {
@@ -56,6 +57,17 @@ describe('workflow repository', () => {
     expect(JSON.stringify(exported)).not.toContain('T-');
     expect(() => repository.importWorkflow({ name: 'Broken', definition: { nodes: [], edges: [] } }))
       .toThrow(/validation failed/i);
+    repository.close();
+  });
+
+  test('reports the exact default version even when a newer version exists', () => {
+    const repository = createRepository();
+    const standard = repository.getWorkflow('standard-development');
+    repository.publish(standard.id);
+
+    const summary = repository.listWorkflows().find(workflow => workflow.id === standard.id);
+
+    expect(summary).toMatchObject({ latestVersion: 2, defaultVersion: 1, isDefault: true });
     repository.close();
   });
 

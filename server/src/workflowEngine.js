@@ -110,6 +110,10 @@ export class WorkflowEngine {
     const edges = run.workflowSnapshot.edges.filter(edge => edge.source === sourceId);
     let selected = edges.filter(edge => edge.outcome === outcome);
     if (selected.length === 0) selected = edges.filter(edge => edge.fallback);
+    if (selected.length === 0 && edges.length > 0) {
+      this.repository.recordAudit(run.id, 'execution.failed', { sourceId, outcome, reason: 'No matching workflow route' });
+      return this.repository.updateExecution(run.id, { status: 'failed', activeNodes: [] });
+    }
     for (const edge of selected) {
       let target = edge.target;
       if (edge.loop) {

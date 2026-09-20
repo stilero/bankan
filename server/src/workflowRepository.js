@@ -87,14 +87,23 @@ export class WorkflowRepository {
 
   listWorkflows() {
     const selected = this.getDefault();
-    return this.db.prepare('SELECT * FROM workflows ORDER BY created_at, name').all().map(row => ({
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      latestVersion: row.latest_version,
-      isDefault: selected?.workflowId === row.id && selected?.version === row.latest_version,
-      updatedAt: row.updated_at,
-    }));
+    return this.db.prepare('SELECT * FROM workflows ORDER BY created_at, name').all().map(row => {
+      const definition = parse(row.draft_json, { nodes: [] });
+      return {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        latestVersion: row.latest_version,
+        defaultVersion: selected?.workflowId === row.id ? selected.version : null,
+        isDefault: selected?.workflowId === row.id,
+        summary: {
+          nodeCount: definition.nodes.length,
+          phases: definition.nodes.filter(node => node.type === 'Phase').map(node => node.config?.phase).filter(Boolean),
+          agentPresets: definition.nodes.filter(node => node.type === 'Agent').map(node => node.config?.preset).filter(Boolean),
+        },
+        updatedAt: row.updated_at,
+      };
+    });
   }
 
   getWorkflow(id) {

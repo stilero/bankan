@@ -3,9 +3,53 @@ import store from './store.js';
 import bus from './events.js';
 import { WorkflowEngine } from './workflowEngine.js';
 import { WorkflowRepository } from './workflowRepository.js';
+import agentManager from './agents.js';
+import { buildAgentCommand, createPR, prepareWorkspaceBranch, setupWorkspace } from './orchestrator.js';
+import { WorkflowDispatcher } from './workflowDispatcher.js';
 
 let repository;
 let engine;
+let dispatcher;
+
+function getWorkflowDispatcher() {
+  if (process.env.NODE_ENV === 'test') return null;
+  if (!dispatcher) {
+    dispatcher = new WorkflowDispatcher({
+      bus,
+      agentManager,
+      repository: getWorkflowRepository(),
+      completeNode: (taskId, nodeId, payload) => controlWorkflowRun(taskId, 'completeNode', { nodeId, ...payload }),
+      resolveWorkspace: async (task, node) => {
+        let currentTask = task;
+        if (node.config?.preset === 'implementer' && !task.branch) {
+          currentTask = store.updateTask(task.id, { branch: `workflow/${task.id.toLowerCase()}` });
+        }
+        const workspacePath = node.config?.preset === 'implementer'
+          ? await prepareWorkspaceBranch(currentTask)
+          : await setupWorkspace(currentTask);
+        store.updateTask(task.id, { workspacePath });
+        return workspacePath;
+      },
+      buildCommand: buildAgentCommand,
+      executeAction: async (task, node) => {
+        if (node.config?.action !== 'create-pr') throw new Error(`Unsupported action ${node.config?.action || '(missing)'}`);
+        const before = store.getTask(task.id);
+        if (before.prUrl) return { prUrl: before.prUrl, prNumber: before.prNumber, recovered: true };
+        if (before.status === 'awaiting_manual_pr') return { pending: true, reason: before.blockedReason };
+        await createPR(task.id);
+        const updated = store.getTask(task.id);
+        if (updated.status === 'blocked') throw new Error(updated.blockedReason || 'Pull request creation failed');
+        if (updated.status === 'awaiting_manual_pr') return { pending: true, reason: updated.blockedReason };
+        return { prUrl: updated.prUrl, prNumber: updated.prNumber };
+      },
+      onExecutionUpdated: (execution, reason) => {
+        syncTaskFromExecution(execution);
+        if (reason) store.updateTask(execution.taskId, { blockedReason: reason });
+      },
+    });
+  }
+  return dispatcher;
+}
 
 export function getWorkflowRepository() {
   if (!repository) {
@@ -46,6 +90,12 @@ export function syncTaskFromExecution(execution) {
     blockedReason: execution.status === 'failed' ? 'Workflow finished with a failure outcome' : null,
   });
   bus.emit('workflow:run-updated', execution);
+  getWorkflowDispatcher()?.dispatch(execution, updated).catch(error => {
+    getWorkflowRepository().recordAudit(execution.id, 'dispatcher.failed', { reason: error.message });
+    const failed = getWorkflowRepository().updateExecution(execution.id, { status: 'failed', activeNodes: [] });
+    store.updateTask(task.id, { status: 'blocked', blockedReason: error.message });
+    bus.emit('workflow:run-updated', failed);
+  });
   return updated;
 }
 
@@ -72,15 +122,35 @@ export function controlWorkflowRun(taskId, command, payload = {}) {
   const execution = repo.getExecutionForTask(taskId);
   if (!execution) throw new Error('Workflow execution not found');
   let updated;
-  if (command === 'pause') updated = getWorkflowEngine().pause(execution.id);
+  if (command === 'pause') {
+    getWorkflowDispatcher()?.releaseExecution(execution.id);
+    updated = getWorkflowEngine().pause(execution.id);
+  }
   else if (command === 'resume') updated = getWorkflowEngine().resume(execution.id);
-  else if (command === 'cancel') updated = getWorkflowEngine().cancel(execution.id);
+  else if (command === 'cancel') {
+    getWorkflowDispatcher()?.releaseExecution(execution.id);
+    updated = getWorkflowEngine().cancel(execution.id);
+  }
   else if (command === 'completeNode') updated = getWorkflowEngine().completeNode(execution.id, payload.nodeId, payload);
   else if (command === 'pauseNode') updated = getWorkflowEngine().pauseNode(execution.id, payload.nodeId);
   else if (command === 'resumeNode') updated = getWorkflowEngine().resumeNode(execution.id, payload.nodeId);
   else if (command === 'cancelNode') updated = getWorkflowEngine().cancelNode(execution.id, payload.nodeId);
   else if (command === 'retryNode') updated = getWorkflowEngine().retryNode(execution.id, payload.nodeId);
   else if (command === 'skipNode') updated = getWorkflowEngine().skipNode(execution.id, payload.nodeId, payload.substitute);
+  else if (command === 'submitInput') {
+    const node = execution.workflowSnapshot.nodes.find(candidate => candidate.id === payload.nodeId);
+    if (node?.type !== 'Interview') throw new Error(`Node ${payload.nodeId} is not an Interview node`);
+    if (!payload.answers || typeof payload.answers !== 'object' || Array.isArray(payload.answers)) {
+      throw new Error('Interview answers must be an object');
+    }
+    if (Object.keys(payload.answers).length === 0) throw new Error('Interview answers cannot be empty');
+    repo.appendUserExchange(execution.id, payload.nodeId, 'user', JSON.stringify(payload.answers));
+    updated = getWorkflowEngine().completeNode(execution.id, payload.nodeId, {
+      outcome: 'success',
+      output: { answers: payload.answers },
+      artifacts: [{ type: 'interview-answers', data: { answers: payload.answers } }],
+    });
+  }
   else throw new Error(`Unsupported workflow command ${command}`);
   syncTaskFromExecution(updated);
   return updated;
@@ -90,8 +160,29 @@ export function getWorkflowRun(taskId) {
   const repo = getWorkflowRepository();
   const execution = repo.getExecutionForTask(taskId);
   if (!execution) return null;
+  const actionableNodes = execution.activeNodes.map(nodeId => {
+    const node = execution.workflowSnapshot.nodes.find(candidate => candidate.id === nodeId);
+    if (!node) return null;
+    const actions = {
+      Interview: 'submitInput',
+      Approval: 'decide',
+      Agent: 'awaitingExecution',
+      Action: 'awaitingExecution',
+    };
+    return {
+      nodeId,
+      type: node.type,
+      label: node.config?.label || node.data?.label || node.type,
+      action: actions[node.type] || 'complete',
+      actor: ['Interview', 'Approval'].includes(node.type) ? 'human' : 'server',
+      allowedOutcomes: [...new Set(execution.workflowSnapshot.edges
+        .filter(edge => edge.source === nodeId && edge.outcome)
+        .map(edge => edge.outcome))],
+    };
+  }).filter(Boolean);
   return {
     ...execution,
+    actionableNodes,
     nodeRuns: repo.listNodeRuns(execution.id),
     artifacts: repo.listArtifacts(execution.id),
     exchanges: repo.listUserExchanges(execution.id),
@@ -110,7 +201,31 @@ export function appendWorkflowExchange(taskId, { nodeId, role, content }) {
   return { id };
 }
 
+export function recoverWorkflowExecutions() {
+  for (const execution of getWorkflowRepository().listExecutions()) {
+    if (!['running', 'paused'].includes(execution.status)) continue;
+    if (execution.status === 'paused') continue;
+    const hasUncertainExternalAction = execution.activeNodes.some(nodeId => {
+      const node = execution.workflowSnapshot.nodes.find(candidate => candidate.id === nodeId);
+      return node?.type === 'Action' && node.config?.action === 'create-pr';
+    });
+    if (hasUncertainExternalAction) {
+      getWorkflowRepository().recordAudit(execution.id, 'action.recovery-needs-confirmation', { activeNodes: execution.activeNodes });
+      store.updateTask(execution.taskId, {
+        status: 'awaiting_manual_pr',
+        blockedReason: 'Delivery was interrupted. Confirm the pull request before completing this workflow.',
+      });
+      bus.emit('workflow:run-updated', execution);
+      continue;
+    }
+    getWorkflowRepository().recordAudit(execution.id, 'execution.recovered', { activeNodes: execution.activeNodes });
+    syncTaskFromExecution(execution);
+  }
+}
+
 export function resetWorkflowRuntimeForTests() {
+  dispatcher?.close();
+  dispatcher = undefined;
   repository?.close();
   repository = undefined;
   engine = undefined;

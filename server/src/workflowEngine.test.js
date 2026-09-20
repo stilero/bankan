@@ -75,6 +75,24 @@ describe('deterministic workflow engine', () => {
     repository.close();
   });
 
+  test('fails visibly when a node returns an outcome with no route', () => {
+    const { repository, engine, run } = setup({
+      schemaVersion: 1,
+      nodes: [
+        { id: 'agent', type: 'Agent', config: { provider: 'codex', model: '', effort: 'medium', accessMode: 'read', timeoutMs: 1000, retry: { maxAttempts: 1, backoffMs: 0 } } },
+        { id: 'done', type: 'Terminal', config: { outcome: 'Success' } },
+      ],
+      edges: [{ id: 'success', source: 'agent', target: 'done', outcome: 'success' }],
+    });
+
+    engine.start(run.id);
+    const failed = engine.completeNode(run.id, 'agent', { outcome: 'failure' });
+
+    expect(failed.status).toBe('failed');
+    expect(failed.activeNodes).toEqual([]);
+    repository.close();
+  });
+
   test('guards skip and preserves branch state across pause and resume', () => {
     const { repository, engine, run } = setup({
       schemaVersion: 1,
@@ -96,6 +114,57 @@ describe('deterministic workflow engine', () => {
       type: 'test-waiver',
       data: { reason: 'Covered externally' },
     });
+    repository.close();
+  });
+
+  test('supports node pause, resume, retry budgets, and cancellation', () => {
+    const { repository, engine, run } = setup({
+      schemaVersion: 1,
+      nodes: [
+        { id: 'agent', type: 'Agent', config: { provider: 'codex', model: '', effort: 'medium', accessMode: 'read', timeoutMs: 1000, retry: { maxAttempts: 2, backoffMs: 0 } } },
+        { id: 'cancelled', type: 'Terminal', config: { outcome: 'Cancelled' } },
+      ],
+      edges: [{ id: 'cancel', source: 'agent', target: 'cancelled', outcome: 'cancelled' }],
+    });
+
+    engine.start(run.id);
+    expect(engine.pauseNode(run.id, 'agent').activeNodes).toContain('agent');
+    expect(engine.resumeNode(run.id, 'agent').activeNodes).toContain('agent');
+    expect(engine.retryNode(run.id, 'agent').activeNodes).toContain('agent');
+    expect(() => engine.retryNode(run.id, 'agent')).toThrow('Retry budget exhausted');
+    expect(engine.cancelNode(run.id, 'agent').status).toBe('cancelled');
+    repository.close();
+  });
+
+  test('evaluates conditions and waits for all fork branches at a join', () => {
+    const executable = { timeoutMs: 1000, retry: { maxAttempts: 1, backoffMs: 0 } };
+    const { repository, engine, run } = setup({
+      schemaVersion: 1,
+      nodes: [
+        { id: 'condition', type: 'Condition', config: { rules: [{ field: 'choice.value', operator: 'equals', value: 'parallel', outcome: 'parallel' }] } },
+        { id: 'fork', type: 'Fork', config: {} },
+        { id: 'left', type: 'Approval', config: { ...executable, outcomes: ['success'] } },
+        { id: 'right', type: 'Approval', config: { ...executable, outcomes: ['success'] } },
+        { id: 'join', type: 'Join', config: { policy: 'all' } },
+        { id: 'done', type: 'Terminal', config: { outcome: 'Success' } },
+        { id: 'failed', type: 'Terminal', config: { outcome: 'Failure' } },
+      ],
+      edges: [
+        { id: 'parallel', source: 'condition', target: 'fork', outcome: 'parallel' },
+        { id: 'fallback', source: 'condition', target: 'failed', fallback: true },
+        { id: 'fork-left', source: 'fork', target: 'left', outcome: 'success' },
+        { id: 'fork-right', source: 'fork', target: 'right', outcome: 'success' },
+        { id: 'left-join', source: 'left', target: 'join', outcome: 'success' },
+        { id: 'right-join', source: 'right', target: 'join', outcome: 'success' },
+        { id: 'joined', source: 'join', target: 'done', outcome: 'success' },
+      ],
+    });
+    repository.addArtifact(run.id, 'input', { type: 'choice', data: { value: 'parallel' } });
+
+    const started = engine.start(run.id);
+    expect(started.activeNodes.sort()).toEqual(['left', 'right']);
+    expect(engine.completeNode(run.id, 'left').status).toBe('running');
+    expect(engine.completeNode(run.id, 'right').status).toBe('succeeded');
     repository.close();
   });
 });
