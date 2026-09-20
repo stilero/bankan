@@ -52,6 +52,8 @@
     "test:client": "npm run test --prefix client",
     "coverage": "npm run coverage --prefix server && npm run coverage --prefix client && node scripts/check-coverage.js",
     "coverage:check": "node scripts/check-coverage.js",
+    "release": "node scripts/release.js prepare",
+    "release:publish": "node scripts/release.js publish",
     "dev": "concurrently -n server,client -c cyan,magenta \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
     "start": "npm run dev",
     "install:all": "npm install && npm install --prefix server && npm install --prefix client",

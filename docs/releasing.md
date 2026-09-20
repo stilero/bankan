@@ -13,7 +13,29 @@ Releases are automated via GitHub Actions (`.github/workflows/publish.yml`) usin
    - **Environment:** (leave blank)
 2. Ensure `gh` CLI is installed and authenticated (`gh auth status`).
 
-## Release steps
+## Release commands
+
+Prepare a version bump, run every release check, push a release branch, and open its pull request:
+
+```bash
+npm run release -- patch
+npm run release -- minor
+npm run release -- major
+```
+
+Run the command from a clean, synchronized `main` branch. It stops before making changes when the checkout is dirty, is not on `main`, or differs from `origin/main`.
+
+After the release pull request is merged, return to the clean, synchronized `main` branch and publish the GitHub release:
+
+```bash
+npm run release:publish
+```
+
+The publish command refuses to reuse an npm version or Git tag. Publishing the GitHub release triggers the npm publish workflow.
+
+## Manual release steps
+
+The commands above automate the following process. Use these steps only when diagnosing or recovering a release.
 
 ### 1. Bump the version on your feature branch
 
